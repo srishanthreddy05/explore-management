@@ -47,6 +47,8 @@ export interface Invoice {
     card: number;
   };
   paymentStatus: "paid" | "partial" | "unpaid";
+  receivedAmount?: number;
+  balanceDue?: number;
 
   // ── Meta ──────────────────────────────────────────────────────────────────
   notes?: string;
