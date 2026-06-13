@@ -6,9 +6,9 @@ import {
   getDocs,
   getDoc,
   updateDoc,
-  deleteDoc,
   query,
   orderBy,
+  where,
 } from "firebase/firestore";
 import type { Service } from "@/types/service";
 
@@ -18,6 +18,7 @@ export async function create(service: Omit<Service, "id">): Promise<string> {
   try {
     const docRef = await addDoc(collection(db, COLLECTION_NAME), {
       ...service,
+      isActive: true,
       createdAt: service.createdAt || new Date().toISOString(),
     });
     return docRef.id;
@@ -29,18 +30,34 @@ export async function create(service: Omit<Service, "id">): Promise<string> {
 
 export async function getAll(): Promise<Service[]> {
   try {
-    const q = query(collection(db, COLLECTION_NAME), orderBy("name", "asc"));
+    // ── FIX: use isActive == true instead of != false ──────────────────────
+    // Firestore allows a single == filter combined with a single orderBy on a
+    // DIFFERENT field without requiring a composite index. The previous
+    // (!= false + orderBy("isActive") + orderBy("name")) combination required
+    // a manually-created composite index that didn't exist, causing a
+    // FirebaseError at runtime.
+    const q = query(
+      collection(db, COLLECTION_NAME),
+      where("isActive", "==", true),
+      orderBy("name", "asc")
+    );
     const querySnapshot = await getDocs(q);
     const services: Service[] = [];
     querySnapshot.forEach((doc) => {
-      services.push({
-        id: doc.id,
-        ...doc.data(),
-      } as Service);
+      services.push({ id: doc.id, ...doc.data() } as Service);
     });
     return services;
   } catch (error) {
     console.error("Error getting all services from Firestore:", error);
+    throw error;
+  }
+}
+
+async function deleteService(id: string): Promise<void> {
+  try {
+    await updateDoc(doc(db, COLLECTION_NAME, id), { isActive: false });
+  } catch (error) {
+    console.error(`Error soft-deleting service (${id}):`, error);
     throw error;
   }
 }
@@ -71,16 +88,6 @@ export async function update(
     await updateDoc(docRef, data);
   } catch (error) {
     console.error(`Error updating service (${id}) in Firestore:`, error);
-    throw error;
-  }
-}
-
-async function deleteService(id: string): Promise<void> {
-  try {
-    const docRef = doc(db, COLLECTION_NAME, id);
-    await deleteDoc(docRef);
-  } catch (error) {
-    console.error(`Error deleting service (${id}) from Firestore:`, error);
     throw error;
   }
 }

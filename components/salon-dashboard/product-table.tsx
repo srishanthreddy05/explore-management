@@ -8,7 +8,7 @@ import { formatCurrency } from "./types";
 interface ProductTableProps {
   rows: ProductRow[];
   onRowsChange: (rows: ProductRow[]) => void;
-  productOptions?: { name: string; price: number }[];
+  productOptions?: { id?: string; name: string; price: number }[];
 }
 
 export function ProductTable({
@@ -22,11 +22,12 @@ export function ProductTable({
     onRowsChange(rows.map((row) => (row.id === id ? { ...row, ...patch } : row)));
   };
 
-  const selectProduct = (prod: { name: string; price: number }) => {
+  const selectProduct = (prod: { id?: string; name: string; price: number }) => {
     onRowsChange([
       ...rows,
       {
         id: Math.max(0, ...rows.map((row) => row.id)) + 1,
+        productId: prod.id || "",
         product: prod.name,
         price: prod.price,
         quantity: 1,

@@ -14,12 +14,24 @@ import type { Offer } from "@/types/offer";
 
 const COLLECTION_NAME = "offers";
 
+// Firestore rejects `undefined` field values, so strip them before writing.
+function stripUndefined<T extends Record<string, unknown>>(obj: T): T {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) out[key] = value;
+  }
+  return out as T;
+}
+
 export async function create(offer: Omit<Offer, "id">): Promise<string> {
   try {
-    const docRef = await addDoc(collection(db, COLLECTION_NAME), {
-      ...offer,
-      createdAt: offer.createdAt || new Date().toISOString(),
-    });
+    const docRef = await addDoc(
+      collection(db, COLLECTION_NAME),
+      stripUndefined({
+        ...offer,
+        createdAt: offer.createdAt || new Date().toISOString(),
+      })
+    );
     return docRef.id;
   } catch (error) {
     console.error("Error creating offer:", error);
@@ -68,7 +80,7 @@ export async function update(
 ): Promise<void> {
   try {
     const docRef = doc(db, COLLECTION_NAME, id);
-    await updateDoc(docRef, data);
+    await updateDoc(docRef, stripUndefined(data));
   } catch (error) {
     console.error(`Error updating offer (${id}):`, error);
     throw error;

@@ -45,7 +45,10 @@ export default function SettingsPage() {
     setSaving(true);
     setMessage(null);
     try {
-      await updateSettings(settings);
+      await updateSettings({
+        salonName: settings.salonName,
+        phoneNumber: settings.phoneNumber,
+      });
       setMessage({ type: "success", text: "Configuration saved successfully!" });
     } catch (error) {
       console.error("Failed to save settings:", error);
@@ -110,19 +113,6 @@ export default function SettingsPage() {
             </label>
 
             <label className="block">
-              <span className="text-sm font-semibold text-stone-700">Business Type</span>
-              <input
-                required
-                type="text"
-                name="businessType"
-                value={settings.businessType}
-                onChange={handleChange}
-                className="mt-2 h-12 w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 text-sm text-stone-900 outline-none focus:border-black"
-                placeholder="e.g. Salon"
-              />
-            </label>
-
-            <label className="block">
               <span className="text-sm font-semibold text-stone-700">Phone Number</span>
               <input
                 type="text"
@@ -131,53 +121,6 @@ export default function SettingsPage() {
                 onChange={handleChange}
                 className="mt-2 h-12 w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 text-sm text-stone-900 outline-none focus:border-black"
                 placeholder="e.g. +91 98765 43210"
-              />
-            </label>
-
-            <label className="block">
-              <span className="text-sm font-semibold text-stone-700">WhatsApp Number</span>
-              <input
-                type="text"
-                name="whatsAppNumber"
-                value={settings.whatsAppNumber || ""}
-                onChange={handleChange}
-                className="mt-2 h-12 w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 text-sm text-stone-900 outline-none focus:border-black"
-                placeholder="e.g. +91 98765 43210"
-              />
-            </label>
-
-            <label className="block">
-              <span className="text-sm font-semibold text-stone-700">GST Registration Number</span>
-              <input
-                type="text"
-                name="gstNumber"
-                value={settings.gstNumber || ""}
-                onChange={handleChange}
-                className="mt-2 h-12 w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 text-sm text-stone-900 outline-none focus:border-black"
-                placeholder="e.g. 27AAAAA1111A1Z1"
-              />
-            </label>
-
-            <label className="block">
-              <span className="text-sm font-semibold text-stone-700">Logo URL</span>
-              <input
-                type="url"
-                name="logoUrl"
-                value={settings.logoUrl || ""}
-                onChange={handleChange}
-                className="mt-2 h-12 w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 text-sm text-stone-900 outline-none focus:border-black"
-                placeholder="e.g. https://example.com/logo.png"
-              />
-            </label>
-
-            <label className="block sm:col-span-2">
-              <span className="text-sm font-semibold text-stone-700">Address</span>
-              <textarea
-                name="address"
-                value={settings.address || ""}
-                onChange={handleChange}
-                className="mt-2 min-h-24 w-full resize-none rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none focus:border-black"
-                placeholder="Salon physical address..."
               />
             </label>
           </div>

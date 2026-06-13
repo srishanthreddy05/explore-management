@@ -12,7 +12,7 @@ export function SummaryCard({ totals }: { totals: BillTotals }) {
     ["Discount", -totals.billDiscount],
   ] as const;
 
-  const grandTotal = Math.max(totals.subtotal - totals.billDiscount, 0);
+  const grandTotal = Math.max(totals.subtotal - totals.billDiscount - totals.offerDiscount, 0)
 
   return (
     <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-md text-stone-900">

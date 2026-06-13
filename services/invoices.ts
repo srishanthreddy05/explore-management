@@ -9,55 +9,111 @@ import {
   deleteDoc,
   query,
   orderBy,
+  where,
+  runTransaction,
+  serverTimestamp,
+  Timestamp,
 } from "firebase/firestore";
 import type { Invoice } from "@/types/invoice";
 
-const COLLECTION_NAME = "invoices";
+const COLLECTION = "invoices";
+const COUNTER_DOC = doc(db, "counters", "invoice");  // /counters/invoice { lastNumber: 1000 }
 
-export async function create(invoice: Omit<Invoice, "id">): Promise<string> {
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * Atomically increments the /counters/invoice.lastNumber and returns the next
+ * invoice number string. Safe under concurrent billing sessions.
+ */
+async function getNextInvoiceNumber(): Promise<string> {
+  return runTransaction(db, async (tx) => {
+    const snap = await tx.get(COUNTER_DOC);
+
+    let last = 1000;
+    if (snap.exists()) {
+      last = snap.data().lastNumber ?? 1000;
+    } else {
+      // First-time: create the counter document inside the transaction
+      tx.set(COUNTER_DOC, { lastNumber: 1000 });
+    }
+
+    const next = last + 1;
+    tx.set(COUNTER_DOC, { lastNumber: next });
+
+    const year = new Date().getFullYear();
+    return `INV-${year}-${next}`;
+  });
+}
+
+// ── Exported helpers the billing page needs ───────────────────────────────────
+
+export { getNextInvoiceNumber };
+
+// ── CRUD ──────────────────────────────────────────────────────────────────────
+
+/**
+ * Save a new invoice. Invoice number must come from getNextInvoiceNumber()
+ * called by the billing page — do not pass a client-generated number.
+ */
+export async function create(
+  invoice: Omit<Invoice, "id" | "createdAt" | "date"> & { dateString: string }
+): Promise<string> {
   try {
-    const docRef = await addDoc(collection(db, COLLECTION_NAME), {
-      ...invoice,
-      createdAt: invoice.createdAt || new Date().toISOString(),
+    // Convert the YYYY-MM-DD string the date input gives us into a Firestore Timestamp
+    const dateTs = Timestamp.fromDate(new Date(invoice.dateString));
+
+    const { dateString, ...rest } = invoice;
+
+    const docRef = await addDoc(collection(db, COLLECTION), {
+      ...rest,
+      date: dateTs,
+      createdAt: serverTimestamp(),
     });
     return docRef.id;
   } catch (error) {
-    console.error("Error creating invoice in Firestore:", error);
+    console.error("Error creating invoice:", error);
     throw error;
   }
 }
 
+/**
+ * Returns all invoices ordered by date descending (newest first).
+ * NOTE: for high-volume stores, switch this to a paginated cursor query.
+ */
 export async function getAll(): Promise<Invoice[]> {
   try {
-    const q = query(collection(db, COLLECTION_NAME), orderBy("invoiceNumber", "desc"));
-    const querySnapshot = await getDocs(q);
-    const invoices: Invoice[] = [];
-    querySnapshot.forEach((doc) => {
-      invoices.push({
-        id: doc.id,
-        ...doc.data(),
-      } as Invoice);
-    });
-    return invoices;
+    const q = query(collection(db, COLLECTION), orderBy("date", "desc"));
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Invoice));
   } catch (error) {
-    console.error("Error getting all invoices from Firestore:", error);
+    console.error("Error fetching invoices:", error);
+    throw error;
+  }
+}
+
+export async function getByDateRange(startDate: Date, endDate: Date): Promise<Invoice[]> {
+  try {
+    const q = query(
+      collection(db, COLLECTION),
+      where("date", ">=", Timestamp.fromDate(startDate)),
+      where("date", "<=", Timestamp.fromDate(endDate)),
+      orderBy("date", "desc")
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Invoice));
+  } catch (error) {
+    console.error("Error fetching invoices by date range:", error);
     throw error;
   }
 }
 
 export async function getById(id: string): Promise<Invoice | null> {
   try {
-    const docRef = doc(db, COLLECTION_NAME, id);
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-      return {
-        id: docSnap.id,
-        ...docSnap.data(),
-      } as Invoice;
-    }
-    return null;
+    const snap = await getDoc(doc(db, COLLECTION, id));
+    if (!snap.exists()) return null;
+    return { id: snap.id, ...snap.data() } as Invoice;
   } catch (error) {
-    console.error(`Error getting invoice by ID (${id}) from Firestore:`, error);
+    console.error(`Error fetching invoice ${id}:`, error);
     throw error;
   }
 }
@@ -67,20 +123,18 @@ export async function update(
   data: Partial<Omit<Invoice, "id">>
 ): Promise<void> {
   try {
-    const docRef = doc(db, COLLECTION_NAME, id);
-    await updateDoc(docRef, data);
+    await updateDoc(doc(db, COLLECTION, id), data as Record<string, unknown>);
   } catch (error) {
-    console.error(`Error updating invoice (${id}) in Firestore:`, error);
+    console.error(`Error updating invoice ${id}:`, error);
     throw error;
   }
 }
 
 async function deleteInvoice(id: string): Promise<void> {
   try {
-    const docRef = doc(db, COLLECTION_NAME, id);
-    await deleteDoc(docRef);
+    await deleteDoc(doc(db, COLLECTION, id));
   } catch (error) {
-    console.error(`Error deleting invoice (${id}) from Firestore:`, error);
+    console.error(`Error deleting invoice ${id}:`, error);
     throw error;
   }
 }

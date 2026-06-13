@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import * as invoicesService from "@/services/invoices";
 import * as expensesService from "@/services/expenses";
 import { formatCurrency } from "@/components/salon-dashboard/types";
@@ -20,122 +20,209 @@ import {
   YAxis,
   Tooltip,
   CartesianGrid,
+  BarChart,
+  Bar,
 } from "recharts";
 
 export default function ReportsPage() {
   const [loading, setLoading] = useState(true);
-  const [totals, setTotals] = useState({
-    revenue: 0,
-    expenses: 0,
-    profit: 0,
-    cashToday: 0,
-    upiToday: 0,
-    cardToday: 0,
-    cashMonthly: 0,
-    upiMonthly: 0,
-    cardMonthly: 0,
-  });
-  const [chartData, setChartData] = useState<any[]>([]);
+  const [invoices, setInvoices] = useState<any[]>([]);
+  const [expenses, setExpenses] = useState<any[]>([]);
+
+  // Date range — default to current month
+  const now = new Date();
+  const [dateFrom, setDateFrom] = useState(
+    new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0]
+  );
+  const [dateTo, setDateTo] = useState(
+    now.toISOString().split("T")[0]
+  );
 
   useEffect(() => {
-    async function loadReportsData() {
+    async function load() {
+      setLoading(true);
       try {
-        const invoices = await invoicesService.getAll();
-        const expenses = await expensesService.getAll();
+        const start = new Date(dateFrom);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(dateTo);
+        end.setHours(23, 59, 59, 999);
 
-        const todayStr = new Date().toISOString().split("T")[0];
-        const currentMonth = new Date().getMonth();
-        const currentYear = new Date().getFullYear();
-
-        let totalRevenue = 0;
-        let cashToday = 0;
-        let upiToday = 0;
-        let cardToday = 0;
-        let cashMonthly = 0;
-        let upiMonthly = 0;
-        let cardMonthly = 0;
-
-        invoices.forEach((inv) => {
-          const cash = inv.payments?.cash ?? (inv.paymentMethod === "Cash" ? (inv.grandTotal || 0) : 0);
-          const upi = inv.payments?.upi ?? (inv.paymentMethod === "UPI" ? (inv.grandTotal || 0) : 0);
-          const card = inv.payments?.card ?? (inv.paymentMethod === "Card" ? (inv.grandTotal || 0) : 0);
-          const totalPaid = cash + upi + card;
-
-          totalRevenue += totalPaid;
-
-          const isToday = inv.date === todayStr;
-
-          const invDate = new Date(inv.date);
-          const isThisMonth = invDate.getMonth() === currentMonth && invDate.getFullYear() === currentYear;
-
-          if (isToday) {
-            cashToday += cash;
-            upiToday += upi;
-            cardToday += card;
-          }
-
-          if (isThisMonth) {
-            cashMonthly += cash;
-            upiMonthly += upi;
-            cardMonthly += card;
-          }
-        });
-
-        const totalExpenses = expenses.reduce((sum, exp) => sum + exp.amount, 0);
-
-        setTotals({
-          revenue: totalRevenue,
-          expenses: totalExpenses,
-          profit: totalRevenue - totalExpenses,
-          cashToday,
-          upiToday,
-          cardToday,
-          cashMonthly,
-          upiMonthly,
-          cardMonthly,
-        });
-
-        const last7DaysDates = Array.from({ length: 7 }, (_, i) => {
-          const d = subDays(new Date(), i);
-          return d.toISOString().split("T")[0];
-        }).reverse();
-
-        const chartMap = last7DaysDates.reduce((acc, date) => {
-          acc[date] = { date, revenue: 0, expenses: 0 };
-          return acc;
-        }, {} as Record<string, { date: string; revenue: number; expenses: number }>);
-
-        invoices.forEach((inv) => {
-          if (chartMap[inv.date]) {
-            const cash = inv.payments?.cash ?? (inv.paymentMethod === "Cash" ? (inv.grandTotal || 0) : 0);
-            const upi = inv.payments?.upi ?? (inv.paymentMethod === "UPI" ? (inv.grandTotal || 0) : 0);
-            const card = inv.payments?.card ?? (inv.paymentMethod === "Card" ? (inv.grandTotal || 0) : 0);
-            chartMap[inv.date].revenue += (cash + upi + card);
-          }
-        });
-
-        expenses.forEach((exp) => {
-          if (chartMap[exp.date]) {
-            chartMap[exp.date].expenses += exp.amount;
-          }
-        });
-
-        const formattedChartData = last7DaysDates.map((date) => ({
-          date: format(new Date(date), "MMM d"),
-          Revenue: chartMap[date].revenue,
-          Expenses: chartMap[date].expenses,
-          Profit: chartMap[date].revenue - chartMap[date].expenses,
-        }));
-
-        setChartData(formattedChartData);
-      } catch (error) {
-        console.error("Failed to load reports data:", error);
+        const [invData, expData] = await Promise.all([
+          invoicesService.getByDateRange(start, end),
+          expensesService.getByDateRange(start, end),
+        ]);
+        setInvoices(invData);
+        setExpenses(expData);
+      } catch (err) {
+        console.error("Failed to load reports data:", err);
       } finally {
         setLoading(false);
       }
     }
-    loadReportsData();
-  }, []);
+    load();
+  }, [dateFrom, dateTo]);
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  function getDateStr(inv: any): string {
+    if (inv.date?.toDate) return inv.date.toDate().toISOString().split("T")[0];
+    return inv.date || "";
+  }
+
+  function getPayment(inv: any) {
+    return {
+      cash:
+        inv.paymentSplit?.cash ??
+        inv.payments?.cash ??
+        (inv.paymentMethod === "Cash" ? inv.grandTotal || 0 : 0),
+      upi:
+        inv.paymentSplit?.upi ??
+        inv.payments?.upi ??
+        (inv.paymentMethod === "UPI" ? inv.grandTotal || 0 : 0),
+      card:
+        inv.paymentSplit?.card ??
+        inv.payments?.card ??
+        (inv.paymentMethod === "Card" ? inv.grandTotal || 0 : 0),
+    };
+  }
+
+  // ── Scoped invoices within date range ─────────────────────────────────────
+  const scopedInvoices = useMemo(
+    () =>
+      invoices.filter((inv) => {
+        const d = getDateStr(inv);
+        return d >= dateFrom && d <= dateTo;
+      }),
+    [invoices, dateFrom, dateTo]
+  );
+
+  const scopedExpenses = useMemo(
+    () =>
+      expenses.filter((exp) => exp.date >= dateFrom && exp.date <= dateTo),
+    [expenses, dateFrom, dateTo]
+  );
+
+  const todayStr = now.toISOString().split("T")[0];
+  const currentMonth = now.getMonth();
+  const currentYear = now.getFullYear();
+
+  // ── Totals ────────────────────────────────────────────────────────────────
+  const totals = useMemo(() => {
+    let revenue = 0;
+    let cashToday = 0, upiToday = 0, cardToday = 0;
+    let cashMonthly = 0, upiMonthly = 0, cardMonthly = 0;
+
+    scopedInvoices.forEach((inv) => {
+      const { cash, upi, card } = getPayment(inv);
+      revenue += cash + upi + card;
+
+      const d = getDateStr(inv);
+      if (d === todayStr) {
+        cashToday += cash; upiToday += upi; cardToday += card;
+      }
+      const dt = new Date(d);
+      if (dt.getMonth() === currentMonth && dt.getFullYear() === currentYear) {
+        cashMonthly += cash; upiMonthly += upi; cardMonthly += card;
+      }
+    });
+
+    const totalExpenses = scopedExpenses.reduce((s, e) => s + e.amount, 0);
+
+    return {
+      revenue,
+      expenses: totalExpenses,
+      profit: revenue - totalExpenses,
+      cashToday, upiToday, cardToday,
+      cashMonthly, upiMonthly, cardMonthly,
+    };
+  }, [scopedInvoices, scopedExpenses]);
+
+  // ── 7-day chart ───────────────────────────────────────────────────────────
+  const chartData = useMemo(() => {
+    const days = Array.from({ length: 7 }, (_, i) =>
+      subDays(now, i).toISOString().split("T")[0]
+    ).reverse();
+
+    const map: Record<string, { revenue: number; expenses: number }> = {};
+    days.forEach((d) => (map[d] = { revenue: 0, expenses: 0 }));
+
+    invoices.forEach((inv) => {
+      const d = getDateStr(inv);
+      if (map[d]) {
+        const { cash, upi, card } = getPayment(inv);
+        map[d].revenue += cash + upi + card;
+      }
+    });
+    expenses.forEach((exp) => {
+      if (map[exp.date]) map[exp.date].expenses += exp.amount;
+    });
+
+    return days.map((d) => ({
+      date: format(new Date(d), "MMM d"),
+      Revenue: map[d].revenue,
+      Expenses: map[d].expenses,
+      Profit: map[d].revenue - map[d].expenses,
+    }));
+  }, [invoices, expenses]);
+
+  // ── H(a): Revenue by service ──────────────────────────────────────────────
+  const revenueByService = useMemo(() => {
+    const map: Record<string, number> = {};
+    scopedInvoices.forEach((inv) => {
+      (inv.services || []).forEach((s: any) => {
+        const name = s.serviceName || s.service || "Unknown";
+        const amount = s.amount ?? Math.max((s.price || 0) - (s.discount || 0), 0);
+        map[name] = (map[name] || 0) + amount;
+      });
+    });
+    return Object.entries(map)
+      .map(([name, total]) => ({ name, total }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 10);
+  }, [scopedInvoices]);
+
+  // ── H(b): Revenue by staff ────────────────────────────────────────────────
+  const revenueByStaff = useMemo(() => {
+    const map: Record<string, number> = {};
+    scopedInvoices.forEach((inv) => {
+      (inv.services || []).forEach((s: any) => {
+        const name = s.staffName || s.staff || "Unassigned";
+        const amount = s.amount ?? Math.max((s.price || 0) - (s.discount || 0), 0);
+        map[name] = (map[name] || 0) + amount;
+      });
+    });
+    return Object.entries(map)
+      .map(([name, total]) => ({ name, total }))
+      .sort((a, b) => b.total - a.total);
+  }, [scopedInvoices]);
+
+  // ── H(c): Top customers by spend ─────────────────────────────────────────
+  const topCustomers = useMemo(() => {
+    const map: Record<string, { name: string; total: number; visits: number }> = {};
+    scopedInvoices.forEach((inv) => {
+      const key = inv.customerPhone || inv.customerMobile || inv.customerName;
+      if (!key) return;
+      if (!map[key]) map[key] = { name: inv.customerName, total: 0, visits: 0 };
+      const { cash, upi, card } = getPayment(inv);
+      map[key].total += cash + upi + card;
+      map[key].visits += 1;
+    });
+    return Object.values(map)
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 10);
+  }, [scopedInvoices]);
+
+  // ── H(d): Membership vs Regular split ────────────────────────────────────
+  const customerSplit = useMemo(() => {
+    let membership = 0;
+    let regular = 0;
+    scopedInvoices.forEach((inv) => {
+      const { cash, upi, card } = getPayment(inv);
+      const total = cash + upi + card;
+      if (inv.customerType === "membership") membership += total;
+      else regular += total;
+    });
+    return { membership, regular };
+  }, [scopedInvoices]);
 
   if (loading) {
     return (
@@ -149,7 +236,8 @@ export default function ReportsPage() {
 
   return (
     <div className="space-y-6 text-stone-900">
-      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+      {/* Header */}
+      <div className="mb-2 flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-sm font-semibold uppercase tracking-[0.32em] text-stone-500">
             Intelligence
@@ -158,22 +246,39 @@ export default function ReportsPage() {
             Reports & Analytics
           </h1>
         </div>
+
+        {/* I: Date range selector */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <Calendar size={16} className="text-stone-400" />
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="h-10 rounded-xl border border-stone-200 bg-white px-3 text-sm text-stone-800 shadow-sm outline-none focus:border-black"
+          />
+          <span className="text-xs text-stone-400">to</span>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="h-10 rounded-xl border border-stone-200 bg-white px-3 text-sm text-stone-800 shadow-sm outline-none focus:border-black"
+          />
+        </div>
       </div>
 
       {reportsEmpty ? (
-        // Empty State
         <div className="flex flex-col items-center justify-center rounded-2xl border border-stone-200 bg-white p-12 text-center shadow-md max-w-4xl">
           <div className="grid size-16 place-items-center rounded-2xl bg-stone-100 text-stone-900 mb-4">
             <BarChart3 size={32} />
           </div>
           <h2 className="text-xl font-bold text-stone-900">No Financial Records Found</h2>
           <p className="mt-2 max-w-sm text-sm text-stone-500">
-            Generate invoices in billing or log expenses in tracker to calculate profit curves.
+            Generate invoices or log expenses to calculate profit curves.
           </p>
           <div className="flex gap-4 mt-6">
             <a
               href="/billing"
-              className="inline-flex h-11 items-center justify-center rounded-xl bg-black px-6 text-sm font-semibold text-white hover:bg-stone-850 transition"
+              className="inline-flex h-11 items-center justify-center rounded-xl bg-black px-6 text-sm font-semibold text-white hover:bg-stone-800 transition"
             >
               Generate Bill
             </a>
@@ -187,130 +292,214 @@ export default function ReportsPage() {
         </div>
       ) : (
         <>
-          {/* Summary Cards */}
+          {/* Summary cards */}
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
               <div className="flex items-center justify-between text-stone-500">
                 <span className="text-sm font-bold">Total Revenue</span>
                 <TrendingUp size={20} className="text-emerald-600" />
               </div>
-              <p className="mt-3 text-3xl font-bold text-stone-900">{formatCurrency(totals.revenue)}</p>
-              <p className="mt-1 text-xs text-stone-400">Total collected cash & bank receipts</p>
+              <p className="mt-3 text-3xl font-bold text-stone-900">
+                {formatCurrency(totals.revenue)}
+              </p>
+              <p className="mt-1 text-xs text-stone-400">Within selected date range</p>
             </div>
-
             <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
               <div className="flex items-center justify-between text-stone-500">
                 <span className="text-sm font-bold">Operations Outflow</span>
                 <TrendingDown size={20} className="text-red-500" />
               </div>
-              <p className="mt-3 text-3xl font-bold text-stone-900">{formatCurrency(totals.expenses)}</p>
-              <p className="mt-1 text-xs text-stone-400">Total operational business expenses</p>
+              <p className="mt-3 text-3xl font-bold text-stone-900">
+                {formatCurrency(totals.expenses)}
+              </p>
+              <p className="mt-1 text-xs text-stone-400">Total operational expenses</p>
             </div>
-
-            <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm bg-stone-50/50">
+            <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
               <div className="flex items-center justify-between text-stone-700">
                 <span className="text-sm font-bold">Net Profit</span>
                 <DollarSign size={20} className="text-stone-900" />
               </div>
-              <p className="mt-3 text-3xl font-bold text-stone-900">{formatCurrency(totals.profit)}</p>
-              <p className="mt-1 text-xs text-stone-400">Earnings (Revenue - Expenses)</p>
+              <p className="mt-3 text-3xl font-bold text-stone-900">
+                {formatCurrency(totals.profit)}
+              </p>
+              <p className="mt-1 text-xs text-stone-400">Revenue − Expenses</p>
             </div>
           </div>
 
-          {/* Today's Collections Section */}
-          <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm space-y-4">
-            <div>
-              <h2 className="text-lg font-bold text-stone-900">Today's Split Collections</h2>
-              <p className="text-xs text-stone-400">Daily breakdown by payment method</p>
-            </div>
+          {/* Today's split */}
+          <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
+            <h2 className="text-lg font-bold text-stone-900 mb-4">Today's Split Collections</h2>
             <div className="grid gap-4 sm:grid-cols-3">
-              <div className="rounded-xl border border-stone-100 bg-stone-50/40 p-4">
-                <p className="text-xs text-stone-400 font-bold uppercase tracking-wider">Cash Today</p>
-                <p className="mt-2 text-xl font-bold text-stone-900">{formatCurrency(totals.cashToday)}</p>
-              </div>
-              <div className="rounded-xl border border-stone-100 bg-stone-50/40 p-4">
-                <p className="text-xs text-stone-400 font-bold uppercase tracking-wider">UPI Today</p>
-                <p className="mt-2 text-xl font-bold text-stone-900">{formatCurrency(totals.upiToday)}</p>
-              </div>
-              <div className="rounded-xl border border-stone-100 bg-stone-50/40 p-4">
-                <p className="text-xs text-stone-400 font-bold uppercase tracking-wider">Card Today</p>
-                <p className="mt-2 text-xl font-bold text-stone-900">{formatCurrency(totals.cardToday)}</p>
-              </div>
+              {[
+                { label: "Cash Today", value: totals.cashToday },
+                { label: "UPI Today", value: totals.upiToday },
+                { label: "Card Today", value: totals.cardToday },
+              ].map(({ label, value }) => (
+                <div key={label} className="rounded-xl border border-stone-100 bg-stone-50 p-4">
+                  <p className="text-xs text-stone-400 font-bold uppercase tracking-wider">{label}</p>
+                  <p className="mt-2 text-xl font-bold text-stone-900">{formatCurrency(value)}</p>
+                </div>
+              ))}
             </div>
           </section>
 
-          {/* Monthly Collections Section */}
-          <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm space-y-4">
-            <div>
-              <h2 className="text-lg font-bold text-stone-900">Monthly Split Collections</h2>
-              <p className="text-xs text-stone-400">Current month total breakdown by payment method</p>
-            </div>
+          {/* Monthly split */}
+          <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
+            <h2 className="text-lg font-bold text-stone-900 mb-4">Monthly Split Collections</h2>
             <div className="grid gap-4 sm:grid-cols-3">
-              <div className="rounded-xl border border-stone-100 bg-stone-50/40 p-4">
-                <p className="text-xs text-stone-400 font-bold uppercase tracking-wider">Cash Monthly</p>
-                <p className="mt-2 text-xl font-bold text-stone-900">{formatCurrency(totals.cashMonthly)}</p>
-              </div>
-              <div className="rounded-xl border border-stone-100 bg-stone-50/40 p-4">
-                <p className="text-xs text-stone-400 font-bold uppercase tracking-wider">UPI Monthly</p>
-                <p className="mt-2 text-xl font-bold text-stone-900">{formatCurrency(totals.upiMonthly)}</p>
-              </div>
-              <div className="rounded-xl border border-stone-100 bg-stone-50/40 p-4">
-                <p className="text-xs text-stone-400 font-bold uppercase tracking-wider">Card Monthly</p>
-                <p className="mt-2 text-xl font-bold text-stone-900">{formatCurrency(totals.cardMonthly)}</p>
-              </div>
+              {[
+                { label: "Cash Monthly", value: totals.cashMonthly },
+                { label: "UPI Monthly", value: totals.upiMonthly },
+                { label: "Card Monthly", value: totals.cardMonthly },
+              ].map(({ label, value }) => (
+                <div key={label} className="rounded-xl border border-stone-100 bg-stone-50 p-4">
+                  <p className="text-xs text-stone-400 font-bold uppercase tracking-wider">{label}</p>
+                  <p className="mt-2 text-xl font-bold text-stone-900">{formatCurrency(value)}</p>
+                </div>
+              ))}
             </div>
           </section>
 
-          {/* Area Chart visualization */}
+          {/* 7-day trend chart */}
           <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-md">
-            <div className="mb-6 flex items-center gap-3 border-b border-stone-100 pb-4 text-stone-900">
+            <div className="mb-4 flex items-center gap-3 border-b border-stone-100 pb-4">
               <Calendar size={18} />
               <h2 className="text-lg font-bold text-stone-900">Daily Performance (Last 7 Days)</h2>
             </div>
-
-            <div className="h-80 w-full">
+            <div className="h-72 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <defs>
-                    <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#000000" stopOpacity={0.15} />
-                      <stop offset="95%" stopColor="#000000" stopOpacity={0} />
+                    <linearGradient id="gRev" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#000" stopOpacity={0.12} />
+                      <stop offset="95%" stopColor="#000" stopOpacity={0} />
                     </linearGradient>
-                    <linearGradient id="colorProfit" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#10B981" stopOpacity={0.15} />
+                    <linearGradient id="gPro" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#10B981" stopOpacity={0.12} />
                       <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e5e5" />
                   <XAxis dataKey="date" stroke="#78716c" fontSize={12} tickLine={false} />
                   <YAxis stroke="#78716c" fontSize={12} tickLine={false} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "#FFFFFF",
-                      borderColor: "#e5e5e5",
-                      borderRadius: "12px",
-                      color: "#1c1917",
-                    }}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="Revenue"
-                    stroke="#000000"
-                    fillOpacity={1}
-                    fill="url(#colorRevenue)"
-                    strokeWidth={2}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="Profit"
-                    stroke="#10B981"
-                    fillOpacity={1}
-                    fill="url(#colorProfit)"
-                    strokeWidth={2}
-                  />
+                  <Tooltip contentStyle={{ backgroundColor: "#fff", borderColor: "#e5e5e5", borderRadius: "12px" }} />
+                  <Area type="monotone" dataKey="Revenue" stroke="#000" fill="url(#gRev)" strokeWidth={2} />
+                  <Area type="monotone" dataKey="Profit" stroke="#10B981" fill="url(#gPro)" strokeWidth={2} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
+          </section>
+
+          {/* H(a): Revenue by service */}
+          <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
+            <h2 className="text-lg font-bold text-stone-900 mb-4">Revenue by Service</h2>
+            {revenueByService.length === 0 ? (
+              <p className="text-sm text-stone-400 italic">No service data in selected range.</p>
+            ) : (
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={revenueByService} margin={{ top: 4, right: 10, left: -10, bottom: 40 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e5e5" />
+                    <XAxis dataKey="name" stroke="#78716c" fontSize={11} tickLine={false} angle={-30} textAnchor="end" interval={0} />
+                    <YAxis stroke="#78716c" fontSize={11} tickLine={false} />
+                    <Tooltip contentStyle={{ backgroundColor: "#fff", borderColor: "#e5e5e5", borderRadius: "12px" }} formatter={(v: any) => formatCurrency(v)} />
+                    <Bar dataKey="total" fill="#1c1917" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </section>
+
+          {/* H(b): Revenue by staff */}
+          <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
+            <h2 className="text-lg font-bold text-stone-900 mb-4">Revenue by Staff</h2>
+            {revenueByStaff.length === 0 ? (
+              <p className="text-sm text-stone-400 italic">No staff data in selected range.</p>
+            ) : (
+              <div className="space-y-3">
+                {revenueByStaff.map((s, i) => {
+                  const max = revenueByStaff[0].total;
+                  const pct = max > 0 ? Math.round((s.total / max) * 100) : 0;
+                  return (
+                    <div key={s.name}>
+                      <div className="flex items-center justify-between text-sm mb-1">
+                        <span className="font-semibold text-stone-800">
+                          {i + 1}. {s.name}
+                        </span>
+                        <span className="font-bold text-stone-900">{formatCurrency(s.total)}</span>
+                      </div>
+                      <div className="w-full h-2 rounded-full bg-stone-100 overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-stone-800 transition-all"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          {/* H(c): Top customers */}
+          <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
+            <h2 className="text-lg font-bold text-stone-900 mb-4">Top Customers by Spend</h2>
+            {topCustomers.length === 0 ? (
+              <p className="text-sm text-stone-400 italic">No customer data in selected range.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[400px] border-collapse text-left text-sm text-stone-600">
+                  <thead className="bg-stone-50 text-xs uppercase tracking-[0.2em] text-stone-500 border-b border-stone-200">
+                    <tr>
+                      <th className="px-4 py-3 font-bold">Rank</th>
+                      <th className="px-4 py-3 font-bold">Customer</th>
+                      <th className="px-4 py-3 font-bold">Visits</th>
+                      <th className="px-4 py-3 font-bold text-right">Total Spend</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-100">
+                    {topCustomers.map((c, i) => (
+                      <tr key={c.name} className="hover:bg-stone-50 transition">
+                        <td className="px-4 py-3 font-bold text-stone-400">#{i + 1}</td>
+                        <td className="px-4 py-3 font-semibold text-stone-900">{c.name}</td>
+                        <td className="px-4 py-3 text-stone-600">{c.visits}</td>
+                        <td className="px-4 py-3 font-bold text-stone-900 text-right">
+                          {formatCurrency(c.total)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
+          {/* H(d): Membership vs Regular split */}
+          <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
+            <h2 className="text-lg font-bold text-stone-900 mb-4">Membership vs Regular Revenue</h2>
+            {customerSplit.membership === 0 && customerSplit.regular === 0 ? (
+              <p className="text-sm text-stone-400 italic">No data in selected range.</p>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2">
+                {[
+                  { label: "Membership Customers", value: customerSplit.membership, color: "bg-stone-900" },
+                  { label: "Regular Customers", value: customerSplit.regular, color: "bg-stone-300" },
+                ].map(({ label, value, color }) => {
+                  const grandTotal = customerSplit.membership + customerSplit.regular;
+                  const pct = grandTotal > 0 ? Math.round((value / grandTotal) * 100) : 0;
+                  return (
+                    <div key={label} className="rounded-xl border border-stone-100 bg-stone-50 p-5">
+                      <p className="text-xs font-bold uppercase tracking-wider text-stone-400">{label}</p>
+                      <p className="mt-2 text-2xl font-bold text-stone-900">{formatCurrency(value)}</p>
+                      <div className="mt-3 w-full h-2 rounded-full bg-stone-200 overflow-hidden">
+                        <div className={`h-full rounded-full ${color} transition-all`} style={{ width: `${pct}%` }} />
+                      </div>
+                      <p className="mt-1 text-xs text-stone-500 font-medium">{pct}% of total revenue</p>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </section>
         </>
       )}

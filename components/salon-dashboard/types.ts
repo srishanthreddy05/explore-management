@@ -9,6 +9,7 @@ export type ServiceRow = {
 
 export type ProductRow = {
   id: number;
+  productId?: string;
   product: string;
   price: number;
   quantity: number;
@@ -20,6 +21,7 @@ export type BillTotals = {
   productTotal: number;
   subtotal: number;
   billDiscount: number;
+  offerDiscount: number; // discount contributed by the selected offer
   gst: number;
   grandTotal: number;
 };

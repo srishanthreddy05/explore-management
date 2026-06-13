@@ -9,6 +9,7 @@ import {
   deleteDoc,
   query,
   orderBy,
+  where,
 } from "firebase/firestore";
 import type { Expense } from "@/types/expense";
 
@@ -41,6 +42,31 @@ export async function getAll(): Promise<Expense[]> {
     return expenses;
   } catch (error) {
     console.error("Error getting all expenses:", error);
+    throw error;
+  }
+}
+
+export async function getByDateRange(startDate: Date, endDate: Date): Promise<Expense[]> {
+  try {
+    const startStr = startDate.toISOString().split("T")[0];
+    const endStr = endDate.toISOString().split("T")[0];
+    const q = query(
+      collection(db, COLLECTION_NAME),
+      where("date", ">=", startStr),
+      where("date", "<=", endStr),
+      orderBy("date", "desc")
+    );
+    const querySnapshot = await getDocs(q);
+    const expenses: Expense[] = [];
+    querySnapshot.forEach((doc) => {
+      expenses.push({
+        id: doc.id,
+        ...doc.data(),
+      } as Expense);
+    });
+    return expenses;
+  } catch (error) {
+    console.error("Error getting expenses by date range:", error);
     throw error;
   }
 }

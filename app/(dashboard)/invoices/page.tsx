@@ -3,31 +3,22 @@
 import { useEffect, useMemo, useState } from "react";
 import * as invoicesService from "@/services/invoices";
 import { formatCurrency } from "@/components/salon-dashboard/types";
-import { Search, Eye, Calendar, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, Eye, ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
-
-const MONTHS = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-];
+import { Timestamp } from "firebase/firestore";
 
 export default function InvoicesPage() {
   const [invoices, setInvoices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
 
-  const currentMonthIdx = new Date().getMonth();
-  const [selectedMonth, setSelectedMonth] = useState<number>(currentMonthIdx);
+  // Date range filters
+  const now = new Date();
+  const firstDayStr = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
+  const todayStr = now.toISOString().split("T")[0];
+
+  const [dateFrom, setDateFrom] = useState(firstDayStr);
+  const [dateTo, setDateTo] = useState(todayStr);
 
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
@@ -36,7 +27,12 @@ export default function InvoicesPage() {
   const loadInvoices = async () => {
     setLoading(true);
     try {
-      const data = await invoicesService.getAll();
+      const start = new Date(dateFrom);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(dateTo);
+      end.setHours(23, 59, 59, 999);
+
+      const data = await invoicesService.getByDateRange(start, end);
       setInvoices(data);
     } catch (error) {
       console.error("Failed to load invoices:", error);
@@ -47,41 +43,26 @@ export default function InvoicesPage() {
 
   useEffect(() => {
     loadInvoices();
-  }, []);
+  }, [dateFrom, dateTo]);
 
-  // Filter & Search Logic
+  // Filter & Search Logic (scoping done at Firestore level, filter only search query here)
   const filteredInvoices = useMemo(() => {
-    const currentYear = new Date().getFullYear();
-
     return invoices.filter((inv) => {
-      // 1. Month Filter
-      if (inv.date) {
-        const invDate = new Date(inv.date);
-        const invMonth = invDate.getMonth();
-        const invYear = invDate.getFullYear();
-        if (invMonth !== selectedMonth || invYear !== currentYear) {
-          return false;
-        }
-      } else {
-        return false;
-      }
-
-      // 2. Search query filter
       const query = searchQuery.toLowerCase().trim();
       if (!query) return true;
 
       const name = (inv.customerName || "").toLowerCase();
-      const mobile = (inv.customerMobile || inv.customerPhone || "");
+      const mobile = (inv.customerPhone || inv.customerMobile || "");
       const invNo = (inv.invoiceNo || inv.invoiceNumber || "").toLowerCase();
 
       return name.includes(query) || mobile.includes(query) || invNo.includes(query);
     });
-  }, [invoices, selectedMonth, searchQuery]);
+  }, [invoices, searchQuery]);
 
-  // Reset pagination when filter or search changes
+  // Reset pagination when search query or date range changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [selectedMonth, searchQuery]);
+  }, [searchQuery, dateFrom, dateTo]);
 
   // Pagination calculations
   const totalPages = Math.max(1, Math.ceil(filteredInvoices.length / itemsPerPage));
@@ -117,20 +98,26 @@ export default function InvoicesPage() {
           />
         </div>
 
-        {/* Month Selector */}
-        <div className="flex items-center gap-2 rounded-2xl border border-stone-200 bg-white px-3 h-12 shadow-sm">
-          <Calendar size={18} className="text-stone-550" />
-          <select
-            value={selectedMonth}
-            onChange={(e) => setSelectedMonth(Number(e.target.value))}
-            className="bg-transparent text-sm font-semibold text-stone-850 outline-none cursor-pointer pr-4"
-          >
-            {MONTHS.map((name, index) => (
-              <option key={name} value={index}>
-                {name}
-              </option>
-            ))}
-          </select>
+        {/* Date Selectors */}
+        <div className="flex items-center gap-4 flex-wrap">
+          <div className="flex items-center gap-2 rounded-2xl border border-stone-200 bg-white px-3 h-12 shadow-sm">
+            <span className="text-xs font-bold text-stone-500 uppercase tracking-wider">From</span>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="bg-transparent text-sm font-semibold text-stone-850 outline-none cursor-pointer"
+            />
+          </div>
+          <div className="flex items-center gap-2 rounded-2xl border border-stone-200 bg-white px-3 h-12 shadow-sm">
+            <span className="text-xs font-bold text-stone-500 uppercase tracking-wider">To</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="bg-transparent text-sm font-semibold text-stone-850 outline-none cursor-pointer"
+            />
+          </div>
         </div>
       </div>
 
@@ -142,7 +129,7 @@ export default function InvoicesPage() {
         <div className="flex flex-col items-center justify-center rounded-2xl border border-stone-200 bg-white p-12 text-center shadow-md">
           <h2 className="text-xl font-bold text-stone-900">No Invoices Found</h2>
           <p className="mt-2 max-w-sm text-sm text-stone-500">
-            There are no invoices matching your search parameters for {MONTHS[selectedMonth]}.
+            There are no invoices matching your search parameters in the selected date range.
           </p>
         </div>
       ) : (
@@ -164,9 +151,18 @@ export default function InvoicesPage() {
               </thead>
               <tbody className="divide-y divide-stone-200">
                 {paginatedInvoices.map((inv) => {
-                  const cash = inv.payments?.cash ?? (inv.paymentMethod === "Cash" ? (inv.grandTotal || 0) : 0);
-                  const upi = inv.payments?.upi ?? (inv.paymentMethod === "UPI" ? (inv.grandTotal || 0) : 0);
-                  const card = inv.payments?.card ?? (inv.paymentMethod === "Card" ? (inv.grandTotal || 0) : 0);
+                  const cash = inv.paymentSplit?.cash ?? inv.payments?.cash ?? (inv.paymentMethod === "Cash" ? (inv.grandTotal || 0) : 0);
+                  const upi = inv.paymentSplit?.upi ?? inv.payments?.upi ?? (inv.paymentMethod === "UPI" ? (inv.grandTotal || 0) : 0);
+                  const card = inv.paymentSplit?.card ?? inv.payments?.card ?? (inv.paymentMethod === "Card" ? (inv.grandTotal || 0) : 0);
+
+                  const dateObj =
+                    inv.date && typeof inv.date.toDate === "function"
+                      ? inv.date.toDate()
+                      : inv.date
+                        ? new Date(inv.date)
+                        : null;
+                  const dateLabel = dateObj ? dateObj.toLocaleDateString("en-IN") : "—";
+
                   return (
                     <tr key={inv.id} className="hover:bg-stone-50 transition bg-white text-stone-900">
                       <td className="px-6 py-4 font-bold text-stone-900">
@@ -179,7 +175,7 @@ export default function InvoicesPage() {
                         {inv.customerPhone || inv.customerMobile}
                       </td>
                       <td className="px-6 py-4">
-                        {inv.date}
+                        {dateLabel}
                       </td>
                       <td className="px-6 py-4 font-medium text-stone-700">
                         {formatCurrency(cash)}
@@ -238,3 +234,4 @@ export default function InvoicesPage() {
     </div>
   );
 }
+

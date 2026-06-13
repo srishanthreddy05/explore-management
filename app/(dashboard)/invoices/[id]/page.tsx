@@ -3,7 +3,7 @@
 import { useEffect, useState, use } from "react";
 import * as invoicesService from "@/services/invoices";
 import { formatCurrency } from "@/components/salon-dashboard/types";
-import { ChevronLeft, Receipt, User, DollarSign, CalendarDays } from "lucide-react";
+import { ChevronLeft, Receipt, User, DollarSign, CalendarDays, Send, Tag } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -45,21 +45,107 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
 
   const paymentStatus = invoice.paymentStatus || "paid";
 
+  // ── New-schema field reads ───────────────────────────────────────────────
+  const invoiceNumber = invoice.invoiceNumber || invoice.invoiceNo;
+  const customerPhone = invoice.customerPhone || invoice.customerMobile;
+  const totalDiscount = invoice.totalDiscount ?? invoice.discount ?? 0;
+  const paymentSplit = invoice.paymentSplit || invoice.payments || {};
+  const appliedOffer = invoice.appliedOffer;
+
+  // Invoice date may be a Firestore Timestamp or a "YYYY-MM-DD" string
+  const invoiceDateObj =
+    invoice.date && typeof invoice.date?.toDate === "function"
+      ? invoice.date.toDate()
+      : invoice.date
+        ? new Date(invoice.date)
+        : null;
+  const invoiceDateLabel = invoiceDateObj
+    ? invoiceDateObj.toLocaleDateString()
+    : invoice.date || "—";
+
+  const createdAtObj =
+    invoice.createdAt && typeof invoice.createdAt?.toDate === "function"
+      ? invoice.createdAt.toDate()
+      : invoice.createdAt
+        ? new Date(invoice.createdAt)
+        : invoiceDateObj;
+
+  const cashPaid = paymentSplit.cash ?? (invoice.paymentMethod === "Cash" ? invoice.grandTotal : 0);
+  const upiPaid = paymentSplit.upi ?? (invoice.paymentMethod === "UPI" ? invoice.grandTotal : 0);
+  const cardPaid = paymentSplit.card ?? (invoice.paymentMethod === "Card" ? invoice.grandTotal : 0);
+  const totalPaid = (cashPaid || 0) + (upiPaid || 0) + (cardPaid || 0) || invoice.grandTotal;
+
+  // ── WhatsApp re-share ─────────────────────────────────────────────────────
+  const handleWhatsApp = () => {
+    if (!customerPhone) {
+      alert("This invoice has no customer mobile number on file.");
+      return;
+    }
+
+    const formattedServices = (invoice.services || [])
+      .map((s: any) => {
+        const name = s.serviceName || s.service;
+        const amount = s.amount ?? Math.max((s.price || 0) - (s.discount || 0), 0);
+        return `• ${name} - ₹${amount}`;
+      })
+      .join("\n");
+
+    const formattedProducts = (invoice.products || [])
+      .map((p: any) => {
+        const name = p.productName || p.product;
+        const amount = p.amount ?? Math.max((p.price || 0) * (p.quantity || 1) - (p.discount || 0), 0);
+        return `• ${name} (x${p.quantity}) - ₹${amount}`;
+      })
+      .join("\n");
+
+    let itemsText = "";
+    if (formattedServices) itemsText += `Services:\n${formattedServices}\n`;
+    if (formattedProducts) itemsText += `\nProducts:\n${formattedProducts}\n`;
+
+    const offerLine = appliedOffer
+      ? `\nOffer Applied: ${appliedOffer.code} (-₹${appliedOffer.discountAmount})\n`
+      : "";
+
+    const msg =
+      `Thank you for choosing Explore Salon ✨\n\n` +
+      `Invoice No: ${invoiceNumber}\n` +
+      `Customer: ${invoice.customerName}\n\n` +
+      `${itemsText}` +
+      `${offerLine}\n` +
+      `Total Amount: ₹${invoice.grandTotal}\n\n` +
+      `We look forward to serving you again.\n\nExplore Salon`;
+
+    const digits = String(customerPhone).trim().replace(/\D/g, "");
+    const e164 = digits.startsWith("91") && digits.length === 12 ? digits : `91${digits}`;
+    window.open(`https://wa.me/${e164}?text=${encodeURIComponent(msg)}`, "_blank");
+  };
+
   return (
     <div className="w-full text-stone-900 max-w-4xl space-y-6">
-      <div className="flex items-center gap-3">
-        <Link
-          href="/invoices"
-          className="grid size-10 place-items-center rounded-xl border border-stone-200 bg-white text-stone-700 hover:text-black hover:border-black transition"
-        >
-          <ChevronLeft size={18} />
-        </Link>
-        <div>
-          <p className="text-xs uppercase tracking-[0.28em] text-stone-500 font-bold">Receipts</p>
-          <h1 className="text-2xl font-bold tracking-tight text-stone-900 mt-1">
-            Invoice details for {invoice.invoiceNo || invoice.invoiceNumber}
-          </h1>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <Link
+            href="/invoices"
+            className="grid size-10 place-items-center rounded-xl border border-stone-200 bg-white text-stone-700 hover:text-black hover:border-black transition"
+          >
+            <ChevronLeft size={18} />
+          </Link>
+          <div>
+            <p className="text-xs uppercase tracking-[0.28em] text-stone-500 font-bold">Receipts</p>
+            <h1 className="text-2xl font-bold tracking-tight text-stone-900 mt-1">
+              Invoice details for {invoiceNumber}
+            </h1>
+          </div>
         </div>
+
+        {/* WhatsApp re-share button */}
+        <button
+          onClick={handleWhatsApp}
+          className="inline-flex h-11 items-center gap-2 rounded-2xl bg-emerald-600 px-5 text-sm font-semibold text-white shadow-md transition hover:-translate-y-0.5 hover:bg-emerald-700"
+        >
+          <Send size={16} />
+          Share on WhatsApp
+        </button>
       </div>
 
       <div className="grid gap-6 md:grid-cols-3">
@@ -71,7 +157,12 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
           </div>
           <div>
             <p className="text-sm font-semibold text-stone-850">{invoice.customerName}</p>
-            <p className="text-xs text-stone-500 mt-1">{invoice.customerPhone || invoice.customerMobile}</p>
+            <p className="text-xs text-stone-500 mt-1">{customerPhone}</p>
+            {invoice.customerType && (
+              <span className="mt-2 inline-block rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-stone-100 text-stone-700 border border-stone-200">
+                {invoice.customerType}
+              </span>
+            )}
           </div>
         </div>
 
@@ -82,8 +173,10 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
             <span className="text-sm font-bold text-stone-900">Billing Date</span>
           </div>
           <div>
-            <p className="text-sm font-semibold text-stone-850">{invoice.date}</p>
-            <p className="text-xs text-stone-500 mt-1">Logged: {new Date(invoice.createdAt || invoice.date).toLocaleString()}</p>
+            <p className="text-sm font-semibold text-stone-850">{invoiceDateLabel}</p>
+            <p className="text-xs text-stone-500 mt-1">
+              Logged: {createdAtObj ? createdAtObj.toLocaleString() : "—"}
+            </p>
           </div>
         </div>
 
@@ -95,13 +188,12 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
           </div>
           <div className="flex flex-col items-start gap-1">
             <span
-              className={`inline-block rounded-full px-3 py-1 text-xs font-bold border ${
-                paymentStatus === "paid"
+              className={`inline-block rounded-full px-3 py-1 text-xs font-bold border ${paymentStatus === "paid"
                   ? "bg-emerald-50 text-emerald-800 border-emerald-300"
                   : paymentStatus === "unpaid"
                     ? "bg-red-50 text-red-800 border-red-300"
                     : "bg-amber-50 text-amber-800 border-amber-300"
-              }`}
+                }`}
             >
               {paymentStatus === "paid"
                 ? "Paid"
@@ -110,11 +202,23 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                   : "Partially Paid"}
             </span>
             <span className="text-[10px] text-stone-400 mt-1 uppercase tracking-wider font-semibold">
-              Method: {invoice.paymentMethod || "Cash"}
+              Method: {invoice.paymentMethod || "Split"}
             </span>
           </div>
         </div>
       </div>
+
+      {/* Applied offer banner */}
+      {appliedOffer && (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 flex items-center gap-3">
+          <Tag size={18} className="text-emerald-700" />
+          <div className="text-sm text-emerald-800">
+            <span className="font-bold uppercase tracking-wider">{appliedOffer.code}</span>
+            {" "}— {appliedOffer.name} applied, saving{" "}
+            <span className="font-bold">{formatCurrency(appliedOffer.discountAmount)}</span>
+          </div>
+        </div>
+      )}
 
       {/* Services Table */}
       {invoice.services && invoice.services.length > 0 && (
@@ -132,17 +236,22 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-200">
-                {invoice.services.map((item: any, idx: number) => (
-                  <tr key={idx} className="bg-white">
-                    <td className="px-4 py-3 font-semibold text-stone-900">{item.service}</td>
-                    <td className="px-4 py-3 font-medium text-stone-700">{item.staff}</td>
-                    <td className="px-4 py-3">{formatCurrency(item.price)}</td>
-                    <td className="px-4 py-3 text-emerald-600">- {formatCurrency(item.discount || 0)}</td>
-                    <td className="px-4 py-3 font-bold text-stone-900 text-right">
-                      {formatCurrency(Math.max(item.price - (item.discount || 0), 0))}
-                    </td>
-                  </tr>
-                ))}
+                {invoice.services.map((item: any, idx: number) => {
+                  const name = item.serviceName || item.service;
+                  const staffName = item.staffName || item.staff;
+                  const amount = item.amount ?? Math.max((item.price || 0) - (item.discount || 0), 0);
+                  return (
+                    <tr key={idx} className="bg-white">
+                      <td className="px-4 py-3 font-semibold text-stone-900">{name}</td>
+                      <td className="px-4 py-3 font-medium text-stone-700">{staffName}</td>
+                      <td className="px-4 py-3">{formatCurrency(item.price)}</td>
+                      <td className="px-4 py-3 text-emerald-600">- {formatCurrency(item.discount || 0)}</td>
+                      <td className="px-4 py-3 font-bold text-stone-900 text-right">
+                        {formatCurrency(amount)}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -165,17 +274,21 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-200">
-                {invoice.products.map((item: any, idx: number) => (
-                  <tr key={idx} className="bg-white">
-                    <td className="px-4 py-3 font-semibold text-stone-900">{item.product}</td>
-                    <td className="px-4 py-3">{formatCurrency(item.price)}</td>
-                    <td className="px-4 py-3 font-medium text-stone-700">{item.quantity}</td>
-                    <td className="px-4 py-3 text-emerald-600">- {formatCurrency(item.discount || 0)}</td>
-                    <td className="px-4 py-3 font-bold text-stone-900 text-right">
-                      {formatCurrency(Math.max(item.price * item.quantity - (item.discount || 0), 0))}
-                    </td>
-                  </tr>
-                ))}
+                {invoice.products.map((item: any, idx: number) => {
+                  const name = item.productName || item.product;
+                  const amount = item.amount ?? Math.max((item.price || 0) * (item.quantity || 1) - (item.discount || 0), 0);
+                  return (
+                    <tr key={idx} className="bg-white">
+                      <td className="px-4 py-3 font-semibold text-stone-900">{name}</td>
+                      <td className="px-4 py-3">{formatCurrency(item.price)}</td>
+                      <td className="px-4 py-3 font-medium text-stone-700">{item.quantity}</td>
+                      <td className="px-4 py-3 text-emerald-600">- {formatCurrency(item.discount || 0)}</td>
+                      <td className="px-4 py-3 font-bold text-stone-900 text-right">
+                        {formatCurrency(amount)}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -200,13 +313,25 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
           </div>
 
           <div className="space-y-2 border-t border-stone-100 pt-3 text-sm">
+            {invoice.totalServices !== undefined && (
+              <div className="flex items-center justify-between text-stone-500">
+                <span>Total Services</span>
+                <span className="font-semibold text-stone-800">{formatCurrency(invoice.totalServices)}</span>
+              </div>
+            )}
+            {invoice.totalProducts !== undefined && (
+              <div className="flex items-center justify-between text-stone-500">
+                <span>Total Products</span>
+                <span className="font-semibold text-stone-800">{formatCurrency(invoice.totalProducts)}</span>
+              </div>
+            )}
             <div className="flex items-center justify-between text-stone-500">
               <span>Subtotal</span>
               <span className="font-semibold text-stone-800">{formatCurrency(invoice.subtotal)}</span>
             </div>
             <div className="flex items-center justify-between text-stone-500">
               <span>Overall Discount</span>
-              <span className="font-semibold text-emerald-600">- {formatCurrency(invoice.discount || 0)}</span>
+              <span className="font-semibold text-emerald-600">- {formatCurrency(totalDiscount)}</span>
             </div>
             <div className="flex items-center justify-between text-stone-800 font-bold border-t border-stone-100 pt-2 text-base">
               <span>Grand Total</span>
@@ -218,30 +343,19 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
             <div className="font-semibold text-stone-700 text-xs mb-1.5 uppercase tracking-wider">Payment Split</div>
             <div className="flex items-center justify-between text-stone-500">
               <span>Cash</span>
-              <span className="font-medium text-stone-900">
-                {formatCurrency(invoice.payments?.cash ?? (invoice.paymentMethod === "Cash" ? invoice.grandTotal : 0))}
-              </span>
+              <span className="font-medium text-stone-900">{formatCurrency(cashPaid || 0)}</span>
             </div>
             <div className="flex items-center justify-between text-stone-500">
               <span>UPI</span>
-              <span className="font-medium text-stone-900">
-                {formatCurrency(invoice.payments?.upi ?? (invoice.paymentMethod === "UPI" ? invoice.grandTotal : 0))}
-              </span>
+              <span className="font-medium text-stone-900">{formatCurrency(upiPaid || 0)}</span>
             </div>
             <div className="flex items-center justify-between text-stone-500">
               <span>Card</span>
-              <span className="font-medium text-stone-900">
-                {formatCurrency(invoice.payments?.card ?? (invoice.paymentMethod === "Card" ? invoice.grandTotal : 0))}
-              </span>
+              <span className="font-medium text-stone-900">{formatCurrency(cardPaid || 0)}</span>
             </div>
             <div className="flex items-center justify-between text-stone-850 font-bold border-t border-stone-200 pt-2">
               <span>Total Paid</span>
-              <span className="text-emerald-700">
-                {formatCurrency(
-                  (invoice.payments?.cash || 0) + (invoice.payments?.upi || 0) + (invoice.payments?.card || 0) ||
-                  invoice.grandTotal
-                )}
-              </span>
+              <span className="text-emerald-700">{formatCurrency(totalPaid)}</span>
             </div>
           </div>
         </div>

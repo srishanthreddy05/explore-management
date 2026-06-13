@@ -1,29 +1,54 @@
 import type { ProductRow, ServiceRow } from "@/components/salon-dashboard/types";
+import type { Timestamp } from "firebase/firestore";
 
 export interface Invoice {
   id?: string;
-  invoiceNumber: string;
-  invoiceNo?: string;
-  date: string;
+
+  // ── Identity ──────────────────────────────────────────────────────────────
+  invoiceNumber: string;            // e.g. "INV-2024-1001"  (was also stored as invoiceNo — now single field)
+
+  // ── Date ──────────────────────────────────────────────────────────────────
+  // Stored as Firestore Timestamp so date-range queries and orderBy("date") work correctly.
+  // Use toDate() when you need a JS Date, or serverTimestamp() on write.
+  date: Timestamp;
+
+  // ── Customer ──────────────────────────────────────────────────────────────
+  customerId: string;               // Firestore /customers/{id}  (was missing)
   customerName: string;
-  customerMobile: string;
-  customerPhone?: string;
-  services: ServiceRow[];
-  products: ProductRow[];
-  notes?: string;
-  subtotal: number;
-  discount: number; // Bill discount
-  gst: number;
+  customerPhone: string;            // single canonical field  (was split into customerMobile + customerPhone)
+  customerType: "regular" | "membership" | "new";  // was missing from invoices
+
+  // ── Line items ────────────────────────────────────────────────────────────
+  services: ServiceRow[];           // each row must include serviceId, staffId, amount
+  products: ProductRow[];           // each row must include productId, amount
+
+  // ── Totals ────────────────────────────────────────────────────────────────
+  totalServices: number;            // sum of service line amounts  (was missing)
+  totalProducts: number;            // sum of product line amounts  (was missing)
+  subtotal: number;                 // totalServices + totalProducts
+  totalDiscount: number;            // was stored as "discount"
   grandTotal: number;
-  paymentMethod?: string;
-  receivedAmount?: number;
-  balanceDue?: number;
-  paymentStatus?: "paid" | "partial" | "unpaid" | string;
-  payments?: {
-    cash: number;
+
+  // ── Offer applied (Phase 4) ─────────────────────────────────────────────
+  // Present only if an offer was selected and applied to this bill.
+  appliedOffer?: {
+    offerId: string;
+    code: string;
+    name: string;
+    discountType: string;
+    discountValue: number;
+    discountAmount: number;         // actual ₹ amount discounted on this bill
+  };
+
+  // ── Payment ───────────────────────────────────────────────────────────────
+  paymentSplit: {                   // was stored as "payments"
     upi: number;
+    cash: number;
     card: number;
   };
-  totalPaid?: number;
-  createdAt?: string;
+  paymentStatus: "paid" | "partial" | "unpaid";
+
+  // ── Meta ──────────────────────────────────────────────────────────────────
+  notes?: string;
+  createdAt: Timestamp;
 }

@@ -6,19 +6,21 @@ import {
   getDocs,
   getDoc,
   updateDoc,
-  deleteDoc,
   query,
   orderBy,
+  where,
+  serverTimestamp,
 } from "firebase/firestore";
 import type { Product } from "@/types/product";
 
-const COLLECTION_NAME = "products";
+const COLLECTION = "products";
 
 export async function create(product: Omit<Product, "id">): Promise<string> {
   try {
-    const docRef = await addDoc(collection(db, COLLECTION_NAME), {
+    const docRef = await addDoc(collection(db, COLLECTION), {
       ...product,
-      createdAt: product.createdAt || new Date().toISOString(),
+      isActive: true,
+      createdAt: serverTimestamp(),
     });
     return docRef.id;
   } catch (error) {
@@ -27,37 +29,31 @@ export async function create(product: Omit<Product, "id">): Promise<string> {
   }
 }
 
+/**
+ * Returns only active (non-deleted) products, ordered by name.
+ */
 export async function getAll(): Promise<Product[]> {
   try {
-    const q = query(collection(db, COLLECTION_NAME), orderBy("name", "asc"));
-    const querySnapshot = await getDocs(q);
-    const products: Product[] = [];
-    querySnapshot.forEach((doc) => {
-      products.push({
-        id: doc.id,
-        ...doc.data(),
-      } as Product);
-    });
-    return products;
+    const q = query(
+      collection(db, COLLECTION),
+      where("isActive", "==", true),
+      orderBy("name", "asc")
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Product));
   } catch (error) {
-    console.error("Error getting all products:", error);
+    console.error("Error fetching products:", error);
     throw error;
   }
 }
 
 export async function getById(id: string): Promise<Product | null> {
   try {
-    const docRef = doc(db, COLLECTION_NAME, id);
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-      return {
-        id: docSnap.id,
-        ...docSnap.data(),
-      } as Product;
-    }
-    return null;
+    const snap = await getDoc(doc(db, COLLECTION, id));
+    if (!snap.exists()) return null;
+    return { id: snap.id, ...snap.data() } as Product;
   } catch (error) {
-    console.error(`Error getting product by ID (${id}):`, error);
+    console.error(`Error fetching product ${id}:`, error);
     throw error;
   }
 }
@@ -67,20 +63,22 @@ export async function update(
   data: Partial<Omit<Product, "id">>
 ): Promise<void> {
   try {
-    const docRef = doc(db, COLLECTION_NAME, id);
-    await updateDoc(docRef, data);
+    await updateDoc(doc(db, COLLECTION, id), data as Record<string, unknown>);
   } catch (error) {
-    console.error(`Error updating product (${id}):`, error);
+    console.error(`Error updating product ${id}:`, error);
     throw error;
   }
 }
 
+/**
+ * Soft delete — sets isActive: false so historical invoice lines still resolve.
+ * The product disappears from getAll() but its data is preserved in Firestore.
+ */
 async function deleteProduct(id: string): Promise<void> {
   try {
-    const docRef = doc(db, COLLECTION_NAME, id);
-    await deleteDoc(docRef);
+    await updateDoc(doc(db, COLLECTION, id), { isActive: false });
   } catch (error) {
-    console.error(`Error deleting product (${id}):`, error);
+    console.error(`Error soft-deleting product ${id}:`, error);
     throw error;
   }
 }
