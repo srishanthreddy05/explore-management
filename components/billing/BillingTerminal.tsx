@@ -103,12 +103,42 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
       if (offer.startDate && dateString < offer.startDate) return false;
       if (offer.endDate && dateString > offer.endDate) return false;
 
-      // Minimum bill amount check against the pre-discount subtotal
-      if (offer.minBillAmount && baseSubtotal < offer.minBillAmount) return false;
+      // Minimum bill amount check: if the offer is scoped, check against the subtotal of applicable items.
+      // Otherwise, check against the entire subtotal.
+      if (offer.minBillAmount) {
+        const hasServiceScope = !!offer.applicableServiceIds?.length;
+        const hasProductScope = !!offer.applicableProductIds?.length;
+        const isScoped = hasServiceScope || hasProductScope;
+
+        let eligibleSubtotal = baseSubtotal;
+        if (isScoped) {
+          eligibleSubtotal = 0;
+          if (hasServiceScope) {
+            eligibleSubtotal += services.reduce((sum, row) => {
+              const matched = servicesList.find((s) => s.name === row.service);
+              if (matched?.id && offer.applicableServiceIds!.includes(matched.id)) {
+                return sum + Math.max(row.price, 0);
+              }
+              return sum;
+            }, 0);
+          }
+          if (hasProductScope) {
+            eligibleSubtotal += products.reduce((sum, row) => {
+              const matched = productsList.find((p) => p.id === row.productId || p.name === row.product);
+              if (matched?.id && offer.applicableProductIds!.includes(matched.id)) {
+                return sum + Math.max(row.price * row.quantity, 0);
+              }
+              return sum;
+            }, 0);
+          }
+        }
+
+        if (eligibleSubtotal < offer.minBillAmount) return false;
+      }
 
       return true;
     });
-  }, [offersList, dateString, baseSubtotal]);
+  }, [offersList, dateString, baseSubtotal, services, products, servicesList, productsList]);
 
   // If the selected offer becomes ineligible, clear it
   useEffect(() => {
@@ -148,7 +178,7 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
         }
         if (hasProductScope) {
           offerBase += products.reduce((sum, row) => {
-            const matched = productsList.find((p) => p.name === row.product);
+            const matched = productsList.find((p) => p.id === row.productId || p.name === row.product);
             if (matched?.id && selectedOffer.applicableProductIds!.includes(matched.id)) {
               return sum + Math.max(row.price * row.quantity, 0);
             }
