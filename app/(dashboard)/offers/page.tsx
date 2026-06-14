@@ -331,8 +331,8 @@ export default function OffersPage() {
                     required
                     type="number"
                     min="1"
-                    value={formData.discountValue}
-                    onChange={(e) => setFormData({ ...formData, discountValue: Number(e.target.value) })}
+                    value={formData.discountValue === 0 ? "" : formData.discountValue}
+                    onChange={(e) => setFormData({ ...formData, discountValue: e.target.value === "" ? 0 : Number(e.target.value) })}
                     className="mt-2 h-11 w-full rounded-xl border border-stone-200 bg-stone-50 px-4 text-sm text-stone-900 outline-none transition focus:border-black"
                   />
                 </label>
@@ -368,8 +368,8 @@ export default function OffersPage() {
                 <input
                   type="number"
                   min="0"
-                  value={formData.minBillAmount}
-                  onChange={(e) => setFormData({ ...formData, minBillAmount: Number(e.target.value) })}
+                  value={formData.minBillAmount === 0 ? "" : formData.minBillAmount}
+                  onChange={(e) => setFormData({ ...formData, minBillAmount: e.target.value === "" ? 0 : Number(e.target.value) })}
                   className="mt-2 h-11 w-full rounded-xl border border-stone-200 bg-stone-50 px-4 text-sm text-stone-900 outline-none transition focus:border-black"
                   placeholder="0 = no minimum"
                 />

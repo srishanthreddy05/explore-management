@@ -10,6 +10,7 @@ interface BillingTableProps {
   onRowsChange: (rows: ServiceRow[]) => void;
   serviceOptions?: { name: string; price: number; category?: string }[];
   staffOptions?: string[];
+  disabled?: boolean;
 }
 
 export function BillingTable({
@@ -17,6 +18,7 @@ export function BillingTable({
   onRowsChange,
   serviceOptions = [],
   staffOptions = [],
+  disabled = false,
 }: BillingTableProps) {
   const [showModal, setShowModal] = useState(false);
   const [selectedCat, setSelectedCat] = useState("All");
@@ -55,8 +57,9 @@ export function BillingTable({
         <h2 className="text-lg font-bold text-stone-900">Services</h2>
         <button
           type="button"
+          disabled={disabled}
           onClick={() => setShowModal(true)}
-          className="inline-flex h-10 items-center gap-2 rounded-2xl bg-black px-4 text-sm font-semibold text-white shadow-md transition hover:-translate-y-0.5 hover:bg-stone-800"
+          className="inline-flex h-10 items-center gap-2 rounded-2xl bg-black px-4 text-sm font-semibold text-white shadow-md transition hover:-translate-y-0.5 hover:bg-stone-800 disabled:opacity-50 disabled:pointer-events-none"
         >
           <Plus size={17} />
           Add Service
@@ -83,8 +86,9 @@ export function BillingTable({
                 <td className="px-4 py-3">
                   <select
                     value={row.staff}
+                    disabled={disabled}
                     onChange={(event) => updateRow(row.id, { staff: event.target.value })}
-                    className="h-10 w-full rounded-xl border border-stone-200 bg-stone-50 px-3 text-stone-900 outline-none transition focus:border-black"
+                    className="h-10 w-full rounded-xl border border-stone-200 bg-stone-50 px-3 text-stone-900 outline-none transition focus:border-black disabled:bg-stone-100 disabled:text-stone-500"
                   >
                     {staffOptions.length === 0 && <option value="">No Options</option>}
                     {staffOptions.map((option) => (
@@ -98,18 +102,20 @@ export function BillingTable({
                   <input
                     type="number"
                     min="0"
-                    value={row.price}
-                    onChange={(event) => updateRow(row.id, { price: Number(event.target.value) })}
-                    className="h-10 w-28 rounded-xl border border-stone-200 bg-stone-50 px-3 text-stone-900 outline-none transition focus:border-black"
+                    disabled={disabled}
+                    value={row.price === 0 ? "" : row.price}
+                    onChange={(event) => updateRow(row.id, { price: event.target.value === "" ? 0 : Number(event.target.value) })}
+                    className="h-10 w-28 rounded-xl border border-stone-200 bg-stone-50 px-3 text-stone-900 outline-none transition focus:border-black disabled:bg-stone-100 disabled:text-stone-500"
                   />
                 </td>
                 <td className="px-4 py-3">
                   <input
                     type="number"
                     min="0"
-                    value={row.discount}
-                    onChange={(event) => updateRow(row.id, { discount: Number(event.target.value) })}
-                    className="h-10 w-28 rounded-xl border border-stone-200 bg-stone-50 px-3 text-stone-900 outline-none transition focus:border-black"
+                    disabled={disabled}
+                    value={row.discount === 0 ? "" : row.discount}
+                    onChange={(event) => updateRow(row.id, { discount: event.target.value === "" ? 0 : Number(event.target.value) })}
+                    className="h-10 w-28 rounded-xl border border-stone-200 bg-stone-50 px-3 text-stone-900 outline-none transition focus:border-black disabled:bg-stone-100 disabled:text-stone-500"
                   />
                 </td>
                 <td className="px-4 py-3 font-semibold text-stone-900">
@@ -119,8 +125,9 @@ export function BillingTable({
                   <button
                     aria-label="Delete row"
                     type="button"
+                    disabled={disabled}
                     onClick={() => onRowsChange(rows.filter((item) => item.id !== row.id))}
-                    className="grid size-10 place-items-center rounded-xl border border-stone-200 text-stone-400 transition hover:border-red-500 hover:bg-red-50 hover:text-red-650"
+                    className="grid size-10 place-items-center rounded-xl border border-stone-200 text-stone-400 transition hover:border-red-500 hover:bg-red-50 hover:text-red-650 disabled:opacity-50 disabled:pointer-events-none"
                   >
                     <Trash2 size={16} />
                   </button>

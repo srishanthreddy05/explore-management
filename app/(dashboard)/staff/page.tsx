@@ -413,11 +413,11 @@ export default function StaffPage() {
                   <input
                     type="number"
                     min="0"
-                    value={formData.revenueMonthly}
+                    value={formData.revenueMonthly === 0 ? "" : formData.revenueMonthly}
                     onChange={(e) =>
                       setFormData({
                         ...formData,
-                        revenueMonthly: Number(e.target.value),
+                        revenueMonthly: e.target.value === "" ? 0 : Number(e.target.value),
                       })
                     }
                     className="mt-2 h-11 w-full rounded-xl border border-stone-200 bg-stone-50 px-4 text-sm text-stone-900 outline-none transition focus:border-black"
@@ -430,11 +430,11 @@ export default function StaffPage() {
                   <input
                     type="number"
                     min="0"
-                    value={formData.memberCountMonthly}
+                    value={formData.memberCountMonthly === 0 ? "" : formData.memberCountMonthly}
                     onChange={(e) =>
                       setFormData({
                         ...formData,
-                        memberCountMonthly: Number(e.target.value),
+                        memberCountMonthly: e.target.value === "" ? 0 : Number(e.target.value),
                       })
                     }
                     className="mt-2 h-11 w-full rounded-xl border border-stone-200 bg-stone-50 px-4 text-sm text-stone-900 outline-none transition focus:border-black"

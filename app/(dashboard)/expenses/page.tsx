@@ -471,9 +471,9 @@ export default function ExpensesPage() {
                   required
                   type="number"
                   min="1"
-                  value={formData.amount}
+                  value={formData.amount === 0 ? "" : formData.amount}
                   onChange={(e) =>
-                    setFormData({ ...formData, amount: Number(e.target.value) })
+                    setFormData({ ...formData, amount: e.target.value === "" ? 0 : Number(e.target.value) })
                   }
                   className="mt-2 h-11 w-full rounded-xl border border-stone-200 bg-stone-50 px-4 text-sm text-stone-900 outline-none transition focus:border-black"
                 />

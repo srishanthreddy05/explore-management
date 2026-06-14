@@ -521,7 +521,6 @@ export default function DashboardPage() {
           >
             <BillingTerminal
               onClose={() => setIsBillingOpen(false)}
-              onSuccess={() => setIsBillingOpen(false)}
             />
           </div>
         </div>

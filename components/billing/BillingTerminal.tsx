@@ -373,22 +373,42 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
       .map((p) => `• ${p.product} (x${p.quantity}) - ₹${p.price * p.quantity - (p.discount || 0)}`)
       .join("\n");
 
+    const greeting = `Hello ${customerName},\n\nThank you for choosing Explore Salon ✨\n\n`;
+
     let itemsText = "";
-    if (formattedServices) itemsText += `Services:\n${formattedServices}\n`;
-    if (formattedProducts) itemsText += `\nProducts:\n${formattedProducts}\n`;
+    if (formattedServices) {
+      itemsText += `Services:\n${formattedServices}\n\n`;
+    }
+    if (formattedProducts) {
+      itemsText += `Products:\n${formattedProducts}\n\n`;
+    }
 
-    const offerLine = selectedOffer
-      ? `\nOffer Applied: ${selectedOffer.code} (-₹${totals.offerDiscount})\n`
-      : "";
+    const grandTotal = totals.grandTotal;
+    const discountAmount = totals.totalDiscount;
+    const offerDiscount = totals.offerDiscount;
+    const lineDiscount = totals.billDiscount;
+    const subtotal = totals.subtotal;
 
-    const msg =
-      `Thank you for choosing Explore Salon ✨\n\n` +
+    const hasDiscountOrOffer = discountAmount > 0;
+
+    let pricingText = "";
+    if (hasDiscountOrOffer) {
+      pricingText += `Subtotal: ₹${subtotal}\n`;
+      if (lineDiscount > 0) {
+        pricingText += `Discount: -₹${lineDiscount}\n`;
+      }
+      if (selectedOffer && offerDiscount > 0) {
+        pricingText += `Offer Applied: ${selectedOffer.code} (-₹${offerDiscount})\n`;
+      }
+    }
+    pricingText += `Total Amount: ₹${grandTotal}\n\n`;
+
+    const closing =
       `Invoice No: ${invoiceNumberDisplay}\n` +
-      `Customer: ${customerName}\n\n` +
-      `${itemsText}` +
-      `${offerLine}\n` +
-      `Total Amount: ₹${totals.grandTotal}\n\n` +
-      `We look forward to serving you again.\n\nExplore Salon`;
+      `We look forward to serving you again.\n\n` +
+      `Explore Salon`;
+
+    const msg = `${greeting}${itemsText}${pricingText}${closing}`;
 
     const digits = customerMobile.trim().replace(/\D/g, "");
     const e164 = digits.startsWith("91") && digits.length === 12 ? digits : `91${digits}`;
@@ -469,8 +489,9 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
               <input
                 type="date"
                 value={dateString}
+                disabled={saved}
                 onChange={(e) => setDateString(e.target.value)}
-                className="mt-2 h-12 w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 text-sm text-stone-900 outline-none focus:border-black"
+                className="mt-2 h-12 w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 text-sm text-stone-900 outline-none focus:border-black disabled:bg-stone-100 disabled:text-stone-500"
               />
             </label>
 
@@ -480,9 +501,10 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
                 required
                 type="text"
                 value={customerMobile}
+                disabled={saved}
                 onChange={(e) => setCustomerMobile(e.target.value)}
                 placeholder="Type phone number..."
-                className="mt-2 h-12 w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 text-sm text-stone-900 outline-none focus:border-black"
+                className="mt-2 h-12 w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 text-sm text-stone-900 outline-none focus:border-black disabled:bg-stone-100 disabled:text-stone-500"
               />
               {clientStatus && (
                 <div className="mt-2 flex justify-start">
@@ -510,9 +532,10 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
                 required
                 type="text"
                 value={customerName}
+                disabled={saved}
                 onChange={(e) => setCustomerName(e.target.value)}
                 placeholder="Enter customer name..."
-                className="mt-2 h-12 w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 text-sm text-stone-900 outline-none focus:border-black"
+                className="mt-2 h-12 w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 text-sm text-stone-900 outline-none focus:border-black disabled:bg-stone-100 disabled:text-stone-500"
               />
             </label>
           </div>
@@ -522,20 +545,23 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
             onRowsChange={setServices}
             serviceOptions={mappedServicesList}
             staffOptions={staffOptions}
+            disabled={saved}
           />
 
           <ProductTable
             rows={products}
             onRowsChange={setProducts}
             productOptions={mappedProductsList}
+            disabled={saved}
           />
 
           <label className="mt-5 block">
             <span className="text-sm font-semibold text-stone-700">Notes</span>
             <textarea
               value={notes}
+              disabled={saved}
               onChange={(e) => setNotes(e.target.value)}
-              className="mt-2 min-h-28 w-full resize-none rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none placeholder:text-stone-400 focus:border-black"
+              className="mt-2 min-h-28 w-full resize-none rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none placeholder:text-stone-400 focus:border-black disabled:bg-stone-100 disabled:text-stone-500"
               placeholder="Add consultation notes, package details, or special instructions."
             />
           </label>
@@ -554,8 +580,9 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
             ) : (
               <select
                 value={selectedOfferId}
+                disabled={saved}
                 onChange={(e) => setSelectedOfferId(e.target.value)}
-                className="h-11 w-full rounded-xl border border-stone-200 bg-stone-50 px-3 text-sm text-stone-900 outline-none transition focus:border-black"
+                className="h-11 w-full rounded-xl border border-stone-200 bg-stone-50 px-3 text-sm text-stone-900 outline-none transition focus:border-black disabled:bg-stone-100 disabled:text-stone-500"
               >
                 <option value="">No offer applied</option>
                 {eligibleOffers.map((offer) => (
@@ -584,8 +611,9 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
               {isSplitEdited && (
                 <button
                   type="button"
+                  disabled={saved}
                   onClick={() => setIsSplitEdited(false)}
-                  className="text-xs font-semibold text-stone-500 hover:text-black transition underline cursor-pointer"
+                  className="text-xs font-semibold text-stone-500 hover:text-black transition underline cursor-pointer disabled:opacity-50 disabled:no-underline"
                 >
                   Reset to Full Cash
                 </button>
@@ -609,12 +637,13 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
                       min="0"
                       value={val}
                       placeholder="0"
+                      disabled={saved}
                       onChange={(e) => {
                         setIsSplitEdited(true);
                         const v = e.target.value;
                         setFn(v === "" ? "" : Math.max(0, Number(v)));
                       }}
-                      className="mt-1 h-10 w-full rounded-xl border border-stone-200 bg-stone-50 px-3 text-sm text-stone-900 outline-none focus:border-black"
+                      className="mt-1 h-10 w-full rounded-xl border border-stone-200 bg-stone-50 px-3 text-sm text-stone-900 outline-none focus:border-black disabled:bg-stone-100 disabled:text-stone-500"
                     />
                   </label>
                 );

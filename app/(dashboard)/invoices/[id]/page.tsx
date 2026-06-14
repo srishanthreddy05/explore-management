@@ -98,22 +98,42 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
       })
       .join("\n");
 
+    const greeting = `Hello ${invoice.customerName},\n\nThank you for choosing Explore Salon ✨\n\n`;
+
     let itemsText = "";
-    if (formattedServices) itemsText += `Services:\n${formattedServices}\n`;
-    if (formattedProducts) itemsText += `\nProducts:\n${formattedProducts}\n`;
+    if (formattedServices) {
+      itemsText += `Services:\n${formattedServices}\n\n`;
+    }
+    if (formattedProducts) {
+      itemsText += `Products:\n${formattedProducts}\n\n`;
+    }
 
-    const offerLine = appliedOffer
-      ? `\nOffer Applied: ${appliedOffer.code} (-₹${appliedOffer.discountAmount})\n`
-      : "";
+    const grandTotal = invoice.grandTotal;
+    const discountAmount = totalDiscount;
+    const offerDiscount = appliedOffer?.discountAmount ?? 0;
+    const lineDiscount = Math.max(discountAmount - offerDiscount, 0);
+    const subtotal = invoice.subtotal ?? (grandTotal + discountAmount);
 
-    const msg =
-      `Thank you for choosing Explore Salon ✨\n\n` +
+    const hasDiscountOrOffer = discountAmount > 0;
+
+    let pricingText = "";
+    if (hasDiscountOrOffer) {
+      pricingText += `Subtotal: ₹${subtotal}\n`;
+      if (lineDiscount > 0) {
+        pricingText += `Discount: -₹${lineDiscount}\n`;
+      }
+      if (appliedOffer && offerDiscount > 0) {
+        pricingText += `Offer Applied: ${appliedOffer.code} (-₹${offerDiscount})\n`;
+      }
+    }
+    pricingText += `Total Amount: ₹${grandTotal}\n\n`;
+
+    const closing =
       `Invoice No: ${invoiceNumber}\n` +
-      `Customer: ${invoice.customerName}\n\n` +
-      `${itemsText}` +
-      `${offerLine}\n` +
-      `Total Amount: ₹${invoice.grandTotal}\n\n` +
-      `We look forward to serving you again.\n\nExplore Salon`;
+      `We look forward to serving you again.\n\n` +
+      `Explore Salon`;
+
+    const msg = `${greeting}${itemsText}${pricingText}${closing}`;
 
     const digits = String(customerPhone).trim().replace(/\D/g, "");
     const e164 = digits.startsWith("91") && digits.length === 12 ? digits : `91${digits}`;
