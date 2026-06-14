@@ -164,7 +164,7 @@ export function Sidebar({
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto pr-1 select-none font-medium flex flex-col justify-between">
+          <div className="flex-1 overflow-y-auto pr-1 select-none font-medium flex flex-col justify-between [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <div>
               {navList(false)}
             </div>
@@ -225,7 +225,7 @@ export function Sidebar({
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto pr-1 select-none font-medium flex flex-col justify-between">
+            <div className="flex-1 overflow-y-auto pr-1 select-none font-medium flex flex-col justify-between [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               <div>
                 {navList(true)}
               </div>

@@ -86,7 +86,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="max-w-4xl text-stone-900">
+    <div className="w-full text-stone-900">
       <div className="mb-6 flex items-center justify-between gap-4">
         <div>
           <p className="text-sm font-semibold uppercase tracking-[0.32em] text-stone-500">
