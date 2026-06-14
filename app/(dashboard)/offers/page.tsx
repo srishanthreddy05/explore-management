@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import * as offersService from "@/services/offers";
-import * as servicesService from "@/services/services";
-import * as productsService from "@/services/products";
+import { useAppData } from "@/context/AppDataContext";
 import type { Offer } from "@/types/offer";
 import type { Service } from "@/types/service";
 import type { Product } from "@/types/product";
@@ -37,38 +36,17 @@ const emptyForm: OfferFormData = {
 };
 
 export default function OffersPage() {
-  const [offers, setOffers] = useState<Offer[]>([]);
-  const [servicesList, setServicesList] = useState<Service[]>([]);
-  const [productsList, setProductsList] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { offers, services, products, refreshOffers, loadingAppData } = useAppData();
+  const servicesList = services;
+  const productsList = products;
+  const loading = loadingAppData;
+
   const [searchQuery, setSearchQuery] = useState("");
 
   // Modal states
   const [modalOpen, setModalOpen] = useState(false);
   const [editingOffer, setEditingOffer] = useState<Offer | null>(null);
   const [formData, setFormData] = useState<OfferFormData>(emptyForm);
-
-  const loadOffers = async () => {
-    setLoading(true);
-    try {
-      const [offersData, servicesData, productsData] = await Promise.all([
-        offersService.getAll(),
-        servicesService.getAll(),
-        productsService.getAll(),
-      ]);
-      setOffers(offersData);
-      setServicesList(servicesData);
-      setProductsList(productsData);
-    } catch (error) {
-      console.error("Failed to load offers:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadOffers();
-  }, []);
 
   const handleOpenAdd = () => {
     setEditingOffer(null);
@@ -97,7 +75,7 @@ export default function OffersPage() {
     if (!confirm("Are you sure you want to delete this offer campaign?")) return;
     try {
       await offersService.delete(id);
-      loadOffers();
+      await refreshOffers();
     } catch (error) {
       console.error("Failed to delete offer:", error);
     }
@@ -124,7 +102,7 @@ export default function OffersPage() {
         await offersService.create(payload as Omit<Offer, "id">);
       }
       setModalOpen(false);
-      loadOffers();
+      await refreshOffers();
     } catch (error) {
       console.error("Failed to save offer:", error);
     }

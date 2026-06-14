@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import * as appointmentsService from "@/services/appointments";
-import * as staffService from "@/services/staff";
-import * as servicesService from "@/services/services";
+import { useAppData } from "@/context/AppDataContext";
 import type { Appointment } from "@/types/appointment";
 import type { Staff } from "@/types/staff";
 import type { Service } from "@/types/service";
@@ -11,11 +10,14 @@ import { Plus, Search, Edit2, Trash2, X, CalendarDays } from "lucide-react";
 import { format } from "date-fns";
 
 export default function AppointmentsPage() {
+  const { staff, services, loadingAppData } = useAppData();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [staffList, setStaffList] = useState<Staff[]>([]);
-  const [servicesList, setServicesList] = useState<Service[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [appointmentsLoading, setAppointmentsLoading] = useState(true);
+  const loading = loadingAppData || appointmentsLoading;
   const [searchQuery, setSearchQuery] = useState("");
+
+  const staffList = useMemo(() => staff.filter((s) => s.status === "Active"), [staff]);
+  const servicesList = services;
 
   // Modal states
   const [modalOpen, setModalOpen] = useState(false);
@@ -34,26 +36,29 @@ export default function AppointmentsPage() {
   const [idToDelete, setIdToDelete] = useState<string | null>(null);
 
   const loadData = async () => {
-    setLoading(true);
+    setAppointmentsLoading(true);
     try {
       const appts = await appointmentsService.getAll();
       setAppointments(appts);
-      
-      const staff = await staffService.getAll();
-      setStaffList(staff.filter((s) => s.status === "Active"));
-
-      const services = await servicesService.getAll();
-      setServicesList(services);
     } catch (error) {
       console.error("Failed to load appointments data:", error);
     } finally {
-      setLoading(false);
+      setAppointmentsLoading(false);
     }
   };
 
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (modalOpen && !editingAppointment && !formData.staffName && staffList.length > 0) {
+      setFormData((prev) => ({
+        ...prev,
+        staffName: staffList[0].name,
+      }));
+    }
+  }, [modalOpen, editingAppointment, formData.staffName, staffList]);
 
   const handleOpenAdd = () => {
     setEditingAppointment(null);

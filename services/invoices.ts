@@ -15,6 +15,7 @@ import {
   Timestamp,
 } from "firebase/firestore";
 import type { Invoice } from "@/types/invoice";
+import { toTitleCase } from "@/lib/utils/text";
 
 const COLLECTION = "invoices";
 const COUNTER_DOC = doc(db, "counters", "invoice");  // /counters/invoice { lastNumber: 1000 }
@@ -64,8 +65,30 @@ export async function create(
 
     const { dateString, ...rest } = invoice;
 
+    const normalizedServices = rest.services?.map((s: any) => ({
+      ...s,
+      serviceName: s.serviceName ? toTitleCase(s.serviceName) : s.serviceName,
+      staffName: s.staffName ? toTitleCase(s.staffName) : s.staffName,
+    }));
+
+    const normalizedProducts = rest.products?.map((p: any) => ({
+      ...p,
+      productName: p.productName ? toTitleCase(p.productName) : p.productName,
+    }));
+
+    const normalizedAppliedOffer = rest.appliedOffer
+      ? {
+          ...rest.appliedOffer,
+          name: rest.appliedOffer.name ? toTitleCase(rest.appliedOffer.name) : rest.appliedOffer.name,
+        }
+      : undefined;
+
     const docRef = await addDoc(collection(db, COLLECTION), {
       ...rest,
+      customerName: toTitleCase(rest.customerName),
+      services: normalizedServices,
+      products: normalizedProducts,
+      ...(normalizedAppliedOffer ? { appliedOffer: normalizedAppliedOffer } : {}),
       date: dateTs,
       createdAt: serverTimestamp(),
     });
@@ -123,7 +146,30 @@ export async function update(
   data: Partial<Omit<Invoice, "id">>
 ): Promise<void> {
   try {
-    await updateDoc(doc(db, COLLECTION, id), data as Record<string, unknown>);
+    const normalizedData = { ...data } as any;
+    if (normalizedData.customerName) {
+      normalizedData.customerName = toTitleCase(normalizedData.customerName);
+    }
+    if (normalizedData.services) {
+      normalizedData.services = normalizedData.services.map((s: any) => ({
+        ...s,
+        serviceName: s.serviceName ? toTitleCase(s.serviceName) : s.serviceName,
+        staffName: s.staffName ? toTitleCase(s.staffName) : s.staffName,
+      }));
+    }
+    if (normalizedData.products) {
+      normalizedData.products = normalizedData.products.map((p: any) => ({
+        ...p,
+        productName: p.productName ? toTitleCase(p.productName) : p.productName,
+      }));
+    }
+    if (normalizedData.appliedOffer) {
+      normalizedData.appliedOffer = {
+        ...normalizedData.appliedOffer,
+        name: normalizedData.appliedOffer.name ? toTitleCase(normalizedData.appliedOffer.name) : normalizedData.appliedOffer.name,
+      };
+    }
+    await updateDoc(doc(db, COLLECTION, id), normalizedData as Record<string, unknown>);
   } catch (error) {
     console.error(`Error updating invoice ${id}:`, error);
     throw error;

@@ -2,10 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { getSettings, updateSettings } from "@/services/settings";
+import { useAppData } from "@/context/AppDataContext";
 import type { Settings } from "@/types/settings";
-import { Save, Sparkles } from "lucide-react";
+import { Save, Sparkles, Lock } from "lucide-react";
+import { useAuth } from "@/context/AuthContext";
+import { toast } from "react-hot-toast";
 
 export default function SettingsPage() {
+  const { settings: cachedSettings, loadingAppData, refreshSettings } = useAppData();
   const [settings, setSettings] = useState<Settings>({
     salonName: "",
     businessType: "",
@@ -20,20 +24,34 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  useEffect(() => {
-    async function loadSettings() {
-      try {
-        const data = await getSettings();
-        setSettings(data);
-      } catch (error) {
-        console.error("Failed to load settings:", error);
-        setMessage({ type: "error", text: "Failed to load salon settings." });
-      } finally {
-        setLoading(false);
-      }
+  const { user, resetPassword } = useAuth();
+  const [resettingPassword, setResettingPassword] = useState(false);
+
+  const handleResetPassword = async () => {
+    if (!user?.email) {
+      toast.error("No email address found for the current user.");
+      return;
     }
-    loadSettings();
-  }, []);
+    setResettingPassword(true);
+    try {
+      await resetPassword(user.email);
+      toast.success("Password reset email sent. Please check your inbox.");
+    } catch (error) {
+      console.error("Failed to send reset email:", error);
+      toast.error("Failed to send password reset email. Please try again.");
+    } finally {
+      setResettingPassword(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!loadingAppData) {
+      if (cachedSettings) {
+        setSettings(cachedSettings);
+      }
+      setLoading(false);
+    }
+  }, [cachedSettings, loadingAppData]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -49,6 +67,7 @@ export default function SettingsPage() {
         salonName: settings.salonName,
         phoneNumber: settings.phoneNumber,
       });
+      await refreshSettings();
       setMessage({ type: "success", text: "Configuration saved successfully!" });
     } catch (error) {
       console.error("Failed to save settings:", error);
@@ -137,6 +156,34 @@ export default function SettingsPage() {
           </div>
         </section>
       </form>
+
+      {/* Account Security Section */}
+      <section className="mt-6 rounded-2xl border border-stone-200 bg-white p-5 shadow-md sm:p-6">
+        <div className="mb-5 flex items-center gap-3 border-b border-stone-100 pb-4 text-stone-900">
+          <Lock size={20} />
+          <h2 className="text-lg font-bold text-stone-900 font-sans">Account Security</h2>
+        </div>
+
+        <div className="space-y-4 max-w-md">
+          <div>
+            <span className="text-sm font-semibold text-stone-550 block">Current Email</span>
+            <span className="text-base font-medium text-stone-900 mt-1 block">{user?.email || "—"}</span>
+          </div>
+
+          <div className="pt-2">
+            <button
+              onClick={handleResetPassword}
+              disabled={resettingPassword}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-stone-200 bg-white px-5 text-sm font-semibold text-stone-900 hover:bg-stone-50 transition shadow-sm disabled:opacity-50"
+            >
+              Reset Password
+            </button>
+            <p className="text-xs text-stone-400 mt-2">
+              A password reset link will be sent to your email address. You will not be logged out.
+            </p>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

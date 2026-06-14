@@ -11,6 +11,7 @@ import {
   orderBy,
 } from "firebase/firestore";
 import type { Offer } from "@/types/offer";
+import { toTitleCase } from "@/lib/utils/text";
 
 const COLLECTION_NAME = "offers";
 
@@ -29,6 +30,7 @@ export async function create(offer: Omit<Offer, "id">): Promise<string> {
       collection(db, COLLECTION_NAME),
       stripUndefined({
         ...offer,
+        name: toTitleCase(offer.name),
         createdAt: offer.createdAt || new Date().toISOString(),
       })
     );
@@ -80,7 +82,11 @@ export async function update(
 ): Promise<void> {
   try {
     const docRef = doc(db, COLLECTION_NAME, id);
-    await updateDoc(docRef, stripUndefined(data));
+    const normalizedData = { ...data };
+    if (normalizedData.name) {
+      normalizedData.name = toTitleCase(normalizedData.name);
+    }
+    await updateDoc(docRef, stripUndefined(normalizedData));
   } catch (error) {
     console.error(`Error updating offer (${id}):`, error);
     throw error;

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import * as invoicesService from "@/services/invoices";
 import * as expensesService from "@/services/expenses";
+import { useAppData } from "@/context/AppDataContext";
 import { formatCurrency } from "@/components/salon-dashboard/types";
 import { format, subDays } from "date-fns";
 import {
@@ -25,6 +26,7 @@ import {
 } from "recharts";
 
 export default function ReportsPage() {
+  const { services, staff } = useAppData();
   const [loading, setLoading] = useState(true);
   const [invoices, setInvoices] = useState<any[]>([]);
   const [expenses, setExpenses] = useState<any[]>([]);

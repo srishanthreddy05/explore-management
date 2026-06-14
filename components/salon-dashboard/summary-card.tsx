@@ -5,12 +5,16 @@ import type { BillTotals } from "./types";
 import { formatCurrency } from "./types";
 
 export function SummaryCard({ totals }: { totals: BillTotals }) {
-  const rows = [
+  const rows: [string, number][] = [
     ["Total Services", totals.serviceTotal],
     ["Total Products", totals.productTotal],
     ["Subtotal", totals.subtotal],
     ["Discount", -totals.billDiscount],
-  ] as const;
+  ];
+
+  if (totals.offerDiscount > 0) {
+    rows.push(["Offer Discount", -totals.offerDiscount]);
+  }
 
   const grandTotal = Math.max(totals.subtotal - totals.billDiscount - totals.offerDiscount, 0)
 

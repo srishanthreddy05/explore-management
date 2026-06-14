@@ -12,6 +12,7 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import type { Product } from "@/types/product";
+import { toTitleCase } from "@/lib/utils/text";
 
 const COLLECTION = "products";
 
@@ -19,6 +20,7 @@ export async function create(product: Omit<Product, "id">): Promise<string> {
   try {
     const docRef = await addDoc(collection(db, COLLECTION), {
       ...product,
+      name: toTitleCase(product.name),
       isActive: true,
       createdAt: serverTimestamp(),
     });
@@ -63,7 +65,11 @@ export async function update(
   data: Partial<Omit<Product, "id">>
 ): Promise<void> {
   try {
-    await updateDoc(doc(db, COLLECTION, id), data as Record<string, unknown>);
+    const normalizedData = { ...data };
+    if (normalizedData.name) {
+      normalizedData.name = toTitleCase(normalizedData.name);
+    }
+    await updateDoc(doc(db, COLLECTION, id), normalizedData as Record<string, unknown>);
   } catch (error) {
     console.error(`Error updating product ${id}:`, error);
     throw error;

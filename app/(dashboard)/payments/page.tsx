@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 import * as invoicesService from "@/services/invoices";
 import { formatCurrency } from "@/components/salon-dashboard/types";
 import { Search, WalletCards, DollarSign, X } from "lucide-react";
+import { db } from "@/lib/firebase";
+import { collection, query, where, orderBy, getDocs } from "firebase/firestore";
+import type { Invoice } from "@/types/invoice";
 
 export default function PaymentsPage() {
   const [invoices, setInvoices] = useState<any[]>([]);
@@ -20,9 +23,16 @@ export default function PaymentsPage() {
   const loadDueInvoices = async () => {
     setLoading(true);
     try {
-      const data = await invoicesService.getAll();
-      // Only keep invoices with pending balance dues
-      const dues = data.filter((inv) => (inv.balanceDue ?? 0) > 0);
+      const q = query(
+        collection(db, "invoices"),
+        where("balanceDue", ">", 0),
+        orderBy("balanceDue", "desc")
+      );
+      const querySnapshot = await getDocs(q);
+      const dues: Invoice[] = [];
+      querySnapshot.forEach((doc) => {
+        dues.push({ id: doc.id, ...doc.data() } as Invoice);
+      });
       setInvoices(dues);
     } catch (error) {
       console.error("Failed to load dues:", error);

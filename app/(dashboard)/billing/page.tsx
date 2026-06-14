@@ -9,11 +9,9 @@ import type { ProductRow, ServiceRow } from "@/components/salon-dashboard/types"
 import { formatCurrency } from "@/components/salon-dashboard/types";
 
 import * as customerService from "@/services/customers";
-import * as servicesService from "@/services/services";
 import * as productsService from "@/services/products";
-import * as staffService from "@/services/staff";
 import * as invoicesService from "@/services/invoices";
-import * as offersService from "@/services/offers";
+import { useAppData } from "@/context/AppDataContext";
 
 import type { Customer } from "@/types/customer";
 import type { Service } from "@/types/service";
@@ -22,12 +20,14 @@ import type { Staff } from "@/types/staff";
 import type { Offer } from "@/types/offer";
 
 export default function BillingPage() {
-  const [servicesList, setServicesList] = useState<Service[]>([]);
-  const [productsList, setProductsList] = useState<Product[]>([]);
-  const [staffList, setStaffList] = useState<Staff[]>([]);
-  const [offersList, setOffersList] = useState<Offer[]>([]);
+  const { services: servicesContextData, products: productsContextData, staff: staffContextData, offers: offersContextData, refreshProducts, loadingAppData } = useAppData();
 
-  const [loading, setLoading] = useState(true);
+  const servicesList = servicesContextData;
+  const productsList = productsContextData;
+  const staffList = useMemo(() => staffContextData.filter((s) => s.status === "Active" && s.dutyStatus === "onDuty"), [staffContextData]);
+  const offersList = offersContextData;
+  const loading = loadingAppData;
+
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -56,30 +56,6 @@ export default function BillingPage() {
 
   // ── Offer selection ──────────────────────────────────────────────────────
   const [selectedOfferId, setSelectedOfferId] = useState<string>("");
-
-  const loadBillingData = async () => {
-    setLoading(true);
-    try {
-      const [srvs, prods, stff, offs] = await Promise.all([
-        servicesService.getAll(),
-        productsService.getAll(),
-        staffService.getAll(),
-        offersService.getAll(),
-      ]);
-      setServicesList(srvs);
-      setProductsList(prods);
-      setStaffList(stff.filter((s) => s.status === "Active"));
-      setOffersList(offs);
-    } catch (error) {
-      console.error("Failed to load billing dependencies:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadBillingData();
-  }, []);
 
   // Customer lookup by phone
   useEffect(() => {
@@ -330,6 +306,8 @@ export default function BillingPage() {
           });
         }
       }
+
+      await refreshProducts();
 
       setMessage({ type: "success", text: `Invoice ${invoiceNumber} saved successfully!` });
       setSaved(true);

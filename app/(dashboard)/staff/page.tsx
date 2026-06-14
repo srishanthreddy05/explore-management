@@ -6,10 +6,11 @@ import type { Staff } from "@/types/staff";
 import { Plus, Search, Edit2, Trash2, X, Users } from "lucide-react";
 import { db } from "@/lib/firebase";
 import { collection, query, where, getDocs, Timestamp } from "firebase/firestore";
+import { useAppData } from "@/context/AppDataContext";
 
 export default function StaffPage() {
-  const [staff, setStaff] = useState<Staff[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { staff, refreshStaff, loadingAppData } = useAppData();
+  const loading = loadingAppData;
   const [searchQuery, setSearchQuery] = useState("");
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -29,12 +30,8 @@ export default function StaffPage() {
   const [staffRevenueMap, setStaffRevenueMap] = useState<Record<string, number>>({});
   const [staffMemberMap, setStaffMemberMap] = useState<Record<string, number>>({});
 
-  const loadStaff = async () => {
-    setLoading(true);
+  const loadStaffProgress = async () => {
     try {
-      const data = await staffService.getAll();
-      setStaff(data);
-
       // Fetch current month's invoices to compute stylist target progress
       const now = new Date();
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -63,28 +60,24 @@ export default function StaffPage() {
           }
         });
 
-        // 2. Group membership counts by staffId
-        if (inv.customerType === "membership") {
-          (inv.services || []).forEach((s: any) => {
-            if (s.staffId) {
-              memMap[s.staffId] = (memMap[s.staffId] || 0) + 1;
-            }
-          });
-        }
+        // 2. Group total servings counts by staffId
+        (inv.services || []).forEach((s: any) => {
+          if (s.staffId) {
+            memMap[s.staffId] = (memMap[s.staffId] || 0) + 1;
+          }
+        });
       });
 
       setStaffRevenueMap(revMap);
       setStaffMemberMap(memMap);
 
     } catch (error) {
-      console.error("Failed to load staff list:", error);
-    } finally {
-      setLoading(false);
+      console.error("Failed to load staff list progress:", error);
     }
   };
 
   useEffect(() => {
-    loadStaff();
+    loadStaffProgress();
   }, []);
 
   const handleOpenAdd = () => {
@@ -124,7 +117,8 @@ export default function StaffPage() {
       await staffService.delete(idToDelete);
       setDeleteConfirmOpen(false);
       setIdToDelete(null);
-      loadStaff();
+      await refreshStaff();
+      loadStaffProgress();
     } catch (error) {
       console.error("Failed to delete staff member:", error);
     }
@@ -149,7 +143,8 @@ export default function StaffPage() {
         await staffService.create(payload);
       }
       setModalOpen(false);
-      loadStaff();
+      await refreshStaff();
+      loadStaffProgress();
     } catch (error) {
       console.error("Failed to save staff member:", error);
     }
@@ -290,7 +285,7 @@ export default function StaffPage() {
                               <div className="space-y-1">
                                 <div className="flex justify-between text-[10px] text-stone-500">
                                   <span>
-                                    {memberAchieved} / {memberCountMonthly} members
+                                    {memberAchieved} / {memberCountMonthly} servings
                                   </span>
                                   <span className="font-bold text-stone-700">
                                     {Math.round(memberPercent)}%
@@ -430,7 +425,7 @@ export default function StaffPage() {
                 </label>
                 <label className="block">
                   <span className="text-sm font-semibold text-stone-700">
-                    Membership Target / Month
+                    Servings Target / Month
                   </span>
                   <input
                     type="number"

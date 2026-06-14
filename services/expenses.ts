@@ -12,6 +12,7 @@ import {
   where,
 } from "firebase/firestore";
 import type { Expense } from "@/types/expense";
+import { toTitleCase } from "@/lib/utils/text";
 
 const COLLECTION_NAME = "expenses";
 
@@ -19,6 +20,7 @@ export async function create(expense: Omit<Expense, "id">): Promise<string> {
   try {
     const docRef = await addDoc(collection(db, COLLECTION_NAME), {
       ...expense,
+      category: toTitleCase(expense.category),
       createdAt: expense.createdAt || new Date().toISOString(),
     });
     return docRef.id;
@@ -94,7 +96,11 @@ export async function update(
 ): Promise<void> {
   try {
     const docRef = doc(db, COLLECTION_NAME, id);
-    await updateDoc(docRef, data);
+    const normalizedData = { ...data };
+    if (normalizedData.category) {
+      normalizedData.category = toTitleCase(normalizedData.category);
+    }
+    await updateDoc(docRef, normalizedData);
   } catch (error) {
     console.error(`Error updating expense (${id}):`, error);
     throw error;

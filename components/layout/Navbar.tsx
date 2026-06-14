@@ -1,38 +1,15 @@
 "use client";
 
 import { Sparkles, Menu } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useAppData } from "@/context/AppDataContext";
 
 interface NavbarProps {
   onToggleMobileSidebar: () => void;
 }
 
 export function Navbar({ onToggleMobileSidebar }: NavbarProps) {
-  const [salonName, setSalonName] = useState("Explore Salon");
-
-  useEffect(() => {
-    let active = true;
-    let unsubscribe: (() => void) | undefined;
-
-    async function initSubscription() {
-      try {
-        const { subscribeSettings } = await import("@/services/settings");
-        unsubscribe = subscribeSettings((settings) => {
-          if (active) {
-            setSalonName(settings.salonName);
-          }
-        });
-      } catch (err) {
-        console.error("Failed to load navbar settings subscription:", err);
-      }
-    }
-    initSubscription();
-
-    return () => {
-      active = false;
-      if (unsubscribe) unsubscribe();
-    };
-  }, []);
+  const { settings } = useAppData();
+  const salonName = settings?.salonName || "Explore Salon";
 
   return (
     <header className="sticky top-0 z-20 border-b border-stone-200 bg-white px-4 py-4 sm:px-6 lg:px-8 shadow-sm">

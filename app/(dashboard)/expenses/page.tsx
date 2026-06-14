@@ -44,6 +44,14 @@ export default function ExpensesPage() {
 
   useEffect(() => {
     loadExpenses();
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("add") === "true") {
+        handleOpenAdd();
+        const cleanUrl = window.location.pathname;
+        window.history.replaceState({ path: cleanUrl }, "", cleanUrl);
+      }
+    }
   }, []);
 
   const handleOpenAdd = () => {

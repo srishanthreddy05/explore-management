@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import * as productsService from "@/services/products";
+import { useAppData } from "@/context/AppDataContext";
 import type { Product } from "@/types/product";
 import { Plus, Search, Edit2, Trash2, X, Package } from "lucide-react";
 import { formatCurrency } from "@/components/salon-dashboard/types";
 
 export default function ProductsPage() {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { products, refreshProducts, loadingAppData } = useAppData();
+  const loading = loadingAppData;
   const [searchQuery, setSearchQuery] = useState("");
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -17,21 +18,6 @@ export default function ProductsPage() {
 
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [idToDelete, setIdToDelete] = useState<string | null>(null);
-
-  const loadProducts = async () => {
-    setLoading(true);
-    try {
-      // getAll() now returns only isActive === true products
-      const data = await productsService.getAll();
-      setProducts(data);
-    } catch (error) {
-      console.error("Failed to load products:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { loadProducts(); }, []);
 
   const handleOpenAdd = () => {
     setEditingProduct(null);
@@ -57,7 +43,7 @@ export default function ProductsPage() {
       await productsService.delete(idToDelete);
       setDeleteConfirmOpen(false);
       setIdToDelete(null);
-      loadProducts();
+      await refreshProducts();
     } catch (error) {
       console.error("Failed to soft-delete product:", error);
     }
@@ -72,7 +58,7 @@ export default function ProductsPage() {
         await productsService.create(formData);
       }
       setModalOpen(false);
-      loadProducts();
+      await refreshProducts();
     } catch (error) {
       console.error("Failed to save product:", error);
     }

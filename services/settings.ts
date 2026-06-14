@@ -1,6 +1,8 @@
 import { db } from "@/lib/firebase";
-import { doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 import type { Settings } from "@/types/settings";
+import { readCache, writeCache, clearCache, CACHE_KEYS, CACHE_TTL } from "@/lib/cache";
+import { toTitleCase } from "@/lib/utils/text";
 
 const COLLECTION_NAME = "settings";
 const DOCUMENT_ID = "salon-settings";
@@ -17,16 +19,23 @@ const defaultSettings: Settings = {
 
 export async function getSettings(): Promise<Settings> {
   try {
+    const cached = readCache<Settings>(CACHE_KEYS.settings, CACHE_TTL.settings);
+    if (cached && cached.length > 0) {
+      return cached[0];
+    }
     const docRef = doc(db, COLLECTION_NAME, DOCUMENT_ID);
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
-      return {
+      const settings = {
         ...defaultSettings,
         ...docSnap.data(),
       } as Settings;
+      writeCache(CACHE_KEYS.settings, [settings]);
+      return settings;
     }
     // Seed settings if not found
     await setDoc(docRef, defaultSettings);
+    writeCache(CACHE_KEYS.settings, [defaultSettings]);
     return defaultSettings;
   } catch (error) {
     console.error("Error getting settings from Firestore:", error);
@@ -37,7 +46,15 @@ export async function getSettings(): Promise<Settings> {
 export async function updateSettings(data: Partial<Settings>): Promise<void> {
   try {
     const docRef = doc(db, COLLECTION_NAME, DOCUMENT_ID);
-    await setDoc(docRef, data, { merge: true });
+    const normalizedData = { ...data };
+    if (normalizedData.salonName) {
+      normalizedData.salonName = toTitleCase(normalizedData.salonName);
+    }
+    if (normalizedData.businessType) {
+      normalizedData.businessType = toTitleCase(normalizedData.businessType);
+    }
+    await setDoc(docRef, normalizedData, { merge: true });
+    clearCache(CACHE_KEYS.settings);
   } catch (error) {
     console.error("Error updating settings in Firestore:", error);
     throw error;
@@ -45,24 +62,6 @@ export async function updateSettings(data: Partial<Settings>): Promise<void> {
 }
 
 export function subscribeSettings(onUpdate: (settings: Settings) => void): () => void {
-  const docRef = doc(db, COLLECTION_NAME, DOCUMENT_ID);
-  return onSnapshot(
-    docRef,
-    (docSnap) => {
-      if (docSnap.exists()) {
-        onUpdate({
-          ...defaultSettings,
-          ...docSnap.data(),
-        } as Settings);
-      } else {
-        setDoc(docRef, defaultSettings).then(() => {
-          onUpdate(defaultSettings);
-        });
-      }
-    },
-    (error) => {
-      console.error("Error listening to settings changes:", error);
-      onUpdate(defaultSettings);
-    }
-  );
+  getSettings().then(onUpdate).catch((err) => console.error("Error subscribing to settings:", err));
+  return () => {};
 }

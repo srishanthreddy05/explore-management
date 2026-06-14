@@ -11,6 +11,7 @@ import {
   where,
 } from "firebase/firestore";
 import type { Service } from "@/types/service";
+import { toTitleCase } from "@/lib/utils/text";
 
 const COLLECTION_NAME = "services";
 
@@ -18,6 +19,8 @@ export async function create(service: Omit<Service, "id">): Promise<string> {
   try {
     const docRef = await addDoc(collection(db, COLLECTION_NAME), {
       ...service,
+      name: toTitleCase(service.name),
+      ...(service.category ? { category: toTitleCase(service.category) } : {}),
       isActive: true,
       createdAt: service.createdAt || new Date().toISOString(),
     });
@@ -85,7 +88,14 @@ export async function update(
 ): Promise<void> {
   try {
     const docRef = doc(db, COLLECTION_NAME, id);
-    await updateDoc(docRef, data);
+    const normalizedData = { ...data };
+    if (normalizedData.name) {
+      normalizedData.name = toTitleCase(normalizedData.name);
+    }
+    if (normalizedData.category) {
+      normalizedData.category = toTitleCase(normalizedData.category);
+    }
+    await updateDoc(docRef, normalizedData);
   } catch (error) {
     console.error(`Error updating service (${id}) in Firestore:`, error);
     throw error;

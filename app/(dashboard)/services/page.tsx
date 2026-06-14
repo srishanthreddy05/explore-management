@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import * as servicesService from "@/services/services";
+import { useAppData } from "@/context/AppDataContext";
 import type { Service } from "@/types/service";
 import { Plus, Search, Edit2, Trash2, X, Scissors } from "lucide-react";
 import { formatCurrency } from "@/components/salon-dashboard/types";
 
 export default function ServicesPage() {
-  const [services, setServices] = useState<Service[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { services, refreshServices, loadingAppData } = useAppData();
+  const loading = loadingAppData;
   const [searchQuery, setSearchQuery] = useState("");
   
   // Modal states
@@ -22,22 +23,6 @@ export default function ServicesPage() {
 
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [idToDelete, setIdToDelete] = useState<string | null>(null);
-
-  const loadServices = async () => {
-    setLoading(true);
-    try {
-      const data = await servicesService.getAll();
-      setServices(data);
-    } catch (error) {
-      console.error("Failed to load services:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadServices();
-  }, []);
 
   const handleOpenAdd = () => {
     setEditingService(null);
@@ -70,7 +55,7 @@ export default function ServicesPage() {
       await servicesService.delete(idToDelete);
       setDeleteConfirmOpen(false);
       setIdToDelete(null);
-      loadServices();
+      await refreshServices();
     } catch (error) {
       console.error("Failed to delete service:", error);
     }
@@ -85,7 +70,7 @@ export default function ServicesPage() {
         await servicesService.create(formData);
       }
       setModalOpen(false);
-      loadServices();
+      await refreshServices();
     } catch (error) {
       console.error("Failed to save service:", error);
     }

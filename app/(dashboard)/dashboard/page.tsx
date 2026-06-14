@@ -13,42 +13,79 @@ import {
 import * as staffService from "@/services/staff";
 import { formatCurrency } from "@/components/salon-dashboard/types";
 import type { Staff } from "@/types/staff";
+import { useAppData } from "@/context/AppDataContext";
 import { CalendarDays, CreditCard, TrendingUp } from "lucide-react";
+import Link from "next/link";
 
 // ── D: Active time helper ──────────────────────────────────────────────────
 function computeTodayActiveTime(clockLogs: any[] = []): string {
   if (!clockLogs || clockLogs.length === 0) return "0 mins";
 
-  const getLocalDateStr = (d: Date) => {
-    const yr = d.getFullYear();
-    const mo = String(d.getMonth() + 1).padStart(2, "0");
-    const dy = String(d.getDate()).padStart(2, "0");
-    return `${yr}-${mo}-${dy}`;
+  const getLocalDateKey = (d: Date) => {
+    return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
   };
-  const todayStr = getLocalDateStr(new Date());
-  let totalMs = 0;
 
-  const sorted = [...clockLogs]
-    .map((log) => ({
-      event: log.event as string,
-      date:
-        log.timestamp instanceof Timestamp
-          ? log.timestamp.toDate()
-          : new Date((log.timestamp?.seconds ?? 0) * 1000),
-    }))
-    .filter((log) => getLocalDateStr(log.date) === todayStr)
-    .sort((a, b) => a.date.getTime() - b.date.getTime());
+  const today = new Date();
+  const todayKey = getLocalDateKey(today);
 
-  let inTime: number | null = null;
-  for (const log of sorted) {
+  // 1. Parse and sort all logs by time ascending
+  const parsedLogs = clockLogs
+    .map((log) => {
+      let dateObj: Date;
+      if (log.timestamp && typeof log.timestamp.toDate === "function") {
+        dateObj = log.timestamp.toDate();
+      } else if (log.timestamp && typeof log.timestamp.seconds === "number") {
+        dateObj = new Date(log.timestamp.seconds * 1000);
+      } else {
+        dateObj = new Date(log.timestamp || 0);
+      }
+      return {
+        event: log.event as "clockIn" | "clockOut",
+        date: dateObj,
+        time: dateObj.getTime(),
+      };
+    })
+    .sort((a, b) => a.time - b.time);
+
+  // 2. Build sessions from logs
+  interface Session {
+    clockIn: typeof parsedLogs[0];
+    clockOut: typeof parsedLogs[0] | null;
+  }
+  const sessions: Session[] = [];
+  let currentSessionStart: typeof parsedLogs[0] | null = null;
+
+  for (const log of parsedLogs) {
     if (log.event === "clockIn") {
-      inTime = log.date.getTime();
-    } else if (log.event === "clockOut" && inTime !== null) {
-      totalMs += log.date.getTime() - inTime;
-      inTime = null;
+      if (currentSessionStart) {
+        sessions.push({ clockIn: currentSessionStart, clockOut: null });
+      }
+      currentSessionStart = log;
+    } else if (log.event === "clockOut") {
+      if (currentSessionStart) {
+        sessions.push({ clockIn: currentSessionStart, clockOut: log });
+        currentSessionStart = null;
+      }
     }
   }
-  if (inTime !== null) totalMs += Date.now() - inTime;
+  if (currentSessionStart) {
+    sessions.push({ clockIn: currentSessionStart, clockOut: null });
+  }
+
+  // 3. Filter sessions where clockIn occurs on today's calendar date
+  const todaySessions = sessions.filter((session) => {
+    return getLocalDateKey(session.clockIn.date) === todayKey;
+  });
+
+  // 4. Calculate total duration
+  let totalMs = 0;
+  for (const session of todaySessions) {
+    if (session.clockOut) {
+      totalMs += session.clockOut.time - session.clockIn.time;
+    } else {
+      totalMs += Date.now() - session.clockIn.time;
+    }
+  }
 
   const mins = Math.floor(totalMs / 60000);
   const h = Math.floor(mins / 60);
@@ -57,10 +94,10 @@ function computeTodayActiveTime(clockLogs: any[] = []): string {
 }
 
 export default function DashboardPage() {
+  const { staff, loadingAppData } = useAppData();
   const [invoices, setInvoices] = useState<any[]>([]);
-  const [staff, setStaff] = useState<Staff[]>([]);
   const [invoicesLoaded, setInvoicesLoaded] = useState(false);
-  const [staffLoaded, setStaffLoaded] = useState(false);
+  const staffLoaded = !loadingAppData;
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
@@ -99,23 +136,8 @@ export default function DashboardPage() {
       (err) => console.error("Invoices listener error:", err)
     );
 
-    const unsubStaff = onSnapshot(
-      collection(db, "staff"),
-      (snapshot) => {
-        const list: Staff[] = [];
-        snapshot.forEach((d) =>
-          list.push({ id: d.id, ...d.data() } as Staff)
-        );
-        list.sort((a, b) => a.name.localeCompare(b.name));
-        setStaff(list);
-        setStaffLoaded(true);
-      },
-      (err) => console.error("Staff listener error:", err)
-    );
-
     return () => {
       unsubInvoices();
-      unsubStaff();
     };
   }, []);
 
@@ -198,7 +220,7 @@ export default function DashboardPage() {
     };
   }, [invoices, staff]);
 
-  // ── B: Today's invoices sorted newest first ─────────────────────────────
+  // ── B: Today's invoices sorted newest first by creation time ────────────
   const todayStr = new Date().toISOString().split("T")[0];
   const todayInvoices = invoices
     .filter((inv) => {
@@ -208,11 +230,21 @@ export default function DashboardPage() {
           : inv.date;
       return d === todayStr;
     })
-    .sort(
-      (a, b) =>
-        (b.date instanceof Timestamp ? b.date.seconds : 0) -
-        (a.date instanceof Timestamp ? a.date.seconds : 0)
-    );
+    .sort((a, b) => {
+      const aTime =
+        a.createdAt && typeof a.createdAt.toDate === "function"
+          ? a.createdAt.seconds
+          : a.date instanceof Timestamp
+          ? a.date.seconds
+          : 0;
+      const bTime =
+        b.createdAt && typeof b.createdAt.toDate === "function"
+          ? b.createdAt.seconds
+          : b.date instanceof Timestamp
+          ? b.date.seconds
+          : 0;
+      return bTime - aTime;
+    });
 
   if (!(invoicesLoaded && staffLoaded)) {
     return (
@@ -303,6 +335,9 @@ export default function DashboardPage() {
               <a href="/customers" className="inline-flex h-11 items-center justify-center rounded-xl border border-stone-200 bg-white px-6 text-sm font-semibold text-stone-900 hover:bg-stone-50 transition shadow-sm">
                 Add Customer
               </a>
+              <Link href="/expenses?add=true" className="inline-flex h-11 items-center justify-center rounded-xl border border-stone-200 bg-white px-6 text-sm font-semibold text-stone-900 hover:bg-stone-50 transition shadow-sm">
+                Add Expense
+              </Link>
             </div>
           </section>
         </div>
@@ -366,7 +401,6 @@ export default function DashboardPage() {
       <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
         <div className="mb-4">
           <h2 className="text-lg font-bold text-stone-900">Today's Invoices</h2>
-          <p className="text-xs text-stone-400">Sorted newest first</p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[560px] border-collapse text-left text-sm text-stone-600">
@@ -374,22 +408,36 @@ export default function DashboardPage() {
               <tr>
                 <th className="px-4 py-3 font-bold">Invoice #</th>
                 <th className="px-4 py-3 font-bold">Customer</th>
+                <th className="px-4 py-3 font-bold">Staff</th>
                 <th className="px-4 py-3 font-bold">Time</th>
                 <th className="px-4 py-3 font-bold text-right">Amount</th>
+                <th className="px-4 py-3 text-right"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-stone-100">
               {todayInvoices.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-stone-400 italic">
+                  <td colSpan={6} className="px-4 py-8 text-center text-stone-400 italic">
                     No bills recorded today.
                   </td>
                 </tr>
               ) : (
                 todayInvoices.map((inv) => {
+                  const staffListStr = Array.from(
+                    new Set(
+                      (inv.services || [])
+                        .map((s: any) => s.staffName || s.staff)
+                        .filter(Boolean)
+                    )
+                  ).join(", ");
+
+                  const timeSource =
+                    inv.createdAt && typeof inv.createdAt.toDate === "function"
+                      ? inv.createdAt
+                      : inv.date;
                   const time =
-                    inv.date instanceof Timestamp
-                      ? inv.date
+                    timeSource && typeof timeSource.toDate === "function"
+                      ? timeSource
                         .toDate()
                         .toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
                       : "—";
@@ -401,9 +449,22 @@ export default function DashboardPage() {
                       <td className="px-4 py-3 font-medium text-stone-800">
                         {inv.customerName}
                       </td>
+                      <td className="px-4 py-3 text-stone-600">
+                        {staffListStr || (
+                          <span className="italic text-stone-400">—</span>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-stone-500">{time}</td>
                       <td className="px-4 py-3 font-bold text-stone-900 text-right">
                         {formatCurrency(inv.grandTotal)}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <Link
+                          href={`/invoices/${inv.id}`}
+                          className="inline-flex h-8 items-center justify-center rounded-lg border border-stone-200 bg-white px-3 text-xs font-semibold text-stone-700 hover:text-black hover:border-black transition"
+                        >
+                          View
+                        </Link>
                       </td>
                     </tr>
                   );

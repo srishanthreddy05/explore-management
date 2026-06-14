@@ -12,13 +12,14 @@ import {
   orderBy,
 } from "firebase/firestore";
 import type { Customer } from "@/types/customer";
+import { toTitleCase } from "@/lib/utils/text";
 
 const COLLECTION_NAME = "customers";
 
 export async function create(customer: Omit<Customer, "id">): Promise<string> {
   try {
     const docRef = await addDoc(collection(db, COLLECTION_NAME), {
-      name: customer.name,
+      name: toTitleCase(customer.name),
       phone: customer.phone,
       customerType: customer.customerType,
       createdAt: customer.createdAt || new Date().toISOString(),
@@ -89,7 +90,11 @@ export async function update(
 ): Promise<void> {
   try {
     const docRef = doc(db, COLLECTION_NAME, id);
-    await updateDoc(docRef, data);
+    const normalizedData = { ...data };
+    if (normalizedData.name) {
+      normalizedData.name = toTitleCase(normalizedData.name);
+    }
+    await updateDoc(docRef, normalizedData);
   } catch (error) {
     console.error(`Error updating customer (${id}) in Firestore:`, error);
     throw error;

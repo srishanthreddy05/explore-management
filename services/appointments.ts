@@ -11,6 +11,7 @@ import {
   orderBy,
 } from "firebase/firestore";
 import type { Appointment } from "@/types/appointment";
+import { toTitleCase } from "@/lib/utils/text";
 
 const COLLECTION_NAME = "appointments";
 
@@ -18,8 +19,12 @@ export async function create(
   appointment: Omit<Appointment, "id">
 ): Promise<string> {
   try {
+    const normalizedServices = appointment.services?.map((s) => toTitleCase(s)) || [];
     const docRef = await addDoc(collection(db, COLLECTION_NAME), {
       ...appointment,
+      customerName: toTitleCase(appointment.customerName),
+      staffName: toTitleCase(appointment.staffName),
+      services: normalizedServices,
       createdAt: appointment.createdAt || new Date().toISOString(),
     });
     return docRef.id;
@@ -70,7 +75,17 @@ export async function update(
 ): Promise<void> {
   try {
     const docRef = doc(db, COLLECTION_NAME, id);
-    await updateDoc(docRef, data);
+    const normalizedData = { ...data };
+    if (normalizedData.customerName) {
+      normalizedData.customerName = toTitleCase(normalizedData.customerName);
+    }
+    if (normalizedData.staffName) {
+      normalizedData.staffName = toTitleCase(normalizedData.staffName);
+    }
+    if (normalizedData.services) {
+      normalizedData.services = normalizedData.services.map((s) => toTitleCase(s));
+    }
+    await updateDoc(docRef, normalizedData);
   } catch (error) {
     console.error(`Error updating appointment (${id}) in Firestore:`, error);
     throw error;
