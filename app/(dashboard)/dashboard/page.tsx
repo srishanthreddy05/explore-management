@@ -248,19 +248,15 @@ export default function DashboardPage() {
       return d === todayStr;
     })
     .sort((a, b) => {
-      const aTime =
-        a.createdAt && typeof a.createdAt.toDate === "function"
-          ? a.createdAt.seconds
-          : a.date instanceof Timestamp
-          ? a.date.seconds
-          : 0;
-      const bTime =
-        b.createdAt && typeof b.createdAt.toDate === "function"
-          ? b.createdAt.seconds
-          : b.date instanceof Timestamp
-          ? b.date.seconds
-          : 0;
-      return bTime - aTime;
+      const dateA = a.invoiceDate || a.date;
+      const dateB = b.invoiceDate || b.date;
+      const timeA = dateA && typeof dateA.toMillis === "function" ? dateA.toMillis() : (dateA instanceof Date ? dateA.getTime() : 0);
+      const timeB = dateB && typeof dateB.toMillis === "function" ? dateB.toMillis() : (dateB instanceof Date ? dateB.getTime() : 0);
+      if (timeB !== timeA) return timeB - timeA;
+
+      const createdA = a.createdAt && typeof a.createdAt.toMillis === "function" ? a.createdAt.toMillis() : 0;
+      const createdB = b.createdAt && typeof b.createdAt.toMillis === "function" ? b.createdAt.toMillis() : 0;
+      return createdB - createdA;
     });
 
   if (!(invoicesLoaded && staffLoaded)) {
@@ -443,6 +439,7 @@ export default function DashboardPage() {
               <tr>
                 <th className="px-4 py-3 font-bold">Invoice #</th>
                 <th className="px-4 py-3 font-bold">Customer</th>
+                <th className="px-4 py-3 font-bold">Cust Type</th>
                 <th className="px-4 py-3 font-bold">Staff</th>
                 <th className="px-4 py-3 font-bold">Time</th>
                 <th className="px-4 py-3 font-bold text-right">Amount</th>
@@ -452,7 +449,7 @@ export default function DashboardPage() {
             <tbody className="divide-y divide-stone-100">
               {todayInvoices.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-stone-400 italic">
+                  <td colSpan={7} className="px-4 py-8 text-center text-stone-400 italic">
                     No bills recorded today.
                   </td>
                 </tr>
@@ -476,6 +473,8 @@ export default function DashboardPage() {
                         .toDate()
                         .toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
                       : "—";
+                  const customerType = inv.customerType || "regular";
+
                   return (
                     <tr key={inv.id} className="hover:bg-stone-50 transition">
                       <td className="px-4 py-3 font-bold text-stone-900">
@@ -483,6 +482,23 @@ export default function DashboardPage() {
                       </td>
                       <td className="px-4 py-3 font-medium text-stone-800">
                         {inv.customerName}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-bold border ${
+                            customerType === "membership"
+                              ? "bg-emerald-50 text-emerald-800 border-emerald-300"
+                              : customerType === "regular"
+                                ? "bg-blue-50 text-blue-800 border-blue-300"
+                                : "bg-stone-50 text-stone-800 border-stone-300"
+                          }`}
+                        >
+                          {customerType === "membership"
+                            ? "Membership"
+                            : customerType === "new"
+                              ? "New"
+                              : "Regular"}
+                        </span>
                       </td>
                       <td className="px-4 py-3 text-stone-600">
                         {staffListStr || (

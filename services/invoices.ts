@@ -23,26 +23,31 @@ const COUNTER_DOC = doc(db, "counters", "invoice");  // /counters/invoice { last
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /**
- * Atomically increments the /counters/invoice.lastNumber and returns the next
- * invoice number string. Safe under concurrent billing sessions.
+ * Atomically increments the daily counter document inside /counters/invoices_YYMMDD
+ * and returns the next invoice number string. Safe under concurrent billing sessions.
  */
 async function getNextInvoiceNumber(): Promise<string> {
-  return runTransaction(db, async (tx) => {
-    const snap = await tx.get(COUNTER_DOC);
+  const now = new Date();
+  const yy = String(now.getFullYear()).slice(-2);
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  const dateStr = `${yy}${mm}${dd}`; // "260614"
 
-    let last = 1000;
+  const dailyCounterDoc = doc(db, "counters", `invoices_${dateStr}`);
+
+  return runTransaction(db, async (tx) => {
+    const snap = await tx.get(dailyCounterDoc);
+
+    let last = 0;
     if (snap.exists()) {
-      last = snap.data().lastNumber ?? 1000;
-    } else {
-      // First-time: create the counter document inside the transaction
-      tx.set(COUNTER_DOC, { lastNumber: 1000 });
+      last = snap.data().current ?? 0;
     }
 
     const next = last + 1;
-    tx.set(COUNTER_DOC, { lastNumber: next });
+    tx.set(dailyCounterDoc, { current: next });
 
-    const year = new Date().getFullYear();
-    return `INV-${year}-${next}`;
+    const formattedSeq = String(next).padStart(3, '0');
+    return `EXP-${dateStr}-${formattedSeq}`;
   });
 }
 
@@ -83,6 +88,23 @@ export async function create(
         }
       : undefined;
 
+    // Create invoiceDate combining selected date with current time
+    const now = new Date();
+    const selectedDate = new Date(invoice.dateString);
+    selectedDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+    const invoiceDate = Timestamp.fromDate(selectedDate);
+
+    // Compute dateKey (YYYY-MM-DD) and timeKey (HH:MM:SS) in local browser time
+    const yyyy = now.getFullYear();
+    const mmStr = String(now.getMonth() + 1).padStart(2, '0');
+    const ddStr = String(now.getDate()).padStart(2, '0');
+    const dateKey = `${yyyy}-${mmStr}-${ddStr}`;
+
+    const hhStr = String(now.getHours()).padStart(2, '0');
+    const minStr = String(now.getMinutes()).padStart(2, '0');
+    const secStr = String(now.getSeconds()).padStart(2, '0');
+    const timeKey = `${hhStr}:${minStr}:${secStr}`;
+
     const docRef = await addDoc(collection(db, COLLECTION), {
       ...rest,
       customerName: toTitleCase(rest.customerName),
@@ -90,7 +112,10 @@ export async function create(
       products: normalizedProducts,
       ...(normalizedAppliedOffer ? { appliedOffer: normalizedAppliedOffer } : {}),
       date: dateTs,
+      invoiceDate,
       createdAt: serverTimestamp(),
+      dateKey,
+      timeKey,
     });
     return docRef.id;
   } catch (error) {
@@ -107,7 +132,19 @@ export async function getAll(): Promise<Invoice[]> {
   try {
     const q = query(collection(db, COLLECTION), orderBy("date", "desc"));
     const snap = await getDocs(q);
-    return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Invoice));
+    const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Invoice));
+
+    return docs.sort((a, b) => {
+      const dateA = a.invoiceDate || a.date;
+      const dateB = b.invoiceDate || b.date;
+      const timeA = dateA && typeof dateA.toMillis === "function" ? dateA.toMillis() : 0;
+      const timeB = dateB && typeof dateB.toMillis === "function" ? dateB.toMillis() : 0;
+      if (timeB !== timeA) return timeB - timeA;
+
+      const createdA = a.createdAt && typeof a.createdAt.toMillis === "function" ? a.createdAt.toMillis() : 0;
+      const createdB = b.createdAt && typeof b.createdAt.toMillis === "function" ? b.createdAt.toMillis() : 0;
+      return createdB - createdA;
+    });
   } catch (error) {
     console.error("Error fetching invoices:", error);
     throw error;
@@ -123,7 +160,19 @@ export async function getByDateRange(startDate: Date, endDate: Date): Promise<In
       orderBy("date", "desc")
     );
     const snap = await getDocs(q);
-    return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Invoice));
+    const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Invoice));
+
+    return docs.sort((a, b) => {
+      const dateA = a.invoiceDate || a.date;
+      const dateB = b.invoiceDate || b.date;
+      const timeA = dateA && typeof dateA.toMillis === "function" ? dateA.toMillis() : 0;
+      const timeB = dateB && typeof dateB.toMillis === "function" ? dateB.toMillis() : 0;
+      if (timeB !== timeA) return timeB - timeA;
+
+      const createdA = a.createdAt && typeof a.createdAt.toMillis === "function" ? a.createdAt.toMillis() : 0;
+      const createdB = b.createdAt && typeof b.createdAt.toMillis === "function" ? b.createdAt.toMillis() : 0;
+      return createdB - createdA;
+    });
   } catch (error) {
     console.error("Error fetching invoices by date range:", error);
     throw error;

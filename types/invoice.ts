@@ -51,5 +51,8 @@ export interface Invoice {
   balanceDue?: number;
 
   // ── Meta ──────────────────────────────────────────────────────────────────
+  invoiceDate?: Timestamp;
+  dateKey?: string;
+  timeKey?: string;
   createdAt: Timestamp;
 }

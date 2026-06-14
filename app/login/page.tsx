@@ -181,10 +181,10 @@ export default function LoginPage() {
       </div>
 
       {/* ── Main card ── */}
-      <div className="relative z-10 grid w-full max-w-4xl overflow-hidden rounded-3xl border border-stone-200 shadow-2xl shadow-black/10 md:grid-cols-2">
+      <div className="relative z-10 grid w-full max-w-5xl overflow-hidden rounded-3xl border border-stone-200 shadow-2xl shadow-black/10 md:grid-cols-2">
 
         {/* ── Left panel ── */}
-        <div className="flex flex-col justify-between bg-[#0a0a0a] p-10">
+        <div className="flex flex-col justify-between bg-[#0a0a0a] p-12">
           <div>
             {/* Live badge */}
             <div className="mb-8 flex w-fit items-center gap-2 rounded-full border border-[#222] bg-[#141414] px-3 py-1.5">
@@ -223,7 +223,7 @@ export default function LoginPage() {
         </div>
 
         {/* ── Right panel ── */}
-        <div className="flex flex-col justify-center bg-white px-10 py-12">
+        <div className="flex flex-col justify-center bg-white px-12 py-16">
           <div className="mb-8">
             <h2 className="text-xl font-semibold text-stone-900">Welcome back</h2>
             <p className="mt-1 text-sm text-stone-400">Sign in to your account to continue</p>

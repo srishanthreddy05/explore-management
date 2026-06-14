@@ -9,12 +9,7 @@ const DOCUMENT_ID = "salon-settings";
 
 const defaultSettings: Settings = {
   salonName: "Explore Salon",
-  businessType: "Salon",
-  address: "123 Main Street, Suite A",
-  gstNumber: "Not Registered",
   phoneNumber: "+91 98765 43210",
-  logoUrl: "",
-  whatsAppNumber: "+91 98765 43210",
 };
 
 export async function getSettings(): Promise<Settings> {
@@ -49,9 +44,6 @@ export async function updateSettings(data: Partial<Settings>): Promise<void> {
     const normalizedData = { ...data };
     if (normalizedData.salonName) {
       normalizedData.salonName = toTitleCase(normalizedData.salonName);
-    }
-    if (normalizedData.businessType) {
-      normalizedData.businessType = toTitleCase(normalizedData.businessType);
     }
     await setDoc(docRef, normalizedData, { merge: true });
     clearCache(CACHE_KEYS.settings);

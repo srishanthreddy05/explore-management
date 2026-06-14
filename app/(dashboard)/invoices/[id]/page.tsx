@@ -51,6 +51,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
   const totalDiscount = invoice.totalDiscount ?? invoice.discount ?? 0;
   const paymentSplit = invoice.paymentSplit || invoice.payments || {};
   const appliedOffer = invoice.appliedOffer;
+  const customerType = invoice.customerType || "regular";
 
   // Invoice date may be a Firestore Timestamp or a "YYYY-MM-DD" string
   const invoiceDateObj =
@@ -175,7 +176,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
         {/* Left Column: Form Details & Tables (Billing Terminal format) */}
         <section className="rounded-2xl border border-stone-200 bg-white p-4 shadow-md sm:p-5 text-stone-900 space-y-6">
           {/* Top Form Grid (Invoice metadata) */}
-          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             <label className="block">
               <span className="text-sm font-semibold text-stone-700">Invoice Number</span>
               <input
@@ -223,6 +224,22 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                 type="text"
                 value={invoice.customerName}
                 className="mt-2 h-12 w-full rounded-2xl border border-stone-200 bg-stone-100 px-4 text-sm text-stone-500 outline-none"
+              />
+            </label>
+
+            <label className="block">
+              <span className="text-sm font-semibold text-stone-700">Customer Type</span>
+              <input
+                readOnly
+                type="text"
+                value={
+                  customerType === "membership"
+                    ? "Membership"
+                    : customerType === "new"
+                      ? "New"
+                      : "Regular"
+                }
+                className="mt-2 h-12 w-full rounded-2xl border border-stone-200 bg-stone-100 px-4 text-sm text-stone-500 font-semibold outline-none"
               />
             </label>
           </div>

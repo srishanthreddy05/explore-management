@@ -67,11 +67,26 @@ export default function InvoicesPage() {
       const snap = await getDocs(q);
       const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
+      let nextList = [];
       if (isLoadMore) {
-        setInvoices((prev) => [...prev, ...docs]);
+        nextList = [...invoices, ...docs];
       } else {
-        setInvoices(docs);
+        nextList = docs;
       }
+
+      nextList.sort((a: any, b: any) => {
+        const dateA = a.invoiceDate || a.date;
+        const dateB = b.invoiceDate || b.date;
+        const timeA = dateA && typeof dateA.toMillis === "function" ? dateA.toMillis() : 0;
+        const timeB = dateB && typeof dateB.toMillis === "function" ? dateB.toMillis() : 0;
+        if (timeB !== timeA) return timeB - timeA;
+
+        const createdA = a.createdAt && typeof a.createdAt.toMillis === "function" ? a.createdAt.toMillis() : 0;
+        const createdB = b.createdAt && typeof b.createdAt.toMillis === "function" ? b.createdAt.toMillis() : 0;
+        return createdB - createdA;
+      });
+
+      setInvoices(nextList);
 
       if (snap.docs.length > 0) {
         setLastDoc(snap.docs[snap.docs.length - 1]);

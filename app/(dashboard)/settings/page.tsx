@@ -12,12 +12,7 @@ export default function SettingsPage() {
   const { settings: cachedSettings, loadingAppData, refreshSettings } = useAppData();
   const [settings, setSettings] = useState<Settings>({
     salonName: "",
-    businessType: "",
-    address: "",
-    gstNumber: "",
     phoneNumber: "",
-    logoUrl: "",
-    whatsAppNumber: "",
   });
 
   const [loading, setLoading] = useState(true);
