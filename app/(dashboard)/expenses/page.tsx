@@ -15,6 +15,10 @@ export default function ExpensesPage() {
   const [typeFilter, setTypeFilter] = useState<"all" | "daily" | "monthly">("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  });
 
   // Modal states
   const [modalOpen, setModalOpen] = useState(false);
@@ -33,7 +37,10 @@ export default function ExpensesPage() {
   const loadExpenses = async () => {
     setLoading(true);
     try {
-      const data = await expensesService.getAll();
+      const [year, month] = selectedMonth.split("-").map(Number);
+      const start = new Date(year, month - 1, 1, 0, 0, 0, 0);
+      const end = new Date(year, month, 0, 23, 59, 59, 999);
+      const data = await expensesService.getByDateRange(start, end);
       setExpenses(data);
     } catch (error) {
       console.error("Failed to load expenses:", error);
@@ -44,6 +51,9 @@ export default function ExpensesPage() {
 
   useEffect(() => {
     loadExpenses();
+  }, [selectedMonth]);
+
+  useEffect(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       if (params.get("add") === "true") {
@@ -256,6 +266,14 @@ export default function ExpensesPage() {
               <option value="daily">Daily only</option>
               <option value="monthly">Monthly only</option>
             </select>
+
+            {/* Month picker */}
+            <input
+              type="month"
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="h-11 rounded-2xl border border-stone-200 bg-white px-4 text-sm font-semibold text-stone-800 shadow-sm outline-none focus:border-black"
+            />
 
             {/* Date range */}
             <input

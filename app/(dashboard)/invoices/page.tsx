@@ -3,14 +3,27 @@
 import { useEffect, useMemo, useState } from "react";
 import * as invoicesService from "@/services/invoices";
 import { formatCurrency } from "@/components/salon-dashboard/types";
-import { Search, Eye, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, Eye } from "lucide-react";
 import Link from "next/link";
-import { Timestamp } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import {
+  collection,
+  query,
+  where,
+  orderBy,
+  limit,
+  startAfter,
+  getDocs,
+  Timestamp,
+} from "firebase/firestore";
 
 export default function InvoicesPage() {
   const [invoices, setInvoices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [lastDoc, setLastDoc] = useState<any>(null);
+  const [hasMore, setHasMore] = useState(false);
 
   // Date range filters
   const now = new Date();
@@ -20,29 +33,62 @@ export default function InvoicesPage() {
   const [dateFrom, setDateFrom] = useState(firstDayStr);
   const [dateTo, setDateTo] = useState(todayStr);
 
-  // Pagination states
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
-
-  const loadInvoices = async () => {
-    setLoading(true);
+  const loadInvoices = async (isLoadMore = false) => {
+    if (isLoadMore) {
+      setLoadingMore(true);
+    } else {
+      setLoading(true);
+    }
     try {
       const start = new Date(dateFrom);
       start.setHours(0, 0, 0, 0);
       const end = new Date(dateTo);
       end.setHours(23, 59, 59, 999);
 
-      const data = await invoicesService.getByDateRange(start, end);
-      setInvoices(data);
+      let q = query(
+        collection(db, "invoices"),
+        where("date", ">=", Timestamp.fromDate(start)),
+        where("date", "<=", Timestamp.fromDate(end)),
+        orderBy("date", "desc"),
+        limit(20)
+      );
+
+      if (isLoadMore && lastDoc) {
+        q = query(
+          collection(db, "invoices"),
+          where("date", ">=", Timestamp.fromDate(start)),
+          where("date", "<=", Timestamp.fromDate(end)),
+          orderBy("date", "desc"),
+          startAfter(lastDoc),
+          limit(20)
+        );
+      }
+
+      const snap = await getDocs(q);
+      const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+      if (isLoadMore) {
+        setInvoices((prev) => [...prev, ...docs]);
+      } else {
+        setInvoices(docs);
+      }
+
+      if (snap.docs.length > 0) {
+        setLastDoc(snap.docs[snap.docs.length - 1]);
+      } else if (!isLoadMore) {
+        setLastDoc(null);
+      }
+      setHasMore(snap.docs.length === 20);
     } catch (error) {
       console.error("Failed to load invoices:", error);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   };
 
   useEffect(() => {
-    loadInvoices();
+    loadInvoices(false);
   }, [dateFrom, dateTo]);
 
   // Filter & Search Logic (scoping done at Firestore level, filter only search query here)
@@ -58,18 +104,6 @@ export default function InvoicesPage() {
       return name.includes(query) || mobile.includes(query) || invNo.includes(query);
     });
   }, [invoices, searchQuery]);
-
-  // Reset pagination when search query or date range changes
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchQuery, dateFrom, dateTo]);
-
-  // Pagination calculations
-  const totalPages = Math.max(1, Math.ceil(filteredInvoices.length / itemsPerPage));
-  const paginatedInvoices = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    return filteredInvoices.slice(startIndex, startIndex + itemsPerPage);
-  }, [filteredInvoices, currentPage]);
 
   return (
     <div className="w-full text-stone-900">
@@ -121,7 +155,7 @@ export default function InvoicesPage() {
         </div>
       </div>
 
-      {loading ? (
+      {loading && invoices.length === 0 ? (
         <div className="flex h-[40vh] items-center justify-center">
           <div className="size-10 animate-spin rounded-full border-4 border-black border-t-transparent" />
         </div>
@@ -150,7 +184,7 @@ export default function InvoicesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-200">
-                {paginatedInvoices.map((inv) => {
+                {filteredInvoices.map((inv) => {
                   const cash = inv.paymentSplit?.cash ?? inv.payments?.cash ?? (inv.paymentMethod === "Cash" ? (inv.grandTotal || 0) : 0);
                   const upi = inv.paymentSplit?.upi ?? inv.payments?.upi ?? (inv.paymentMethod === "UPI" ? (inv.grandTotal || 0) : 0);
                   const card = inv.paymentSplit?.card ?? inv.payments?.card ?? (inv.paymentMethod === "Card" ? (inv.grandTotal || 0) : 0);
@@ -206,27 +240,18 @@ export default function InvoicesPage() {
           </div>
 
           {/* Pagination Controls */}
-          {totalPages > 1 && (
-            <div className="mt-4 flex items-center justify-between">
-              <span className="text-xs text-stone-500 font-medium">
-                Page {currentPage} of {totalPages} ({filteredInvoices.length} Invoices)
-              </span>
-              <div className="flex gap-2">
-                <button
-                  disabled={currentPage === 1}
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  className="inline-flex size-9 items-center justify-center rounded-xl border border-stone-200 bg-white text-stone-500 transition hover:text-black disabled:opacity-50"
-                >
-                  <ChevronLeft size={16} />
-                </button>
-                <button
-                  disabled={currentPage === totalPages}
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  className="inline-flex size-9 items-center justify-center rounded-xl border border-stone-200 bg-white text-stone-500 transition hover:text-black disabled:opacity-50"
-                >
-                  <ChevronRight size={16} />
-                </button>
-              </div>
+          {hasMore && (
+            <div className="mt-4 flex justify-center">
+              <button
+                disabled={loadingMore}
+                onClick={() => loadInvoices(true)}
+                className="w-full sm:w-auto inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-stone-200 hover:border-stone-400 bg-white px-6 text-sm font-semibold text-stone-700 hover:bg-stone-50 transition disabled:opacity-50"
+              >
+                {loadingMore && (
+                  <div className="size-4 animate-spin rounded-full border-2 border-stone-400 border-t-transparent" />
+                )}
+                {loadingMore ? "Loading..." : "Load More Invoices"}
+              </button>
             </div>
           )}
         </>
@@ -234,4 +259,3 @@ export default function InvoicesPage() {
     </div>
   );
 }
-

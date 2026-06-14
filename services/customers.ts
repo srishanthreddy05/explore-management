@@ -10,21 +10,55 @@ import {
   query,
   where,
   orderBy,
+  setDoc,
+  increment,
+  runTransaction,
 } from "firebase/firestore";
 import type { Customer } from "@/types/customer";
 import { toTitleCase } from "@/lib/utils/text";
 
 const COLLECTION_NAME = "customers";
+const STATS_DOC = doc(db, "stats", "customers");
+
+export async function getStats(): Promise<{ regularCount: number; membershipCount: number }> {
+  try {
+    const snap = await getDoc(STATS_DOC);
+    if (snap.exists()) {
+      const data = snap.data();
+      return {
+        regularCount: data.regularCount || 0,
+        membershipCount: data.membershipCount || 0,
+      };
+    }
+    return { regularCount: 0, membershipCount: 0 };
+  } catch (error) {
+    console.error("Error getting customer stats:", error);
+    return { regularCount: 0, membershipCount: 0 };
+  }
+}
 
 export async function create(customer: Omit<Customer, "id">): Promise<string> {
   try {
-    const docRef = await addDoc(collection(db, COLLECTION_NAME), {
-      name: toTitleCase(customer.name),
-      phone: customer.phone,
-      customerType: customer.customerType,
-      createdAt: customer.createdAt || new Date().toISOString(),
+    const newDocRef = doc(collection(db, COLLECTION_NAME));
+    const isMembership = customer.customerType === "membership";
+    const counterField = isMembership ? "membershipCount" : "regularCount";
+
+    await runTransaction(db, async (transaction) => {
+      // Set customer document inside the transaction
+      transaction.set(newDocRef, {
+        name: toTitleCase(customer.name),
+        phone: customer.phone,
+        customerType: customer.customerType,
+        createdAt: customer.createdAt || new Date().toISOString(),
+      });
+
+      // Increment stats counter inside the same transaction
+      transaction.set(STATS_DOC, {
+        [counterField]: increment(1)
+      }, { merge: true });
     });
-    return docRef.id;
+
+    return newDocRef.id;
   } catch (error) {
     console.error("Error creating customer in Firestore:", error);
     throw error;
@@ -94,7 +128,29 @@ export async function update(
     if (normalizedData.name) {
       normalizedData.name = toTitleCase(normalizedData.name);
     }
-    await updateDoc(docRef, normalizedData);
+
+    await runTransaction(db, async (transaction) => {
+      // 1. Transaction read
+      const oldDocSnap = await transaction.get(docRef);
+      if (!oldDocSnap.exists()) {
+        throw new Error("Customer document does not exist");
+      }
+
+      const oldType = oldDocSnap.data().customerType || "regular";
+      const newType = normalizedData.customerType;
+
+      // 2. Transaction writes
+      if (newType && oldType !== newType) {
+        const oldField = oldType === "membership" ? "membershipCount" : "regularCount";
+        const newField = newType === "membership" ? "membershipCount" : "regularCount";
+        transaction.set(STATS_DOC, {
+          [oldField]: increment(-1),
+          [newField]: increment(1)
+        }, { merge: true });
+      }
+
+      transaction.update(docRef, normalizedData as Record<string, any>);
+    });
   } catch (error) {
     console.error(`Error updating customer (${id}) in Firestore:`, error);
     throw error;
@@ -104,7 +160,23 @@ export async function update(
 async function deleteCustomer(id: string): Promise<void> {
   try {
     const docRef = doc(db, COLLECTION_NAME, id);
-    await deleteDoc(docRef);
+
+    await runTransaction(db, async (transaction) => {
+      // 1. Transaction read
+      const docSnap = await transaction.get(docRef);
+      if (docSnap.exists()) {
+        const customer = docSnap.data();
+        const isMembership = customer.customerType === "membership";
+        const counterField = isMembership ? "membershipCount" : "regularCount";
+
+        // 2. Transaction writes
+        transaction.set(STATS_DOC, {
+          [counterField]: increment(-1)
+        }, { merge: true });
+      }
+
+      transaction.delete(docRef);
+    });
   } catch (error) {
     console.error(`Error deleting customer (${id}) from Firestore:`, error);
     throw error;

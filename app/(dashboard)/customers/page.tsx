@@ -4,17 +4,43 @@ import { useEffect, useState } from "react";
 import * as customerService from "@/services/customers";
 import type { Customer } from "@/types/customer";
 import { Plus, Search, Edit2, Trash2, X, Users } from "lucide-react";
+import { db } from "@/lib/firebase";
+import {
+  query,
+  collection,
+  where,
+  limit,
+  getDocs,
+  startAfter,
+  orderBy,
+} from "firebase/firestore";
+import { toTitleCase } from "@/lib/utils/text";
 
 export default function CustomersPage() {
-  const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [searchLoading, setSearchLoading] = useState(false);
 
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedQuery(searchQuery), 300);
-    return () => clearTimeout(t);
-  }, [searchQuery]);
+  // Stats
+  const [stats, setStats] = useState({ regularCount: 0, membershipCount: 0 });
+
+  // Customer states
+  const [regularCustomers, setRegularCustomers] = useState<Customer[]>([]);
+  const [membershipCustomers, setMembershipCustomers] = useState<Customer[]>([]);
+  const [searchResults, setSearchResults] = useState<Customer[]>([]);
+
+  // Pagination cursors
+  const [lastRegularDoc, setLastRegularDoc] = useState<any>(null);
+  const [lastMembershipDoc, setLastMembershipDoc] = useState<any>(null);
+
+  // Completion flags
+  const [hasMoreRegular, setHasMoreRegular] = useState(false);
+  const [hasMoreMembership, setHasMoreMembership] = useState(false);
+
+  // Loading more states
+  const [loadingMoreRegular, setLoadingMoreRegular] = useState(false);
+  const [loadingMoreMembership, setLoadingMoreMembership] = useState(false);
 
   // Modal states
   const [modalOpen, setModalOpen] = useState(false);
@@ -28,21 +54,182 @@ export default function CustomersPage() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [idToDelete, setIdToDelete] = useState<string | null>(null);
 
-  const loadCustomers = async () => {
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(searchQuery), 300);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
+
+  const loadStats = async () => {
+    const s = await customerService.getStats();
+    setStats(s);
+  };
+
+  const loadRegular = async (isLoadMore = false) => {
+    if (isLoadMore) {
+      setLoadingMoreRegular(true);
+    }
+    try {
+      let q = query(
+        collection(db, "customers"),
+        where("customerType", "==", "regular"),
+        orderBy("name", "asc"),
+        limit(25)
+      );
+
+      if (isLoadMore && lastRegularDoc) {
+        q = query(
+          collection(db, "customers"),
+          where("customerType", "==", "regular"),
+          orderBy("name", "asc"),
+          startAfter(lastRegularDoc),
+          limit(25)
+        );
+      }
+
+      const snap = await getDocs(q);
+      const docs = snap.docs.map(
+        (d) => ({ id: d.id, ...d.data() }) as Customer
+      );
+
+      if (isLoadMore) {
+        setRegularCustomers((prev) => [...prev, ...docs]);
+      } else {
+        setRegularCustomers(docs);
+      }
+
+      if (snap.docs.length > 0) {
+        setLastRegularDoc(snap.docs[snap.docs.length - 1]);
+      } else if (!isLoadMore) {
+        setLastRegularDoc(null);
+      }
+      setHasMoreRegular(snap.docs.length === 25);
+    } catch (error) {
+      console.error("Error loading regular customers:", error);
+    } finally {
+      if (isLoadMore) {
+        setLoadingMoreRegular(false);
+      }
+    }
+  };
+
+  const loadMembership = async (isLoadMore = false) => {
+    if (isLoadMore) {
+      setLoadingMoreMembership(true);
+    }
+    try {
+      let q = query(
+        collection(db, "customers"),
+        where("customerType", "==", "membership"),
+        orderBy("name", "asc"),
+        limit(25)
+      );
+
+      if (isLoadMore && lastMembershipDoc) {
+        q = query(
+          collection(db, "customers"),
+          where("customerType", "==", "membership"),
+          orderBy("name", "asc"),
+          startAfter(lastMembershipDoc),
+          limit(25)
+        );
+      }
+
+      const snap = await getDocs(q);
+      const docs = snap.docs.map(
+        (d) => ({ id: d.id, ...d.data() }) as Customer
+      );
+
+      if (isLoadMore) {
+        setMembershipCustomers((prev) => [...prev, ...docs]);
+      } else {
+        setMembershipCustomers(docs);
+      }
+
+      if (snap.docs.length > 0) {
+        setLastMembershipDoc(snap.docs[snap.docs.length - 1]);
+      } else if (!isLoadMore) {
+        setLastMembershipDoc(null);
+      }
+      setHasMoreMembership(snap.docs.length === 25);
+    } catch (error) {
+      console.error("Error loading membership customers:", error);
+    } finally {
+      if (isLoadMore) {
+        setLoadingMoreMembership(false);
+      }
+    }
+  };
+
+  const runSearch = async (queryString: string) => {
+    if (!queryString.trim()) {
+      setSearchResults([]);
+      return;
+    }
+    setSearchLoading(true);
+    try {
+      const isPhone = /^\d+$/.test(queryString);
+      let q;
+      if (isPhone) {
+        q = query(
+          collection(db, "customers"),
+          where("phone", ">=", queryString),
+          where("phone", "<=", queryString + "\uf8ff"),
+          limit(10)
+        );
+      } else {
+        const formatted = toTitleCase(queryString);
+        q = query(
+          collection(db, "customers"),
+          where("name", ">=", formatted),
+          where("name", "<=", formatted + "\uf8ff"),
+          limit(10)
+        );
+      }
+      const snap = await getDocs(q);
+      const results = snap.docs.map(
+        (d) => ({ id: d.id, ...d.data() }) as Customer
+      );
+      setSearchResults(results);
+    } catch (error) {
+      console.error("Error searching customers:", error);
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
+  const initializeData = async () => {
     setLoading(true);
     try {
-      const data = await customerService.getAll();
-      setCustomers(data);
+      await Promise.all([
+        loadStats(),
+        loadRegular(false),
+        loadMembership(false),
+      ]);
     } catch (error) {
-      console.error("Failed to load customers:", error);
+      console.error("Initialization error:", error);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadCustomers();
+    initializeData();
   }, []);
+
+  useEffect(() => {
+    if (debouncedQuery.trim()) {
+      runSearch(debouncedQuery);
+    } else {
+      setSearchResults([]);
+    }
+  }, [debouncedQuery]);
+
+  const handleRefresh = async () => {
+    await initializeData();
+    if (debouncedQuery.trim()) {
+      runSearch(debouncedQuery);
+    }
+  };
 
   const handleOpenAdd = () => {
     setEditingCustomer(null);
@@ -75,7 +262,7 @@ export default function CustomersPage() {
       await customerService.delete(idToDelete);
       setDeleteConfirmOpen(false);
       setIdToDelete(null);
-      loadCustomers();
+      await handleRefresh();
     } catch (error) {
       console.error("Failed to delete customer:", error);
     }
@@ -90,25 +277,27 @@ export default function CustomersPage() {
         await customerService.create(formData);
       }
       setModalOpen(false);
-      loadCustomers();
+      await handleRefresh();
     } catch (error) {
       console.error("Failed to save customer:", error);
     }
   };
 
-  const filteredCustomers = customers.filter(
-    (c) =>
-      c.name.toLowerCase().includes(debouncedQuery.toLowerCase()) ||
-      c.phone.includes(debouncedQuery)
-  );
+  const regularToDisplay = debouncedQuery.trim()
+    ? searchResults.filter((c) => c.customerType === "regular" || !c.customerType)
+    : regularCustomers;
 
-  const regularCustomers = filteredCustomers.filter(
-    (c) => c.customerType === "regular" || !c.customerType
-  );
+  const membershipToDisplay = debouncedQuery.trim()
+    ? searchResults.filter((c) => c.customerType === "membership")
+    : membershipCustomers;
 
-  const membershipCustomers = filteredCustomers.filter(
-    (c) => c.customerType === "membership"
-  );
+  const regularHeader = debouncedQuery.trim()
+    ? `Regular Customers (${regularToDisplay.length} found)`
+    : `Regular Customers (${stats.regularCount})`;
+
+  const membershipHeader = debouncedQuery.trim()
+    ? `Membership Customers (${membershipToDisplay.length} found)`
+    : `Membership Customers (${stats.membershipCount})`;
 
   return (
     <div className="w-full text-stone-900">
@@ -118,10 +307,10 @@ export default function CustomersPage() {
             CRM
           </p>
           <h1 className="mt-2 text-3xl font-bold tracking-tight text-stone-900">
-            Customers ({customers.length})
+            Customers ({stats.regularCount + stats.membershipCount})
           </h1>
         </div>
-        {!loading && customers.length > 0 && (
+        {!loading && (stats.regularCount + stats.membershipCount > 0) && (
           <button
             onClick={handleOpenAdd}
             className="inline-flex h-12 items-center gap-2 rounded-2xl bg-black px-6 text-sm font-semibold text-white shadow-md transition hover:-translate-y-0.5 hover:bg-stone-850"
@@ -136,7 +325,7 @@ export default function CustomersPage() {
         <div className="flex h-[40vh] items-center justify-center">
           <div className="size-10 animate-spin rounded-full border-4 border-black border-t-transparent" />
         </div>
-      ) : customers.length === 0 ? (
+      ) : (stats.regularCount + stats.membershipCount) === 0 ? (
         // Empty State UI
         <div className="flex flex-col items-center justify-center rounded-2xl border border-stone-200 bg-white p-12 text-center shadow-md">
           <div className="grid size-16 place-items-center rounded-2xl bg-stone-100 text-stone-900 mb-4">
@@ -158,7 +347,11 @@ export default function CustomersPage() {
         <>
           {/* Search bar */}
           <div className="mb-6 flex max-w-md items-center rounded-2xl border border-stone-200 bg-white px-4 h-12 shadow-sm focus-within:border-black">
-            <Search size={18} className="text-stone-400 mr-2" />
+            {searchLoading ? (
+              <div className="size-4 animate-spin rounded-full border-2 border-stone-400 border-t-transparent mr-2 shrink-0" />
+            ) : (
+              <Search size={18} className="text-stone-400 mr-2 shrink-0" />
+            )}
             <input
               type="text"
               placeholder="Search by name or phone..."
@@ -174,7 +367,7 @@ export default function CustomersPage() {
             <div className="space-y-4">
               <div className="flex items-center justify-between border-b border-stone-150 pb-2">
                 <h2 className="text-lg font-bold text-stone-900">
-                  Regular Customers ({regularCustomers.length})
+                  {regularHeader}
                 </h2>
               </div>
               <div className="overflow-x-auto rounded-2xl border border-stone-200 bg-white shadow-md">
@@ -187,14 +380,16 @@ export default function CustomersPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-stone-200">
-                    {regularCustomers.length === 0 ? (
+                    {regularToDisplay.length === 0 ? (
                       <tr>
                         <td colSpan={3} className="px-4 py-8 text-center text-stone-400 font-medium italic bg-white">
-                          No regular customers.
+                          {debouncedQuery.trim()
+                            ? "No matching regular customers."
+                            : "No regular customers."}
                         </td>
                       </tr>
                     ) : (
-                      regularCustomers.map((customer) => (
+                      regularToDisplay.map((customer) => (
                         <tr key={customer.id} className="hover:bg-stone-50 transition bg-white text-stone-900">
                           <td className="px-4 py-3 font-semibold text-stone-900">{customer.name}</td>
                           <td className="px-4 py-3 font-medium">{customer.phone}</td>
@@ -222,18 +417,30 @@ export default function CustomersPage() {
                   </tbody>
                 </table>
               </div>
+              {!debouncedQuery.trim() && hasMoreRegular && (
+                <button
+                  onClick={() => loadRegular(true)}
+                  disabled={loadingMoreRegular}
+                  className="w-full h-11 border border-stone-200 hover:border-stone-400 rounded-2xl text-sm font-semibold text-stone-700 hover:bg-stone-50 transition flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {loadingMoreRegular && (
+                    <div className="size-4 animate-spin rounded-full border-2 border-stone-400 border-t-transparent" />
+                  )}
+                  {loadingMoreRegular ? "Loading..." : "Load More"}
+                </button>
+              )}
             </div>
 
             {/* Membership Customers Section */}
             <div className="space-y-4">
               <div className="flex items-center justify-between border-b border-stone-150 pb-2">
                 <h2 className="text-lg font-bold text-stone-900">
-                  Membership Customers ({membershipCustomers.length})
+                  {membershipHeader}
                 </h2>
               </div>
               <div className="overflow-x-auto rounded-2xl border border-stone-200 bg-white shadow-md">
                 <table className="w-full min-w-[340px] border-collapse text-left text-sm text-stone-600">
-                  <thead className="bg-stone-55 text-xs uppercase tracking-[0.2em] text-stone-550 border-b border-stone-200">
+                  <thead className="bg-stone-50 text-xs uppercase tracking-[0.2em] text-stone-500 border-b border-stone-200">
                     <tr>
                       <th className="px-4 py-3.5 font-bold">Name</th>
                       <th className="px-4 py-3.5 font-bold">Phone</th>
@@ -241,14 +448,16 @@ export default function CustomersPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-stone-200">
-                    {membershipCustomers.length === 0 ? (
+                    {membershipToDisplay.length === 0 ? (
                       <tr>
                         <td colSpan={3} className="px-4 py-8 text-center text-stone-400 font-medium italic bg-white">
-                          No membership customers.
+                          {debouncedQuery.trim()
+                            ? "No matching membership customers."
+                            : "No membership customers."}
                         </td>
                       </tr>
                     ) : (
-                      membershipCustomers.map((customer) => (
+                      membershipToDisplay.map((customer) => (
                         <tr key={customer.id} className="hover:bg-stone-50 transition bg-white text-stone-900">
                           <td className="px-4 py-3 font-semibold text-stone-900">{customer.name}</td>
                           <td className="px-4 py-3 font-medium">{customer.phone}</td>
@@ -276,6 +485,18 @@ export default function CustomersPage() {
                   </tbody>
                 </table>
               </div>
+              {!debouncedQuery.trim() && hasMoreMembership && (
+                <button
+                  onClick={() => loadMembership(true)}
+                  disabled={loadingMoreMembership}
+                  className="w-full h-11 border border-stone-200 hover:border-stone-400 rounded-2xl text-sm font-semibold text-stone-700 hover:bg-stone-50 transition flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {loadingMoreMembership && (
+                    <div className="size-4 animate-spin rounded-full border-2 border-stone-400 border-t-transparent" />
+                  )}
+                  {loadingMoreMembership ? "Loading..." : "Load More"}
+                </button>
+              )}
             </div>
           </div>
         </>

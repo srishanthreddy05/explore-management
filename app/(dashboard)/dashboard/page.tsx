@@ -16,6 +16,9 @@ import type { Staff } from "@/types/staff";
 import { useAppData } from "@/context/AppDataContext";
 import { CalendarDays, CreditCard, TrendingUp } from "lucide-react";
 import Link from "next/link";
+import { BillingTerminal } from "@/components/billing/BillingTerminal";
+import { AddCustomerModal } from "@/components/customers/AddCustomerModal";
+import { AddExpenseModal } from "@/components/expenses/AddExpenseModal";
 
 // ── D: Active time helper ──────────────────────────────────────────────────
 function computeTodayActiveTime(clockLogs: any[] = []): string {
@@ -99,6 +102,20 @@ export default function DashboardPage() {
   const [invoicesLoaded, setInvoicesLoaded] = useState(false);
   const staffLoaded = !loadingAppData;
   const [tick, setTick] = useState(0);
+  const [isBillingOpen, setIsBillingOpen] = useState(false);
+  const [isCustomerOpen, setIsCustomerOpen] = useState(false);
+  const [isExpenseOpen, setIsExpenseOpen] = useState(false);
+
+  useEffect(() => {
+    if (isBillingOpen || isCustomerOpen || isExpenseOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [isBillingOpen, isCustomerOpen, isExpenseOpen]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -329,14 +346,32 @@ export default function DashboardPage() {
           <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-bold text-stone-900 mb-4">Quick Actions</h2>
             <div className="flex flex-wrap gap-4">
-              <a href="/billing" className="inline-flex h-11 items-center justify-center rounded-xl bg-black px-6 text-sm font-semibold text-white hover:bg-stone-800 transition shadow-sm">
+              <button
+                type="button"
+                onClick={() => setIsBillingOpen(true)}
+                className="inline-flex h-11 items-center justify-center rounded-xl bg-black px-6 text-sm font-semibold text-white hover:bg-stone-800 transition shadow-sm cursor-pointer"
+              >
                 Open Billing Terminal
-              </a>
-              <a href="/customers" className="inline-flex h-11 items-center justify-center rounded-xl border border-stone-200 bg-white px-6 text-sm font-semibold text-stone-900 hover:bg-stone-50 transition shadow-sm">
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsCustomerOpen(true)}
+                className="inline-flex h-11 items-center justify-center rounded-xl border border-stone-200 bg-white px-6 text-sm font-semibold text-stone-900 hover:bg-stone-50 transition shadow-sm cursor-pointer"
+              >
                 Add Customer
-              </a>
-              <Link href="/expenses?add=true" className="inline-flex h-11 items-center justify-center rounded-xl border border-stone-200 bg-white px-6 text-sm font-semibold text-stone-900 hover:bg-stone-50 transition shadow-sm">
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsExpenseOpen(true)}
+                className="inline-flex h-11 items-center justify-center rounded-xl border border-stone-200 bg-white px-6 text-sm font-semibold text-stone-900 hover:bg-stone-50 transition shadow-sm cursor-pointer"
+              >
                 Add Expense
+              </button>
+              <Link
+                href="/staff"
+                className="inline-flex h-11 items-center justify-center rounded-xl border border-stone-200 bg-white px-6 text-sm font-semibold text-stone-900 hover:bg-stone-50 transition shadow-sm"
+              >
+                Manage Staff
               </Link>
             </div>
           </section>
@@ -474,6 +509,37 @@ export default function DashboardPage() {
           </table>
         </div>
       </section>
+
+      {isBillingOpen && (
+        <div 
+          className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 backdrop-blur-sm p-4 sm:p-6 md:p-10 overflow-y-auto animate-in fade-in duration-200"
+          onClick={() => setIsBillingOpen(false)}
+        >
+          <div 
+            className="relative w-full max-w-7xl bg-[#F5F5F5] rounded-3xl border border-stone-200 shadow-2xl p-4 sm:p-6 md:p-8 my-auto animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <BillingTerminal
+              onClose={() => setIsBillingOpen(false)}
+              onSuccess={() => setIsBillingOpen(false)}
+            />
+          </div>
+        </div>
+      )}
+
+      {isCustomerOpen && (
+        <AddCustomerModal
+          onClose={() => setIsCustomerOpen(false)}
+          onSuccess={() => setIsCustomerOpen(false)}
+        />
+      )}
+
+      {isExpenseOpen && (
+        <AddExpenseModal
+          onClose={() => setIsExpenseOpen(false)}
+          onSuccess={() => setIsExpenseOpen(false)}
+        />
+      )}
     </div>
   );
 }

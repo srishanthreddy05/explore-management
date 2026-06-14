@@ -3,7 +3,6 @@
 import {
   BadgePercent,
   BarChart3,
-  CalendarDays,
   CreditCard,
   Gauge,
   Menu,
@@ -36,7 +35,6 @@ const menuGroups = [
       { label: "Billing", href: "/billing", icon: CreditCard },
       { label: "Invoices", href: "/invoices", icon: History },
       { label: "Customers", href: "/customers", icon: Users },
-      { label: "Appointments", href: "/appointments", icon: CalendarDays },
     ],
   },
   {
