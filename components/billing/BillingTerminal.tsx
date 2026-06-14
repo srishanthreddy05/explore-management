@@ -47,7 +47,6 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
   const [invoiceNumberDisplay, setInvoiceNumberDisplay] = useState("Auto-assigned on save");
 
   const [dateString, setDateString] = useState(new Date().toISOString().split("T")[0]);
-  const [notes, setNotes] = useState("");
 
   const [services, setServices] = useState<ServiceRow[]>([]);
   const [products, setProducts] = useState<ProductRow[]>([]);
@@ -206,7 +205,7 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose, services, products, customerName, customerMobile, notes, cashAmount, upiAmount, cardAmount, selectedOfferId]);
+  }, [onClose, services, products, customerName, customerMobile, cashAmount, upiAmount, cardAmount, selectedOfferId]);
 
   const handleSaveBill = async () => {
     if (!customerName.trim() || !customerMobile.trim()) {
@@ -303,7 +302,6 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
           card: cardVal,
         },
         paymentStatus: "paid",
-        notes,
       });
 
       // Step 5: Deduct product stock by productId
@@ -343,7 +341,6 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
     setProducts([]);
     setCustomerName("");
     setCustomerMobile("");
-    setNotes("");
     setClientStatus(null);
     setFoundCustomerId(null);
     setMessage(null);
@@ -441,10 +438,7 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
     <>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.32em] text-stone-500">
-            Billing
-          </p>
-          <h1 className="mt-2 text-3xl font-bold tracking-tight text-stone-900">
+          <h1 className="text-3xl font-bold tracking-tight text-stone-900">
             New Billing
           </h1>
         </div>
@@ -555,54 +549,56 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
             disabled={saved}
           />
 
-          <label className="mt-5 block">
-            <span className="text-sm font-semibold text-stone-700">Notes</span>
-            <textarea
-              value={notes}
-              disabled={saved}
-              onChange={(e) => setNotes(e.target.value)}
-              className="mt-2 min-h-28 w-full resize-none rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none placeholder:text-stone-400 focus:border-black disabled:bg-stone-100 disabled:text-stone-500"
-              placeholder="Add consultation notes, package details, or special instructions."
+          <div className="grid gap-5 md:grid-cols-2 mt-6 pt-6 border-t border-stone-200">
+            {/* Offers Selector */}
+            <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm text-stone-900 flex flex-col justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-stone-900 mb-3">Apply Offer</h2>
+                {offersList.length === 0 ? (
+                  <p className="text-sm text-stone-400">No offers have been created yet.</p>
+                ) : eligibleOffers.length === 0 ? (
+                  <p className="text-sm text-stone-400">
+                    No active offers are eligible for this bill right now.
+                  </p>
+                ) : (
+                  <select
+                    value={selectedOfferId}
+                    disabled={saved}
+                    onChange={(e) => setSelectedOfferId(e.target.value)}
+                    className="h-11 w-full rounded-xl border border-stone-200 bg-stone-50 px-3 text-sm text-stone-900 outline-none transition focus:border-black disabled:bg-stone-100 disabled:text-stone-500"
+                  >
+                    <option value="">No offer applied</option>
+                    {eligibleOffers.map((offer) => (
+                      <option key={offer.id} value={offer.id}>
+                        {offer.code} — {offer.name} (
+                        {offer.discountType === "percentage"
+                          ? `${offer.discountValue}% off`
+                          : `${formatCurrency(offer.discountValue)} off`}
+                        )
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              {selectedOffer && (
+                <p className="mt-3 text-xs font-semibold text-emerald-700">
+                  Discount applied: -{formatCurrency(totals.offerDiscount)}
+                </p>
+              )}
+            </section>
+
+            {/* Action Buttons */}
+            <ActionButtons
+              onSave={handleSaveBill}
+              onClose={handleClose}
+              onWhatsApp={handleWhatsApp}
+              disabled={saved || saving || !isPaymentValid}
+              saved={saved}
             />
-          </label>
+          </div>
         </section>
 
         <aside className="space-y-5">
-          {/* Offers Selector */}
-          <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-md text-stone-900">
-            <h2 className="text-lg font-bold text-stone-900 mb-3">Apply Offer</h2>
-            {offersList.length === 0 ? (
-              <p className="text-sm text-stone-400">No offers have been created yet.</p>
-            ) : eligibleOffers.length === 0 ? (
-              <p className="text-sm text-stone-400">
-                No active offers are eligible for this bill right now.
-              </p>
-            ) : (
-              <select
-                value={selectedOfferId}
-                disabled={saved}
-                onChange={(e) => setSelectedOfferId(e.target.value)}
-                className="h-11 w-full rounded-xl border border-stone-200 bg-stone-50 px-3 text-sm text-stone-900 outline-none transition focus:border-black disabled:bg-stone-100 disabled:text-stone-500"
-              >
-                <option value="">No offer applied</option>
-                {eligibleOffers.map((offer) => (
-                  <option key={offer.id} value={offer.id}>
-                    {offer.code} — {offer.name} (
-                    {offer.discountType === "percentage"
-                      ? `${offer.discountValue}% off`
-                      : `${formatCurrency(offer.discountValue)} off`}
-                    )
-                  </option>
-                ))}
-              </select>
-            )}
-            {selectedOffer && (
-              <p className="mt-2 text-xs font-semibold text-emerald-700">
-                Discount applied: -{formatCurrency(totals.offerDiscount)}
-              </p>
-            )}
-          </section>
-
           <SummaryCard totals={totals} />
 
           <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-md text-stone-900">
@@ -626,28 +622,31 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
                 <span className="text-lg font-bold text-stone-900">{formatCurrency(totals.grandTotal)}</span>
               </div>
 
-              {(["cash", "upi", "card"] as const).map((method) => {
-                const val = method === "cash" ? cashAmount : method === "upi" ? upiAmount : cardAmount;
-                const setFn = method === "cash" ? setCashAmount : method === "upi" ? setUpiAmount : setCardAmount;
-                return (
-                  <label key={method} className="block">
-                    <span className="text-xs font-semibold text-stone-600 capitalize">{method} Amount</span>
-                    <input
-                      type="number"
-                      min="0"
-                      value={val}
-                      placeholder="0"
-                      disabled={saved}
-                      onChange={(e) => {
-                        setIsSplitEdited(true);
-                        const v = e.target.value;
-                        setFn(v === "" ? "" : Math.max(0, Number(v)));
-                      }}
-                      className="mt-1 h-10 w-full rounded-xl border border-stone-200 bg-stone-50 px-3 text-sm text-stone-900 outline-none focus:border-black disabled:bg-stone-100 disabled:text-stone-500"
-                    />
-                  </label>
-                );
-              })}
+              {/* Horizontal Payment Inputs */}
+              <div className="grid grid-cols-3 gap-2.5">
+                {(["cash", "upi", "card"] as const).map((method) => {
+                  const val = method === "cash" ? cashAmount : method === "upi" ? upiAmount : cardAmount;
+                  const setFn = method === "cash" ? setCashAmount : method === "upi" ? setUpiAmount : setCardAmount;
+                  return (
+                    <label key={method} className="block">
+                      <span className="text-xs font-semibold text-stone-600 capitalize">{method} Amount</span>
+                      <input
+                        type="number"
+                        min="0"
+                        value={val}
+                        placeholder="0"
+                        disabled={saved}
+                        onChange={(e) => {
+                          setIsSplitEdited(true);
+                          const v = e.target.value;
+                          setFn(v === "" ? "" : Math.max(0, Number(v)));
+                        }}
+                        className="mt-1.5 h-10 w-full rounded-xl border border-stone-200 bg-stone-50 px-2 text-sm text-stone-900 outline-none focus:border-black disabled:bg-stone-100 disabled:text-stone-500"
+                      />
+                    </label>
+                  );
+                })}
+              </div>
 
               <div className="border-t border-stone-100 pt-3 space-y-2.5">
                 <div className="flex items-center justify-between">
@@ -675,14 +674,6 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
               </div>
             </div>
           </section>
-
-          <ActionButtons
-            onSave={handleSaveBill}
-            onClose={handleClose}
-            onWhatsApp={handleWhatsApp}
-            disabled={saved || saving || !isPaymentValid}
-            saved={saved}
-          />
         </aside>
       </div>
     </>

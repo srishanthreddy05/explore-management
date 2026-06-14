@@ -3,7 +3,7 @@
 import { useEffect, useState, use } from "react";
 import * as invoicesService from "@/services/invoices";
 import { formatCurrency } from "@/components/salon-dashboard/types";
-import { ChevronLeft, Receipt, User, DollarSign, CalendarDays, Send, Tag } from "lucide-react";
+import { ChevronLeft, Receipt, Send, Tag } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -45,7 +45,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
 
   const paymentStatus = invoice.paymentStatus || "paid";
 
-  // ── New-schema field reads ───────────────────────────────────────────────
+  // ── Schema field reads ───────────────────────────────────────────────────
   const invoiceNumber = invoice.invoiceNumber || invoice.invoiceNo;
   const customerPhone = invoice.customerPhone || invoice.customerMobile;
   const totalDiscount = invoice.totalDiscount ?? invoice.discount ?? 0;
@@ -70,12 +70,16 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
         ? new Date(invoice.createdAt)
         : invoiceDateObj;
 
+  const invoiceTimeLabel = createdAtObj
+    ? createdAtObj.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true })
+    : "—";
+
   const cashPaid = paymentSplit.cash ?? (invoice.paymentMethod === "Cash" ? invoice.grandTotal : 0);
   const upiPaid = paymentSplit.upi ?? (invoice.paymentMethod === "UPI" ? invoice.grandTotal : 0);
   const cardPaid = paymentSplit.card ?? (invoice.paymentMethod === "Card" ? invoice.grandTotal : 0);
   const totalPaid = (cashPaid || 0) + (upiPaid || 0) + (cardPaid || 0) || invoice.grandTotal;
 
-  // ── WhatsApp re-share ─────────────────────────────────────────────────────
+  // ── WhatsApp share ────────────────────────────────────────────────────────
   const handleWhatsApp = () => {
     if (!customerPhone) {
       alert("This invoice has no customer mobile number on file.");
@@ -141,8 +145,9 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
   };
 
   return (
-    <div className="w-full text-stone-900 max-w-4xl space-y-6">
-      <div className="flex items-center justify-between gap-3">
+    <div className="w-full text-stone-900 max-w-7xl px-4 sm:px-6 lg:px-8 mx-auto space-y-6">
+      {/* Header Row */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-3">
           <Link
             href="/invoices"
@@ -150,235 +155,269 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
           >
             <ChevronLeft size={18} />
           </Link>
-          <div>
-            <p className="text-xs uppercase tracking-[0.28em] text-stone-500 font-bold">Receipts</p>
-            <h1 className="text-2xl font-bold tracking-tight text-stone-900 mt-1">
-              Invoice details for {invoiceNumber}
-            </h1>
-          </div>
+          <h1 className="text-2xl font-bold tracking-tight text-stone-900">
+            Invoice Detail View
+          </h1>
         </div>
 
-        {/* WhatsApp re-share button */}
+        {/* WhatsApp share button */}
         <button
           onClick={handleWhatsApp}
-          className="inline-flex h-11 items-center gap-2 rounded-2xl bg-emerald-600 px-5 text-sm font-semibold text-white shadow-md transition hover:-translate-y-0.5 hover:bg-emerald-700"
+          className="inline-flex h-11 items-center gap-2 rounded-2xl bg-emerald-600 px-5 text-sm font-semibold text-white shadow-md transition hover:-translate-y-0.5 hover:bg-emerald-700 cursor-pointer"
         >
           <Send size={16} />
           Share on WhatsApp
         </button>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-3">
-        {/* Customer Info */}
-        <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm space-y-3">
-          <div className="flex items-center gap-3 text-stone-500">
-            <User size={18} className="text-stone-600" />
-            <span className="text-sm font-bold text-stone-900">Customer Details</span>
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-stone-850">{invoice.customerName}</p>
-            <p className="text-xs text-stone-500 mt-1">{customerPhone}</p>
-            {invoice.customerType && (
-              <span className="mt-2 inline-block rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-stone-100 text-stone-700 border border-stone-200">
-                {invoice.customerType}
-              </span>
-            )}
-          </div>
-        </div>
+      {/* Main Content Layout Grid */}
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,7fr)_minmax(320px,3fr)]">
+        {/* Left Column: Form Details & Tables (Billing Terminal format) */}
+        <section className="rounded-2xl border border-stone-200 bg-white p-4 shadow-md sm:p-5 text-stone-900 space-y-6">
+          {/* Top Form Grid (Invoice metadata) */}
+          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+            <label className="block">
+              <span className="text-sm font-semibold text-stone-700">Invoice Number</span>
+              <input
+                readOnly
+                type="text"
+                value={invoiceNumber}
+                className="mt-2 h-12 w-full rounded-2xl border border-stone-200 bg-stone-100 px-4 text-sm text-stone-500 outline-none"
+              />
+            </label>
 
-        {/* Date info */}
-        <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm space-y-3">
-          <div className="flex items-center gap-3 text-stone-500">
-            <CalendarDays size={18} className="text-stone-600" />
-            <span className="text-sm font-bold text-stone-900">Billing Date</span>
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-stone-850">{invoiceDateLabel}</p>
-            <p className="text-xs text-stone-500 mt-1">
-              Logged: {createdAtObj ? createdAtObj.toLocaleString() : "—"}
-            </p>
-          </div>
-        </div>
+            <label className="block">
+              <span className="text-sm font-semibold text-stone-700">Date</span>
+              <input
+                readOnly
+                type="text"
+                value={invoiceDateLabel}
+                className="mt-2 h-12 w-full rounded-2xl border border-stone-200 bg-stone-100 px-4 text-sm text-stone-500 outline-none"
+              />
+            </label>
 
-        {/* Status info */}
-        <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm space-y-3">
-          <div className="flex items-center gap-3 text-stone-500">
-            <DollarSign size={18} className="text-stone-600" />
-            <span className="text-sm font-bold text-stone-900">Payment Status</span>
+            <label className="block">
+              <span className="text-sm font-semibold text-stone-700">Time</span>
+              <input
+                readOnly
+                type="text"
+                value={invoiceTimeLabel}
+                className="mt-2 h-12 w-full rounded-2xl border border-stone-200 bg-stone-100 px-4 text-sm text-stone-500 outline-none"
+              />
+            </label>
+
+            <label className="block">
+              <span className="text-sm font-semibold text-stone-700">Customer Mobile</span>
+              <input
+                readOnly
+                type="text"
+                value={customerPhone || "—"}
+                className="mt-2 h-12 w-full rounded-2xl border border-stone-200 bg-stone-100 px-4 text-sm text-stone-500 outline-none"
+              />
+            </label>
+
+            <label className="block">
+              <span className="text-sm font-semibold text-stone-700">Customer Name</span>
+              <input
+                readOnly
+                type="text"
+                value={invoice.customerName}
+                className="mt-2 h-12 w-full rounded-2xl border border-stone-200 bg-stone-100 px-4 text-sm text-stone-500 outline-none"
+              />
+            </label>
           </div>
-          <div className="flex flex-col items-start gap-1">
-            <span
-              className={`inline-block rounded-full px-3 py-1 text-xs font-bold border ${paymentStatus === "paid"
-                  ? "bg-emerald-50 text-emerald-800 border-emerald-300"
+
+          {/* Services Rendered Table */}
+          {invoice.services && invoice.services.length > 0 && (
+            <section className="mt-6">
+              <h2 className="text-lg font-bold text-stone-900 mb-3">Services</h2>
+              <div className="overflow-x-auto rounded-2xl border border-stone-200 bg-white">
+                <table className="w-full min-w-[600px] border-collapse text-left text-sm">
+                  <thead className="bg-stone-50 text-xs uppercase tracking-[0.2em] text-stone-500 border-b border-stone-200">
+                    <tr>
+                      <th className="px-4 py-4 font-semibold">Service</th>
+                      <th className="px-4 py-4 font-semibold">Staff</th>
+                      <th className="px-4 py-4 font-semibold">Price</th>
+                      <th className="px-4 py-4 font-semibold">Discount</th>
+                      <th className="px-4 py-4 font-semibold text-right">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-200">
+                    {invoice.services.map((item: any, idx: number) => {
+                      const name = item.serviceName || item.service;
+                      const staffName = item.staffName || item.staff;
+                      const amount = item.amount ?? Math.max((item.price || 0) - (item.discount || 0), 0);
+                      return (
+                        <tr key={idx} className="bg-white transition hover:bg-stone-50">
+                          <td className="px-4 py-3 font-semibold text-stone-900">{name}</td>
+                          <td className="px-4 py-3 text-stone-900">{staffName}</td>
+                          <td className="px-4 py-3">{formatCurrency(item.price)}</td>
+                          <td className="px-4 py-3 text-emerald-600">- {formatCurrency(item.discount || 0)}</td>
+                          <td className="px-4 py-3 font-semibold text-stone-900 text-right">
+                            {formatCurrency(amount)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+
+          {/* Products Purchased Table */}
+          {invoice.products && invoice.products.length > 0 && (
+            <section className="mt-6">
+              <h2 className="text-lg font-bold text-stone-900 mb-3">Products</h2>
+              <div className="overflow-x-auto rounded-2xl border border-stone-200 bg-white">
+                <table className="w-full min-w-[600px] border-collapse text-left text-sm">
+                  <thead className="bg-stone-50 text-xs uppercase tracking-[0.2em] text-stone-500 border-b border-stone-200">
+                    <tr>
+                      <th className="px-4 py-4 font-semibold">Product</th>
+                      <th className="px-4 py-4 font-semibold">Price</th>
+                      <th className="px-4 py-4 font-semibold">Quantity</th>
+                      <th className="px-4 py-4 font-semibold">Discount</th>
+                      <th className="px-4 py-4 font-semibold text-right">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-200">
+                    {invoice.products.map((item: any, idx: number) => {
+                      const name = item.productName || item.product;
+                      const amount = item.amount ?? Math.max((item.price || 0) * (item.quantity || 1) - (item.discount || 0), 0);
+                      return (
+                        <tr key={idx} className="bg-white transition hover:bg-stone-50">
+                          <td className="px-4 py-3 font-semibold text-stone-900">{name}</td>
+                          <td className="px-4 py-3">{formatCurrency(item.price)}</td>
+                          <td className="px-4 py-3 text-stone-900">{item.quantity}</td>
+                          <td className="px-4 py-3 text-emerald-600">- {formatCurrency(item.discount || 0)}</td>
+                          <td className="px-4 py-3 font-semibold text-stone-900 text-right">
+                            {formatCurrency(amount)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+        </section>
+
+        {/* Right Column: Totals Summary, Offer if applied, Payment split info */}
+        <aside className="space-y-5">
+          {/* Totals Summary */}
+          <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-md text-stone-900 space-y-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Receipt size={18} />
+              <h2 className="text-sm font-bold">Totals Summary</h2>
+            </div>
+
+            <div className="space-y-2 border-t border-stone-100 pt-3 text-sm">
+              {invoice.totalServices !== undefined && (
+                <div className="flex items-center justify-between text-stone-500">
+                  <span>Total Services</span>
+                  <span className="font-semibold text-stone-800">{formatCurrency(invoice.totalServices)}</span>
+                </div>
+              )}
+              {invoice.totalProducts !== undefined && (
+                <div className="flex items-center justify-between text-stone-500">
+                  <span>Total Products</span>
+                  <span className="font-semibold text-stone-800">{formatCurrency(invoice.totalProducts)}</span>
+                </div>
+              )}
+              <div className="flex items-center justify-between text-stone-500">
+                <span>Subtotal</span>
+                <span className="font-semibold text-stone-800">{formatCurrency(invoice.subtotal)}</span>
+              </div>
+              <div className="flex items-center justify-between text-stone-500">
+                <span>Overall Discount</span>
+                <span className="font-semibold text-emerald-600">- {formatCurrency(totalDiscount)}</span>
+              </div>
+              <div className="flex items-center justify-between text-stone-800 font-bold border-t border-stone-100 pt-2 text-base">
+                <span>Grand Total</span>
+                <span>{formatCurrency(invoice.grandTotal)}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Offer if applied */}
+          {appliedOffer && (
+            <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-md text-stone-900">
+              <h2 className="text-lg font-bold text-stone-900 mb-3">Applied Offer</h2>
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3.5 flex items-start gap-2.5">
+                <Tag size={16} className="text-emerald-700 mt-0.5 shrink-0" />
+                <div className="text-xs text-emerald-800 leading-normal">
+                  <span className="font-bold uppercase tracking-wider">{appliedOffer.code}</span>
+                  {" "}— {appliedOffer.name}
+                  <p className="mt-1.5 font-bold text-emerald-700">Discount: -{formatCurrency(appliedOffer.discountAmount)}</p>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* Payment Method & Split */}
+          <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-md text-stone-900">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-stone-900">Payment Information</h2>
+              <span
+                className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-bold border ${paymentStatus === "paid"
+                    ? "bg-emerald-50 text-emerald-800 border-emerald-300"
+                    : paymentStatus === "unpaid"
+                      ? "bg-red-50 text-red-800 border-red-300"
+                      : "bg-amber-50 text-amber-800 border-amber-300"
+                  }`}
+              >
+                {paymentStatus === "paid"
+                  ? "Paid"
                   : paymentStatus === "unpaid"
-                    ? "bg-red-50 text-red-800 border-red-300"
-                    : "bg-amber-50 text-amber-800 border-amber-300"
-                }`}
-            >
-              {paymentStatus === "paid"
-                ? "Paid"
-                : paymentStatus === "unpaid"
-                  ? "Unpaid"
-                  : "Partially Paid"}
-            </span>
-            <span className="text-[10px] text-stone-400 mt-1 uppercase tracking-wider font-semibold">
-              Method: {invoice.paymentMethod || "Split"}
-            </span>
-          </div>
-        </div>
-      </div>
+                    ? "Unpaid"
+                    : "Partially Paid"}
+              </span>
+            </div>
 
-      {/* Applied offer banner */}
-      {appliedOffer && (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 flex items-center gap-3">
-          <Tag size={18} className="text-emerald-700" />
-          <div className="text-sm text-emerald-800">
-            <span className="font-bold uppercase tracking-wider">{appliedOffer.code}</span>
-            {" "}— {appliedOffer.name} applied, saving{" "}
-            <span className="font-bold">{formatCurrency(appliedOffer.discountAmount)}</span>
-          </div>
-        </div>
-      )}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between border-b border-stone-100 pb-3 text-sm">
+                <span className="font-semibold text-stone-700">Grand Total</span>
+                <span className="font-bold text-stone-900">{formatCurrency(invoice.grandTotal)}</span>
+              </div>
 
-      {/* Services Table */}
-      {invoice.services && invoice.services.length > 0 && (
-        <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-bold text-stone-900 mb-3">Services Rendered</h2>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[600px] border-collapse text-left text-sm text-stone-600">
-              <thead className="bg-stone-50 text-xs uppercase tracking-[0.2em] text-stone-500 border-b border-stone-200">
-                <tr>
-                  <th className="px-4 py-3 font-bold">Service</th>
-                  <th className="px-4 py-3 font-bold">Staff</th>
-                  <th className="px-4 py-3 font-bold">Price</th>
-                  <th className="px-4 py-3 font-bold">Discount</th>
-                  <th className="px-4 py-3 font-bold text-right">Amount</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-stone-200">
-                {invoice.services.map((item: any, idx: number) => {
-                  const name = item.serviceName || item.service;
-                  const staffName = item.staffName || item.staff;
-                  const amount = item.amount ?? Math.max((item.price || 0) - (item.discount || 0), 0);
+              {/* Horizontal Payment Inputs */}
+              <div className="grid grid-cols-3 gap-2.5">
+                {(["cash", "upi", "card"] as const).map((method) => {
+                  const val = method === "cash" ? cashPaid : method === "upi" ? upiPaid : cardPaid;
                   return (
-                    <tr key={idx} className="bg-white">
-                      <td className="px-4 py-3 font-semibold text-stone-900">{name}</td>
-                      <td className="px-4 py-3 font-medium text-stone-700">{staffName}</td>
-                      <td className="px-4 py-3">{formatCurrency(item.price)}</td>
-                      <td className="px-4 py-3 text-emerald-600">- {formatCurrency(item.discount || 0)}</td>
-                      <td className="px-4 py-3 font-bold text-stone-900 text-right">
-                        {formatCurrency(amount)}
-                      </td>
-                    </tr>
+                    <label key={method} className="block">
+                      <span className="text-xs font-semibold text-stone-600 capitalize">{method} Paid</span>
+                      <input
+                        readOnly
+                        type="text"
+                        value={formatCurrency(val || 0)}
+                        className="mt-1.5 h-10 w-full rounded-xl border border-stone-200 bg-stone-100 px-2 text-xs text-stone-500 font-semibold outline-none"
+                      />
+                    </label>
                   );
                 })}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
-
-      {/* Products Table */}
-      {invoice.products && invoice.products.length > 0 && (
-        <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-bold text-stone-900 mb-3">Products Purchased</h2>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[600px] border-collapse text-left text-sm text-stone-600">
-              <thead className="bg-stone-50 text-xs uppercase tracking-[0.2em] text-stone-500 border-b border-stone-200">
-                <tr>
-                  <th className="px-4 py-3 font-bold">Product</th>
-                  <th className="px-4 py-3 font-bold">Price</th>
-                  <th className="px-4 py-3 font-bold">Quantity</th>
-                  <th className="px-4 py-3 font-bold">Discount</th>
-                  <th className="px-4 py-3 font-bold text-right">Amount</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-stone-200">
-                {invoice.products.map((item: any, idx: number) => {
-                  const name = item.productName || item.product;
-                  const amount = item.amount ?? Math.max((item.price || 0) * (item.quantity || 1) - (item.discount || 0), 0);
-                  return (
-                    <tr key={idx} className="bg-white">
-                      <td className="px-4 py-3 font-semibold text-stone-900">{name}</td>
-                      <td className="px-4 py-3">{formatCurrency(item.price)}</td>
-                      <td className="px-4 py-3 font-medium text-stone-700">{item.quantity}</td>
-                      <td className="px-4 py-3 text-emerald-600">- {formatCurrency(item.discount || 0)}</td>
-                      <td className="px-4 py-3 font-bold text-stone-900 text-right">
-                        {formatCurrency(amount)}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
-
-      {/* Bill summary and notes */}
-      <div className="grid gap-6 md:grid-cols-[1.5fr_1fr]">
-        {/* Notes */}
-        <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm space-y-2">
-          <span className="text-sm font-bold text-stone-900">Notes / Remarks</span>
-          <p className="text-sm text-stone-500 leading-relaxed min-h-12">
-            {invoice.notes || "No extra consultation notes or special instructions logged."}
-          </p>
-        </div>
-
-        {/* Calculations */}
-        <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm text-stone-900 space-y-4">
-          <div className="flex items-center gap-2 mb-2">
-            <Receipt size={18} />
-            <h2 className="text-sm font-bold">Totals Summary</h2>
-          </div>
-
-          <div className="space-y-2 border-t border-stone-100 pt-3 text-sm">
-            {invoice.totalServices !== undefined && (
-              <div className="flex items-center justify-between text-stone-500">
-                <span>Total Services</span>
-                <span className="font-semibold text-stone-800">{formatCurrency(invoice.totalServices)}</span>
               </div>
-            )}
-            {invoice.totalProducts !== undefined && (
-              <div className="flex items-center justify-between text-stone-500">
-                <span>Total Products</span>
-                <span className="font-semibold text-stone-800">{formatCurrency(invoice.totalProducts)}</span>
-              </div>
-            )}
-            <div className="flex items-center justify-between text-stone-500">
-              <span>Subtotal</span>
-              <span className="font-semibold text-stone-800">{formatCurrency(invoice.subtotal)}</span>
-            </div>
-            <div className="flex items-center justify-between text-stone-500">
-              <span>Overall Discount</span>
-              <span className="font-semibold text-emerald-600">- {formatCurrency(totalDiscount)}</span>
-            </div>
-            <div className="flex items-center justify-between text-stone-800 font-bold border-t border-stone-100 pt-2 text-base">
-              <span>Grand Total</span>
-              <span>{formatCurrency(invoice.grandTotal)}</span>
-            </div>
-          </div>
 
-          <div className="space-y-2 border-t border-stone-200 pt-3 text-sm bg-stone-50/50 p-2.5 rounded-xl">
-            <div className="font-semibold text-stone-700 text-xs mb-1.5 uppercase tracking-wider">Payment Split</div>
-            <div className="flex items-center justify-between text-stone-500">
-              <span>Cash</span>
-              <span className="font-medium text-stone-900">{formatCurrency(cashPaid || 0)}</span>
+              <div className="border-t border-stone-100 pt-3 space-y-2.5 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-stone-700">Total Paid</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-bold text-stone-900">{formatCurrency(totalPaid)}</span>
+                    {paymentStatus === "paid" && (
+                      <span className="inline-flex size-4 items-center justify-center rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                        ✓
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="text-[10px] text-stone-400 text-right uppercase tracking-wider font-semibold">
+                  Method: {invoice.paymentMethod || "Split"}
+                </div>
+              </div>
             </div>
-            <div className="flex items-center justify-between text-stone-500">
-              <span>UPI</span>
-              <span className="font-medium text-stone-900">{formatCurrency(upiPaid || 0)}</span>
-            </div>
-            <div className="flex items-center justify-between text-stone-500">
-              <span>Card</span>
-              <span className="font-medium text-stone-900">{formatCurrency(cardPaid || 0)}</span>
-            </div>
-            <div className="flex items-center justify-between text-stone-850 font-bold border-t border-stone-200 pt-2">
-              <span>Total Paid</span>
-              <span className="text-emerald-700">{formatCurrency(totalPaid)}</span>
-            </div>
-          </div>
-        </div>
+          </section>
+        </aside>
       </div>
     </div>
   );

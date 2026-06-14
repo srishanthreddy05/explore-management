@@ -1,7 +1,8 @@
 "use client";
 
 import { Plus, Trash2, X } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import type { ServiceRow } from "./types";
 import { formatCurrency } from "./types";
 
@@ -22,6 +23,11 @@ export function BillingTable({
 }: BillingTableProps) {
   const [showModal, setShowModal] = useState(false);
   const [selectedCat, setSelectedCat] = useState("All");
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const updateRow = (id: number, patch: Partial<ServiceRow>) => {
     onRowsChange(rows.map((row) => (row.id === id ? { ...row, ...patch } : row)));
@@ -139,8 +145,8 @@ export function BillingTable({
       </div>
 
       {/* Select Service Modal Overlay */}
-      {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {showModal && mounted && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowModal(false)} />
           <div className="relative w-full max-w-2xl rounded-2xl border border-stone-250 bg-white p-6 shadow-2xl text-stone-900 flex flex-col max-h-[85vh]">
             <button
@@ -192,7 +198,8 @@ export function BillingTable({
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </section>
   );

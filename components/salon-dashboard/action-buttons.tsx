@@ -1,4 +1,4 @@
-import { MessageCircle, Save, X } from "lucide-react";
+import { Send, Save, X } from "lucide-react";
 
 interface ActionButtonsProps {
   onSave?: () => void;
@@ -27,7 +27,7 @@ export function ActionButtons({
 
   const actions = [
     { label: saved ? "Saved ✓" : "Save Bill", icon: Save, tone: "primary" },
-    { label: "Send on WhatsApp", icon: MessageCircle, tone: "success" },
+    { label: "Send on WhatsApp", icon: Send, tone: "success" },
     { label: "Close", icon: X, tone: "neutral" },
   ] as const;
 
@@ -41,7 +41,7 @@ export function ActionButtons({
             action.tone === "primary"
               ? "border-black bg-black text-white hover:bg-stone-800"
               : action.tone === "success"
-                ? "border-emerald-250 bg-emerald-50 text-emerald-800 hover:bg-emerald-100/50"
+                ? "border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700"
                 : "border-stone-200 bg-stone-50 text-stone-700 hover:bg-stone-100";
 
           return (

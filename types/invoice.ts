@@ -51,6 +51,5 @@ export interface Invoice {
   balanceDue?: number;
 
   // ── Meta ──────────────────────────────────────────────────────────────────
-  notes?: string;
   createdAt: Timestamp;
 }
