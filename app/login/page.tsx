@@ -194,9 +194,9 @@ export default function LoginPage() {
 
             {/* Hero headline */}
             <h1 className="text-[2rem] font-semibold leading-snug text-white">
-              Manage your salon
+              Manage your SALON
               <br />
-              <span className="text-[#444]">like a</span> pro.
+              <span className="text-[#444]">like a</span> PRO.
             </h1>
             <p className="mt-4 text-sm leading-relaxed text-[#555]">
               Everything you need to run your business — appointments, staff, revenue, and clients — all in one place.
