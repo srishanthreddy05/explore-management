@@ -8,6 +8,7 @@ import { SummaryCard } from "@/components/salon-dashboard/summary-card";
 import type { ProductRow, ServiceRow } from "@/components/salon-dashboard/types";
 import { formatCurrency } from "@/components/salon-dashboard/types";
 import { X, UserX } from "lucide-react";
+import { Timestamp } from "firebase/firestore";
 
 import * as customerService from "@/services/customers";
 import * as productsService from "@/services/products";
@@ -27,9 +28,10 @@ const GUEST_NAME = "Guest";
 interface BillingTerminalProps {
   onClose?: () => void;
   onSuccess?: () => void;
+  editInvoiceId?: string;
 }
 
-export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
+export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTerminalProps) {
   const { services: servicesContextData, products: productsContextData, staff: staffContextData, offers: offersContextData, refreshProducts, loadingAppData } = useAppData();
 
   const servicesList = servicesContextData;
@@ -41,6 +43,7 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [loadingInvoice, setLoadingInvoice] = useState(false);
 
   // Invoice Form Fields
   const [customerName, setCustomerName] = useState("");
@@ -63,6 +66,70 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
   // Offer selection
   const [selectedOfferId, setSelectedOfferId] = useState<string>("");
   const [manuallyDeselected, setManuallyDeselected] = useState(false);
+
+  useEffect(() => {
+    if (editInvoiceId) {
+      const fetchInvoiceForEdit = async () => {
+        setLoadingInvoice(true);
+        try {
+          const inv = await invoicesService.getById(editInvoiceId);
+          if (inv) {
+            setCustomerName(inv.customerName || "");
+            setCustomerMobile(inv.customerPhone || "");
+            setClientStatus(inv.customerType || null);
+            setFoundCustomerId(inv.customerId || null);
+            setInvoiceNumberDisplay(inv.invoiceNumber || "");
+            
+            setDateString(toLocalDateString(inv.date));
+
+            // Populate services
+            const mappedServices: ServiceRow[] = (inv.services || []).map((s: any, idx: number) => ({
+              id: idx + 1,
+              service: s.serviceName || s.service || "",
+              staff: s.staffName || s.staff || "",
+              price: s.price ?? 0,
+              quantity: 1,
+              discount: s.discount ?? 0,
+              usedProductId: s.usedProductId || undefined,
+              usedProductName: s.usedProductName || undefined,
+              usedProductCost: s.usedProductCost || undefined,
+            }));
+            setServices(mappedServices);
+
+            // Populate products
+            const mappedProducts: ProductRow[] = (inv.products || []).map((p: any, idx: number) => ({
+              id: idx + 1,
+              productId: p.productId || "",
+              product: p.productName || p.product || "",
+              price: p.price ?? 0,
+              quantity: p.quantity ?? 1,
+              discount: p.discount ?? 0,
+            }));
+            setProducts(mappedProducts);
+
+            // Populate payment split
+            const payments = inv.paymentSplit || {};
+            setCashAmount(payments.cash !== undefined ? payments.cash : "");
+            setUpiAmount(payments.upi !== undefined ? payments.upi : "");
+            setCardAmount(payments.card !== undefined ? payments.card : "");
+            
+            const isSplit = (payments.cash > 0 && (payments.upi > 0 || payments.card > 0)) || (payments.upi > 0 && payments.card > 0);
+            setIsSplitEdited(isSplit || inv.paymentMethod === "Split");
+
+            if (inv.appliedOffer) {
+              setSelectedOfferId(inv.appliedOffer.offerId || "");
+            }
+          }
+        } catch (error) {
+          console.error("Failed to fetch invoice for edit:", error);
+          setMessage({ type: "error", text: "Failed to load invoice details." });
+        } finally {
+          setLoadingInvoice(false);
+        }
+      };
+      fetchInvoiceForEdit();
+    }
+  }, [editInvoiceId]);
 
   // Customer lookup by phone
   useEffect(() => {
@@ -314,21 +381,10 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
         throw new Error("Could not resolve customer ID");
       }
 
-      // Step 2: Get a collision-safe invoice number via Firestore transaction
+      // Step 2: Get a collision-safe invoice number via Firestore transaction (only for new invoices)
       let invoiceNumber = "Auto";
-      if (!isOnline) {
-        const now = new Date();
-        const yy = String(now.getFullYear()).slice(-2);
-        const mm = String(now.getMonth() + 1).padStart(2, '0');
-        const dd = String(now.getDate()).padStart(2, '0');
-        const dateStr = `${yy}${mm}${dd}`;
-        const rand = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-        invoiceNumber = `EXP-${dateStr}-OFF-${rand}`;
-      } else {
-        try {
-          invoiceNumber = await invoicesService.getNextInvoiceNumber();
-        } catch (txErr: any) {
-          console.warn("Failed to get invoice number via transaction, falling back to offline code:", txErr);
+      if (!editInvoiceId) {
+        if (!isOnline) {
           const now = new Date();
           const yy = String(now.getFullYear()).slice(-2);
           const mm = String(now.getMonth() + 1).padStart(2, '0');
@@ -336,9 +392,24 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
           const dateStr = `${yy}${mm}${dd}`;
           const rand = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
           invoiceNumber = `EXP-${dateStr}-OFF-${rand}`;
+        } else {
+          try {
+            invoiceNumber = await invoicesService.getNextInvoiceNumber();
+          } catch (txErr: any) {
+            console.warn("Failed to get invoice number via transaction, falling back to offline code:", txErr);
+            const now = new Date();
+            const yy = String(now.getFullYear()).slice(-2);
+            const mm = String(now.getMonth() + 1).padStart(2, '0');
+            const dd = String(now.getDate()).padStart(2, '0');
+            const dateStr = `${yy}${mm}${dd}`;
+            const rand = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+            invoiceNumber = `EXP-${dateStr}-OFF-${rand}`;
+          }
         }
+        setInvoiceNumberDisplay(invoiceNumber);
+      } else {
+        invoiceNumber = invoiceNumberDisplay;
       }
-      setInvoiceNumberDisplay(invoiceNumber);
 
       // Step 3: Build correctly-shaped service and product rows
       const enrichedServices = services.map((row) => {
@@ -383,53 +454,104 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
         };
       });
 
-      // Step 4: Save invoice with correct schema
-      await invoicesService.create({
-        invoiceNumber,
-        dateString,
+      // Step 4: Save or Update invoice
+      if (editInvoiceId) {
+        const now = new Date();
+        const selectedDate = new Date(dateString);
+        selectedDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+        const invoiceDate = Timestamp.fromDate(selectedDate);
+        const dateTs = Timestamp.fromDate(new Date(dateString));
 
-        customerId,
-        customerName: customerName.trim(),
-        customerPhone: customerMobile.trim(),
-        customerType: resolvedCustomerType,
+        const yyyy = selectedDate.getFullYear();
+        const mmStr = String(selectedDate.getMonth() + 1).padStart(2, '0');
+        const ddStr = String(selectedDate.getDate()).padStart(2, '0');
+        const dateKey = `${yyyy}-${mmStr}-${ddStr}`;
 
-        services: enrichedServices as any,
-        products: enrichedProducts as any,
+        await invoicesService.update(editInvoiceId, {
+          customerId,
+          customerName: customerName.trim(),
+          customerPhone: customerMobile.trim(),
+          customerType: resolvedCustomerType,
+          date: dateTs,
+          invoiceDate,
+          dateKey,
 
-        totalServices: totals.serviceTotal,
-        totalProducts: totals.productTotal,
-        subtotal: totals.subtotal,
-        totalDiscount: totals.totalDiscount,
-        grandTotal: totals.grandTotal,
+          services: enrichedServices as any,
+          products: enrichedProducts as any,
 
-        ...(selectedOffer
-          ? {
-            appliedOffer: {
-              offerId: selectedOffer.id ?? "",
-              code: selectedOffer.code,
-              name: selectedOffer.name,
-              discountType: selectedOffer.discountType,
-              discountValue: selectedOffer.discountValue,
-              discountAmount: totals.offerDiscount,
-            },
-          }
-          : {}),
+          totalServices: totals.serviceTotal,
+          totalProducts: totals.productTotal,
+          subtotal: totals.subtotal,
+          totalDiscount: totals.totalDiscount,
+          grandTotal: totals.grandTotal,
 
-        paymentSplit: {
-          cash: cashVal,
-          upi: upiVal,
-          card: cardVal,
-        },
-        paymentMethod: cashVal === totals.grandTotal ? "Cash" : upiVal === totals.grandTotal ? "UPI" : cardVal === totals.grandTotal ? "Card" : "Split",
-        paymentStatus: "paid",
-      });
+          appliedOffer: selectedOffer
+            ? {
+                offerId: selectedOffer.id ?? "",
+                code: selectedOffer.code,
+                name: selectedOffer.name,
+                discountType: selectedOffer.discountType,
+                discountValue: selectedOffer.discountValue,
+                discountAmount: totals.offerDiscount,
+              }
+            : null as any,
+
+          paymentSplit: {
+            cash: cashVal,
+            upi: upiVal,
+            card: cardVal,
+          },
+          paymentMethod: cashVal === totals.grandTotal ? "Cash" : upiVal === totals.grandTotal ? "UPI" : cardVal === totals.grandTotal ? "Card" : "Split",
+        });
+      } else {
+        await invoicesService.create({
+          invoiceNumber,
+          dateString,
+
+          customerId,
+          customerName: customerName.trim(),
+          customerPhone: customerMobile.trim(),
+          customerType: resolvedCustomerType,
+
+          services: enrichedServices as any,
+          products: enrichedProducts as any,
+
+          totalServices: totals.serviceTotal,
+          totalProducts: totals.productTotal,
+          subtotal: totals.subtotal,
+          totalDiscount: totals.totalDiscount,
+          grandTotal: totals.grandTotal,
+
+          ...(selectedOffer
+            ? {
+              appliedOffer: {
+                offerId: selectedOffer.id ?? "",
+                code: selectedOffer.code,
+                name: selectedOffer.name,
+                discountType: selectedOffer.discountType,
+                discountValue: selectedOffer.discountValue,
+                discountAmount: totals.offerDiscount,
+              },
+            }
+            : {}),
+
+          paymentSplit: {
+            cash: cashVal,
+            upi: upiVal,
+            card: cardVal,
+          },
+          paymentMethod: cashVal === totals.grandTotal ? "Cash" : upiVal === totals.grandTotal ? "UPI" : cardVal === totals.grandTotal ? "Card" : "Split",
+          paymentStatus: "paid",
+        });
+      }
 
       await refreshProducts();
 
+      const msgNum = editInvoiceId ? invoiceNumberDisplay : invoiceNumber;
       if (isOnline) {
-        setMessage({ type: "success", text: `Invoice ${invoiceNumber} saved successfully!` });
+        setMessage({ type: "success", text: `Invoice ${msgNum} saved successfully!` });
       } else {
-        setMessage({ type: "success", text: `Invoice ${invoiceNumber} saved locally — will sync when online!` });
+        setMessage({ type: "success", text: `Invoice ${msgNum} saved locally — will sync when online!` });
       }
       setSaved(true);
 
@@ -535,14 +657,6 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
     window.open(`https://wa.me/${e164}?text=${encodeURIComponent(msg)}`, "_blank");
   };
 
-  if (loading) {
-    return (
-      <div className="flex h-[40vh] items-center justify-center">
-        <div className="size-10 animate-spin rounded-full border-4 border-black border-t-transparent" />
-      </div>
-    );
-  }
-
   const mappedServicesList = servicesList.map((s) => ({
     name: s.name,
     price: s.price,
@@ -569,12 +683,20 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
 
   const staffOptions = staffList.map((s) => s.name);
 
+  if (loading || loadingInvoice) {
+    return (
+      <div className="flex h-[40vh] items-center justify-center">
+        <div className="size-10 animate-spin rounded-full border-4 border-black border-t-transparent" />
+      </div>
+    );
+  }
+
   return (
     <>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-[#F5F0E8]">
-            New Billing
+            {editInvoiceId ? `Edit Invoice (${invoiceNumberDisplay})` : "New Billing"}
           </h1>
         </div>
         {onClose && (
@@ -762,6 +884,7 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
               onWhatsApp={handleWhatsApp}
               disabled={saved || saving || !isPaymentValid}
               saved={saved}
+              isEdit={!!editInvoiceId}
             />
           </div>
         </section>

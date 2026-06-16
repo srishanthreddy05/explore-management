@@ -23,6 +23,7 @@ import { BillingTerminal } from "@/components/billing/BillingTerminal";
 import { AddCustomerModal } from "@/components/customers/AddCustomerModal";
 import { AddExpenseModal } from "@/components/expenses/AddExpenseModal";
 import * as customerService from "@/services/customers";
+import * as expensesService from "@/services/expenses";
 import { toLocalDateString } from "@/lib/utils/date";
 
 
@@ -112,6 +113,29 @@ export default function DashboardPage() {
   const [isCustomerOpen, setIsCustomerOpen] = useState(false);
   const [isExpenseOpen, setIsExpenseOpen] = useState(false);
   const [isSettlementsOpen, setIsSettlementsOpen] = useState(false);
+  const [todayExpenses, setTodayExpenses] = useState<any[]>([]);
+
+  const loadTodayExpenses = async () => {
+    try {
+      const todayStr = toLocalDateString(new Date());
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      const end = new Date();
+      end.setHours(23, 59, 59, 999);
+      const data = await expensesService.getByDateRange(start, end);
+      setTodayExpenses(data.filter((e) => e.date === todayStr));
+    } catch (err) {
+      console.error("Failed to load today's expenses:", err);
+    }
+  };
+
+  useEffect(() => {
+    loadTodayExpenses();
+  }, []);
+
+  const todayExpensesTotal = useMemo(() => {
+    return todayExpenses.reduce((sum, exp) => sum + exp.amount, 0);
+  }, [todayExpenses]);
 
   useEffect(() => {
     const anyOpen = isBillingOpen || isCustomerOpen || isExpenseOpen || isSettlementsOpen;
@@ -808,12 +832,20 @@ export default function DashboardPage() {
                         {formatCurrency(inv.grandTotal)}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <Link
-                          href={`/invoices/${inv.id}`}
-                          className="inline-flex h-8 items-center justify-center rounded-lg border border-[#2E2B24] bg-[#131210] px-3 text-xs font-semibold text-[#A89F8C] hover:border-[#B8962E] hover:text-[#B8962E] hover:bg-[#1F1A0F] transition"
-                        >
-                          View
-                        </Link>
+                        <div className="flex justify-end gap-2">
+                          <Link
+                            href={`/invoices/${inv.id}`}
+                            className="inline-flex h-8 items-center justify-center rounded-lg border border-[#2E2B24] bg-[#131210] px-3 text-xs font-semibold text-[#A89F8C] hover:border-[#B8962E] hover:text-[#B8962E] hover:bg-[#1F1A0F] transition"
+                          >
+                            View
+                          </Link>
+                          <Link
+                            href={`/billing?edit=${inv.id}`}
+                            className="inline-flex h-8 items-center justify-center rounded-lg border border-[#2E2B24] bg-[#131210] px-3 text-xs font-semibold text-[#B8962E] hover:border-[#B8962E] hover:bg-[#1F1A0F] transition"
+                          >
+                            Edit
+                          </Link>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -864,7 +896,10 @@ export default function DashboardPage() {
       {isExpenseOpen && (
         <AddExpenseModal
           onClose={() => setIsExpenseOpen(false)}
-          onSuccess={() => setIsExpenseOpen(false)}
+          onSuccess={() => {
+            setIsExpenseOpen(false);
+            loadTodayExpenses();
+          }}
         />
       )}
 
@@ -920,7 +955,7 @@ export default function DashboardPage() {
                           Net Share
                         </span>
                         <p className="font-black text-[#D4A935] text-xl mt-0.5">
-                          {formatCurrency(todaySettlement.totalOwnerShare)}
+                          {formatCurrency(todaySettlement.totalOwnerShare - todayExpensesTotal)}
                         </p>
                       </div>
                     </div>
@@ -945,6 +980,14 @@ export default function DashboardPage() {
                       <div className="flex justify-between">
                         <span className="text-[#A89F8C] font-medium">Retail Product Sales:</span>
                         <span className="font-bold text-[#F5F0E8]">+{formatCurrency(todaySettlement.retailProductsRevenue)}</span>
+                      </div>
+                      <div className="flex justify-between border-t border-[#2E2B24] pt-2 mt-2 font-semibold text-[#A89F8C]">
+                        <span>Gross Share:</span>
+                        <span>{formatCurrency(todaySettlement.totalOwnerShare)}</span>
+                      </div>
+                      <div className="flex justify-between text-[#E57373] font-semibold">
+                        <span>Today's Expenses:</span>
+                        <span>-{formatCurrency(todayExpensesTotal)}</span>
                       </div>
                     </div>
                   </div>

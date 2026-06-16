@@ -3,7 +3,7 @@
 import { useEffect, useState, use } from "react";
 import * as invoicesService from "@/services/invoices";
 import { formatCurrency } from "@/components/salon-dashboard/types";
-import { ChevronLeft, Receipt, Send, Tag } from "lucide-react";
+import { ChevronLeft, Receipt, Send, Tag, Edit2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -161,14 +161,23 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
           </h1>
         </div>
 
-        {/* WhatsApp share button */}
-        <button
-          onClick={handleWhatsApp}
-          className="inline-flex h-11 items-center gap-2 rounded-xl bg-emerald-600 px-5 text-sm font-semibold text-white shadow-md transition hover:-translate-y-0.5 hover:bg-emerald-700 cursor-pointer"
-        >
-          <Send size={16} />
-          Share on WhatsApp
-        </button>
+        {/* Action Buttons */}
+        <div className="flex items-center gap-3">
+          <Link
+            href={`/billing?edit=${invoice.id}`}
+            className="inline-flex h-11 items-center gap-2 rounded-xl border border-[#2E2B24] bg-[#131210] px-5 text-sm font-semibold text-[#B8962E] hover:text-[#D4A935] hover:border-[#B8962E] transition shadow-md"
+          >
+            <Edit2 size={16} />
+            Edit Invoice
+          </Link>
+          <button
+            onClick={handleWhatsApp}
+            className="inline-flex h-11 items-center gap-2 rounded-xl bg-emerald-600 px-5 text-sm font-semibold text-white shadow-md transition hover:-translate-y-0.5 hover:bg-emerald-700 cursor-pointer"
+          >
+            <Send size={16} />
+            Share on WhatsApp
+          </button>
+        </div>
       </div>
 
       {/* Main Content Layout Grid */}

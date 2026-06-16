@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useState } from "react";
 import * as invoicesService from "@/services/invoices";
+import * as expensesService from "@/services/expenses";
 import { useAppData } from "@/context/AppDataContext";
 import { formatCurrency } from "@/components/salon-dashboard/types";
 import { format } from "date-fns";
@@ -103,6 +104,8 @@ export default function SettlementsPage() {
   });
   const [loadingDays, setLoadingDays] = useState<Record<string, boolean>>({});
   const [syncing, setSyncing] = useState(false);
+  const [expenses, setExpenses] = useState<any[]>([]);
+  const [monthlyExpenses, setMonthlyExpenses] = useState<any[]>([]);
 
   const handleSyncStats = async () => {
     setSyncing(true);
@@ -333,6 +336,28 @@ export default function SettlementsPage() {
           retailProductsRevenue: mRetailProductsRevenue,
           productsReturned: mProductsReturned,
         });
+
+        // 4. Fetch expenses in the selected date range
+        try {
+          const start = new Date(dateFrom);
+          start.setHours(0, 0, 0, 0);
+          const end = new Date(dateTo);
+          end.setHours(23, 59, 59, 999);
+          const expensesData = await expensesService.getByDateRange(start, end);
+          setExpenses(expensesData);
+        } catch (err) {
+          console.error("Failed to load range expenses:", err);
+        }
+
+        // 5. Fetch monthly expenses for current calendar month
+        try {
+          const startOfMonth = new Date(loadNow.getFullYear(), loadNow.getMonth(), 1);
+          const endOfMonth = new Date(loadNow.getFullYear(), loadNow.getMonth() + 1, 0, 23, 59, 59, 999);
+          const monthlyExpensesData = await expensesService.getByDateRange(startOfMonth, endOfMonth);
+          setMonthlyExpenses(monthlyExpensesData);
+        } catch (err) {
+          console.error("Failed to load monthly expenses:", err);
+        }
       } catch (err) {
         console.error("Failed to load settlements data:", err);
       } finally {
@@ -341,6 +366,29 @@ export default function SettlementsPage() {
     }
     load();
   }, [dateFrom, dateTo, staff, todayStr]);
+
+  const dailyExpensesMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    expenses.forEach((exp) => {
+      if (exp.type === "daily") {
+        map[exp.date] = (map[exp.date] || 0) + exp.amount;
+      }
+    });
+    return map;
+  }, [expenses]);
+
+  const todayDailyExpenses = useMemo(() => {
+    const todayStr = toLocalDateString(new Date());
+    return monthlyExpenses
+      .filter((e) => e.type === "daily" && e.date === todayStr)
+      .reduce((sum, e) => sum + e.amount, 0);
+  }, [monthlyExpenses]);
+
+  const monthDailyExpenses = useMemo(() => {
+    return monthlyExpenses
+      .filter((e) => e.type === "daily")
+      .reduce((sum, e) => sum + e.amount, 0);
+  }, [monthlyExpenses]);
 
   // Generate date list YYYY-MM-DD
   const dateList = useMemo(() => {
@@ -461,13 +509,14 @@ export default function SettlementsPage() {
     return dateList
       .map((d) => {
         const stats = dailyStats[d];
+        const dayDailyExpenses = dailyExpensesMap[d] || 0;
         return {
           date: d,
           totalServiceRevenue: stats?.serviceRevenue || 0,
           totalMembershipAmount: stats?.totalMembershipAmount || 0,
           totalProductCost: stats?.productCost || 0,
           totalStaffShare: stats?.stylistShare || 0,
-          totalOwnerShare: stats?.ownerShare || 0,
+          totalOwnerShare: (stats?.ownerShare || 0) - dayDailyExpenses,
           totalRetailProductsRevenue: stats?.retailProductsRevenue || 0,
         };
       })
@@ -477,7 +526,7 @@ export default function SettlementsPage() {
         const isToday = day.date === todayStr;
         return isToday || hasTransactions;
       });
-  }, [dailyStats, dateList, todayStr]);
+  }, [dailyStats, dateList, todayStr, dailyExpensesMap]);
 
   function getDayDetails(dateStr: string) {
     const dayInvoices = dayInvoicesMap[dateStr] || [];
@@ -638,11 +687,11 @@ export default function SettlementsPage() {
             <div className="grid grid-cols-2 gap-4 pt-1">
               <div>
                 <span className="text-[10px] text-[#A89F8C] font-bold uppercase tracking-wider">Today</span>
-                <p className="font-black text-[#F5F0E8] text-base">{formatCurrency(todayMetrics.ownerShare)}</p>
+                <p className="font-black text-[#F5F0E8] text-base">{formatCurrency(todayMetrics.ownerShare - todayDailyExpenses)}</p>
               </div>
               <div>
                 <span className="text-[10px] text-[#A89F8C] font-bold uppercase tracking-wider">This Month</span>
-                <p className="font-black text-[#F5F0E8] text-base">{formatCurrency(monthlyStatsTotals.ownerShare)}</p>
+                <p className="font-black text-[#F5F0E8] text-base">{formatCurrency(monthlyStatsTotals.ownerShare - monthDailyExpenses)}</p>
               </div>
             </div>
           </div>
@@ -672,8 +721,8 @@ export default function SettlementsPage() {
         </div>
       </div>
 
-      {/* Row 2: Membership, Retail Product Sales, Reimbursed Cost (All in one row) */}
-      <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
+      {/* Row 2: Membership, Retail Product Sales, Reimbursed Cost, Daily Category Expenses (All in one row) */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {/* Membership Card */}
         <div
           className="rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-5 shadow-sm space-y-2 hover:shadow-md transition text-[#F5F0E8] hover:border-[#B8962E]/30"
@@ -730,6 +779,26 @@ export default function SettlementsPage() {
             <div>
               <span className="text-[10px] text-[#A89F8C] font-bold uppercase tracking-wider">This Month</span>
               <p className="font-black text-[#F5F0E8] text-base">{formatCurrency(monthlyStatsTotals.productsReturned)}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Daily Category Expenses Card */}
+        <div
+          className="rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-5 shadow-sm space-y-2 hover:shadow-md transition text-[#F5F0E8] hover:border-[#B8962E]/30"
+        >
+          <h4 className="font-bold text-[#F5F0E8] text-sm flex items-center gap-1.5">
+            <PiggyBank size={16} className="text-[#B8962E]" />
+            Daily Category Expenses
+          </h4>
+          <div className="grid grid-cols-2 gap-4 pt-1">
+            <div>
+              <span className="text-[10px] text-[#A89F8C] font-bold uppercase tracking-wider">Today</span>
+              <p className="font-black text-[#E57373] text-base">{formatCurrency(todayDailyExpenses)}</p>
+            </div>
+            <div>
+              <span className="text-[10px] text-[#A89F8C] font-bold uppercase tracking-wider">This Month</span>
+              <p className="font-black text-[#E57373] text-base">{formatCurrency(monthDailyExpenses)}</p>
             </div>
           </div>
         </div>
@@ -878,6 +947,14 @@ export default function SettlementsPage() {
                                   <div className="flex justify-between text-[#A89F8C]">
                                     <span className="font-medium">Retail Product Sales:</span>
                                     <span className="font-bold text-[#F5F0E8]">+{formatCurrency(details.retailProductsRevenue)}</span>
+                                  </div>
+                                  <div className="flex justify-between border-t border-[#2E2B24] pt-2 mt-2 font-semibold text-[#A89F8C]">
+                                    <span>Gross Share:</span>
+                                    <span className="text-[#F5F0E8]">{formatCurrency(details.ownerDirectRevenue + details.staffRevenueContribution + details.staffProductReimbursement + details.totalMembershipAmount + details.retailProductsRevenue)}</span>
+                                  </div>
+                                  <div className="flex justify-between text-[#E57373] font-semibold">
+                                    <span>Daily Expenses:</span>
+                                    <span>-{formatCurrency(dailyExpensesMap[day.date] || 0)}</span>
                                   </div>
                                 </div>
                               </div>

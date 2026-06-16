@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import * as invoicesService from "@/services/invoices";
 import { formatCurrency } from "@/components/salon-dashboard/types";
-import { Search, Eye, Calendar } from "lucide-react";
+import { Search, Eye, Calendar, Edit2 } from "lucide-react";
 import Link from "next/link";
 import { toLocalDateString } from "@/lib/utils/date";
 import { db } from "@/lib/firebase";
@@ -238,13 +238,22 @@ export default function InvoicesPage() {
                         {formatCurrency(inv.grandTotal || 0)}
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <Link
-                          href={`/invoices/${inv.id}`}
-                          className="inline-flex h-9 items-center justify-center gap-1 rounded-xl border border-[#2E2B24] bg-[#131210] px-3 text-xs font-semibold text-[#A89F8C] hover:text-[#B8962E] hover:border-[#B8962E] transition"
-                        >
-                          <Eye size={14} />
-                          View
-                        </Link>
+                        <div className="flex justify-end gap-2">
+                          <Link
+                            href={`/invoices/${inv.id}`}
+                            className="inline-flex h-9 items-center justify-center gap-1 rounded-xl border border-[#2E2B24] bg-[#131210] px-3 text-xs font-semibold text-[#A89F8C] hover:text-[#B8962E] hover:border-[#B8962E] transition"
+                          >
+                            <Eye size={14} />
+                            View
+                          </Link>
+                          <Link
+                            href={`/billing?edit=${inv.id}`}
+                            className="inline-flex h-9 items-center justify-center gap-1 rounded-xl border border-[#2E2B24] bg-[#131210] px-3 text-xs font-semibold text-[#B8962E] hover:text-[#D4A935] hover:border-[#B8962E] transition"
+                          >
+                            <Edit2 size={14} />
+                            Edit
+                          </Link>
+                        </div>
                       </td>
                     </tr>
                   );

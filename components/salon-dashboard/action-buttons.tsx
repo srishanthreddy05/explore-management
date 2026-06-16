@@ -6,6 +6,7 @@ interface ActionButtonsProps {
   onWhatsApp?: () => void;
   disabled?: boolean;
   saved?: boolean;
+  isEdit?: boolean;
 }
 
 export function ActionButtons({
@@ -14,9 +15,16 @@ export function ActionButtons({
   onWhatsApp,
   disabled,
   saved,
+  isEdit,
 }: ActionButtonsProps) {
   const handleActionClick = (label: string) => {
-    if ((label === "Save Bill" || label === "Saved ✓") && onSave) {
+    if (
+      (label === "Save Bill" ||
+        label === "Saved ✓" ||
+        label === "Update Invoice" ||
+        label === "Updated ✓") &&
+      onSave
+    ) {
       onSave();
     } else if (label === "Send on WhatsApp" && onWhatsApp) {
       onWhatsApp();
@@ -26,7 +34,17 @@ export function ActionButtons({
   };
 
   const actions = [
-    { label: saved ? "Saved ✓" : "Save Bill", icon: Save, tone: "primary" },
+    {
+      label: saved
+        ? isEdit
+          ? "Updated ✓"
+          : "Saved ✓"
+        : isEdit
+          ? "Update Invoice"
+          : "Save Bill",
+      icon: Save,
+      tone: "primary",
+    },
     { label: "Send on WhatsApp", icon: Send, tone: "success" },
     { label: "Close", icon: X, tone: "neutral" },
   ] as const;
@@ -61,3 +79,4 @@ export function ActionButtons({
     </section>
   );
 }
+
