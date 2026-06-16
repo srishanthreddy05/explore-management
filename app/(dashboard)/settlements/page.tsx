@@ -575,27 +575,27 @@ export default function SettlementsPage() {
   if (loading) {
     return (
       <div className="flex h-[50vh] items-center justify-center">
-        <div className="size-10 animate-spin rounded-full border-4 border-black border-t-transparent" />
+        <div className="size-10 animate-spin rounded-full border-4 border-[#B8962E] border-t-transparent" />
       </div>
     );
   }
 
   return (
-    <div className="space-y-8 text-stone-900 pb-12">
+    <div className="space-y-8 text-[#F5F0E8] pb-12">
       {/* Header */}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.32em] text-stone-500">
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#A89F8C]">
             Daily Operations
           </p>
           <div className="flex items-center gap-4 mt-2">
-            <h1 className="text-3xl font-bold tracking-tight text-stone-900">
+            <h1 className="text-3xl font-extrabold tracking-[-0.03em] text-[#F5F0E8]">
               Stylist & Owner Settlements
             </h1>
             <button
               onClick={handleSyncStats}
               disabled={syncing}
-              className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-stone-200 bg-white px-3.5 text-xs font-bold text-stone-700 shadow-sm transition hover:bg-stone-50 disabled:opacity-50"
+              className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[#2E2B24] bg-[#131210] px-3.5 text-xs font-bold text-[#A89F8C] shadow-md transition hover:bg-[#1C1A16] hover:text-[#F5F0E8] hover:border-[#B8962E] disabled:opacity-50"
             >
               {syncing ? "Syncing..." : "Sync Database Stats"}
             </button>
@@ -603,46 +603,46 @@ export default function SettlementsPage() {
         </div>
 
         {/* Date Selector */}
-        <div className="flex items-center gap-2 flex-wrap bg-white p-2 rounded-2xl border border-stone-200 shadow-sm">
-          <Calendar size={16} className="text-stone-400 ml-1" />
+        <div className="flex items-center gap-2 flex-wrap bg-[#131210] p-2 rounded-2xl border border-[#2E2B24] shadow-sm">
+          <Calendar size={16} className="text-[#6B6358] ml-1" />
           <input
             type="date"
             value={dateFrom}
             onChange={(e) => setDateFrom(e.target.value)}
-            className="h-9 rounded-xl border border-stone-200 bg-white px-3 text-sm font-medium text-stone-800 shadow-sm outline-none focus:border-black transition"
+            className="h-9 rounded-xl border border-[#2E2B24] bg-[#131210] px-3 text-sm font-medium text-[#F5F0E8] shadow-sm outline-none focus:border-[#B8962E] transition"
           />
-          <span className="text-xs text-stone-400 font-semibold px-1">to</span>
+          <span className="text-xs text-[#A89F8C] font-semibold px-1">to</span>
           <input
             type="date"
             value={dateTo}
             onChange={(e) => setDateTo(e.target.value)}
-            className="h-9 rounded-xl border border-stone-200 bg-white px-3 text-sm font-medium text-stone-800 shadow-sm outline-none focus:border-black transition"
+            className="h-9 rounded-xl border border-[#2E2B24] bg-[#131210] px-3 text-sm font-medium text-[#F5F0E8] shadow-sm outline-none focus:border-[#B8962E] transition"
           />
         </div>
       </div>
 
       {/* Splits Row: Owner & Staff Splits (All in one row) */}
       <div className="space-y-3">
-        <h2 className="text-sm font-bold uppercase tracking-wider text-stone-500">
+        <h2 className="text-xs font-bold uppercase tracking-[0.18em] text-[#A89F8C]">
           Owner & Staff Splits (Daily & Monthly)
         </h2>
         <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
           {/* Owner Share Card */}
           <div
-            className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm space-y-2 hover:shadow-md transition text-stone-900"
+            className="rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-5 shadow-sm space-y-2 hover:shadow-md transition text-[#F5F0E8] hover:border-[#B8962E]/30"
           >
-            <h4 className="font-extrabold text-stone-900 text-sm flex items-center gap-1.5">
-              <ShieldCheck size={16} className="text-purple-600" />
+            <h4 className="font-extrabold text-[#F5F0E8] text-sm flex items-center gap-1.5">
+              <ShieldCheck size={16} className="text-[#B8962E]" />
               Owner
             </h4>
             <div className="grid grid-cols-2 gap-4 pt-1">
               <div>
-                <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider">Today</span>
-                <p className="font-black text-stone-950 text-base">{formatCurrency(todayMetrics.ownerShare)}</p>
+                <span className="text-[10px] text-[#A89F8C] font-bold uppercase tracking-wider">Today</span>
+                <p className="font-black text-[#F5F0E8] text-base">{formatCurrency(todayMetrics.ownerShare)}</p>
               </div>
               <div>
-                <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider">This Month</span>
-                <p className="font-black text-stone-950 text-base">{formatCurrency(monthlyStatsTotals.ownerShare)}</p>
+                <span className="text-[10px] text-[#A89F8C] font-bold uppercase tracking-wider">This Month</span>
+                <p className="font-black text-[#F5F0E8] text-base">{formatCurrency(monthlyStatsTotals.ownerShare)}</p>
               </div>
             </div>
           </div>
@@ -651,20 +651,20 @@ export default function SettlementsPage() {
           {staffSplits.map((member) => (
             <div
               key={member.id}
-              className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm space-y-2 hover:shadow-md transition text-stone-900"
+              className="rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-5 shadow-sm space-y-2 hover:shadow-md transition text-[#F5F0E8] hover:border-[#B8962E]/30"
             >
-              <h4 className="font-extrabold text-stone-900 text-sm flex items-center gap-1.5">
-                <Users size={16} className="text-blue-600" />
+              <h4 className="font-extrabold text-[#F5F0E8] text-sm flex items-center gap-1.5">
+                <Users size={16} className="text-[#B8962E]" />
                 {member.name}
               </h4>
               <div className="grid grid-cols-2 gap-4 pt-1">
                 <div>
-                  <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider">Today</span>
-                  <p className="font-black text-stone-950 text-base">{formatCurrency(member.todayShare)}</p>
+                  <span className="text-[10px] text-[#A89F8C] font-bold uppercase tracking-wider">Today</span>
+                  <p className="font-black text-[#F5F0E8] text-base">{formatCurrency(member.todayShare)}</p>
                 </div>
                 <div>
-                  <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider">This Month</span>
-                  <p className="font-black text-stone-950 text-base">{formatCurrency(member.monthlyShare)}</p>
+                  <span className="text-[10px] text-[#A89F8C] font-bold uppercase tracking-wider">This Month</span>
+                  <p className="font-black text-[#F5F0E8] text-base">{formatCurrency(member.monthlyShare)}</p>
                 </div>
               </div>
             </div>
@@ -676,60 +676,60 @@ export default function SettlementsPage() {
       <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
         {/* Membership Card */}
         <div
-          className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm space-y-2 hover:shadow-md transition text-stone-900"
+          className="rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-5 shadow-sm space-y-2 hover:shadow-md transition text-[#F5F0E8] hover:border-[#B8962E]/30"
         >
-          <h4 className="font-bold text-stone-900 text-sm flex items-center gap-1.5">
-            <PiggyBank size={16} className="text-emerald-500" />
+          <h4 className="font-bold text-[#F5F0E8] text-sm flex items-center gap-1.5">
+            <PiggyBank size={16} className="text-[#B8962E]" />
             Membership Revenue
           </h4>
           <div className="grid grid-cols-2 gap-4 pt-1">
             <div>
-              <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider">Today</span>
-              <p className="font-black text-stone-900 text-base">{formatCurrency(todayMetrics.membershipAmount)}</p>
+              <span className="text-[10px] text-[#A89F8C] font-bold uppercase tracking-wider">Today</span>
+              <p className="font-black text-[#F5F0E8] text-base">{formatCurrency(todayMetrics.membershipAmount)}</p>
             </div>
             <div>
-              <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider">This Month</span>
-              <p className="font-black text-stone-900 text-base">{formatCurrency(monthlyStatsTotals.membershipAmount)}</p>
+              <span className="text-[10px] text-[#A89F8C] font-bold uppercase tracking-wider">This Month</span>
+              <p className="font-black text-[#F5F0E8] text-base">{formatCurrency(monthlyStatsTotals.membershipAmount)}</p>
             </div>
           </div>
         </div>
 
         {/* Retail Product Sales Card */}
         <div
-          className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm space-y-2 hover:shadow-md transition text-stone-900"
+          className="rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-5 shadow-sm space-y-2 hover:shadow-md transition text-[#F5F0E8] hover:border-[#B8962E]/30"
         >
-          <h4 className="font-bold text-stone-900 text-sm flex items-center gap-1.5">
-            <Package size={16} className="text-purple-500" />
+          <h4 className="font-bold text-[#F5F0E8] text-sm flex items-center gap-1.5">
+            <Package size={16} className="text-[#B8962E]" />
             Retail Product Sales
           </h4>
           <div className="grid grid-cols-2 gap-4 pt-1">
             <div>
-              <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider">Today</span>
-              <p className="font-black text-stone-900 text-base">{formatCurrency(todayMetrics.retailProductsRevenue)}</p>
+              <span className="text-[10px] text-[#A89F8C] font-bold uppercase tracking-wider">Today</span>
+              <p className="font-black text-[#F5F0E8] text-base">{formatCurrency(todayMetrics.retailProductsRevenue)}</p>
             </div>
             <div>
-              <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider">This Month</span>
-              <p className="font-black text-stone-900 text-base">{formatCurrency(monthlyStatsTotals.retailProductsRevenue)}</p>
+              <span className="text-[10px] text-[#A89F8C] font-bold uppercase tracking-wider">This Month</span>
+              <p className="font-black text-[#F5F0E8] text-base">{formatCurrency(monthlyStatsTotals.retailProductsRevenue)}</p>
             </div>
           </div>
         </div>
 
         {/* Products Money Returned Card */}
         <div
-          className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm space-y-2 hover:shadow-md transition text-stone-900"
+          className="rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-5 shadow-sm space-y-2 hover:shadow-md transition text-[#F5F0E8] hover:border-[#B8962E]/30"
         >
-          <h4 className="font-bold text-stone-900 text-sm flex items-center gap-1.5">
-            <Package size={16} className="text-amber-500" />
+          <h4 className="font-bold text-[#F5F0E8] text-sm flex items-center gap-1.5">
+            <Package size={16} className="text-[#B8962E]" />
             Products Money Returned
           </h4>
           <div className="grid grid-cols-2 gap-4 pt-1">
             <div>
-              <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider">Today</span>
-              <p className="font-black text-stone-900 text-base">{formatCurrency(todayMetrics.productsReturned)}</p>
+              <span className="text-[10px] text-[#A89F8C] font-bold uppercase tracking-wider">Today</span>
+              <p className="font-black text-[#F5F0E8] text-base">{formatCurrency(todayMetrics.productsReturned)}</p>
             </div>
             <div>
-              <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider">This Month</span>
-              <p className="font-black text-stone-900 text-base">{formatCurrency(monthlyStatsTotals.productsReturned)}</p>
+              <span className="text-[10px] text-[#A89F8C] font-bold uppercase tracking-wider">This Month</span>
+              <p className="font-black text-[#F5F0E8] text-base">{formatCurrency(monthlyStatsTotals.productsReturned)}</p>
             </div>
           </div>
         </div>
@@ -737,18 +737,18 @@ export default function SettlementsPage() {
 
       {/* Settlements List section */}
       <div className="space-y-4">
-        <h2 className="text-xl font-bold tracking-tight text-stone-900">
+        <h2 className="text-xl font-bold tracking-tight text-[#F5F0E8]">
           Daily Breakdown
         </h2>
 
         <div className="space-y-3">
           {visibleSettlements.length === 0 ? (
-            <div className="rounded-2xl border border-stone-200 bg-white p-12 text-center shadow-sm">
-              <div className="mx-auto grid size-12 place-items-center rounded-2xl bg-stone-100 text-stone-500 mb-3">
+            <div className="rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-12 text-center shadow-sm">
+              <div className="mx-auto grid size-12 place-items-center rounded-2xl bg-[#131210] text-[#B8962E] mb-3">
                 <TrendingUp size={24} />
               </div>
-              <p className="text-sm font-semibold text-stone-900">No Settlement History</p>
-              <p className="text-xs text-stone-400 mt-1">
+              <p className="text-sm font-semibold text-[#F5F0E8]">No Settlement History</p>
+              <p className="text-xs text-[#A89F8C] mt-1">
                 There are no client invoices or memberships logged in this date range.
               </p>
             </div>
@@ -762,7 +762,7 @@ export default function SettlementsPage() {
               return (
                 <div
                   key={day.date}
-                  className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm transition hover:border-stone-300"
+                  className="overflow-hidden rounded-2xl border border-[#2E2B24] bg-[#1C1A16] shadow-sm transition hover:border-[#B8962E]/30"
                 >
                   {/* Row Header */}
                   <div
@@ -774,26 +774,26 @@ export default function SettlementsPage() {
                     <div className="flex items-center gap-3">
                       {hasTransactions ? (
                         isExpanded ? (
-                          <ChevronUp size={18} className="text-stone-400" />
+                          <ChevronUp size={18} className="text-[#A89F8C]" />
                         ) : (
-                          <ChevronDown size={18} className="text-stone-400" />
+                          <ChevronDown size={18} className="text-[#A89F8C]" />
                         )
                       ) : (
                         <div className="w-[18px]" />
                       )}
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="font-bold text-stone-900">
+                          <span className="font-bold text-[#F5F0E8]">
                             {format(new Date(day.date + "T00:00:00"), "dd MMM yyyy")}
                           </span>
                           {isToday && (
-                            <span className="rounded-full bg-black px-2 py-0.5 text-[10px] font-bold text-white uppercase tracking-wider">
+                            <span className="rounded-full bg-[#B8962E] px-2 py-0.5 text-[10px] font-bold text-[#0E0D0B] uppercase tracking-wider">
                               Today
                             </span>
                           )}
                         </div>
                         {!hasTransactions && (
-                          <p className="text-[11px] text-stone-400 font-semibold mt-0.5">
+                          <p className="text-[11px] text-[#A89F8C] font-semibold mt-0.5">
                             No operations or bills logged yet
                           </p>
                         )}
@@ -801,24 +801,24 @@ export default function SettlementsPage() {
                     </div>
 
                     {hasTransactions && (
-                      <div className="flex items-center gap-4 text-xs font-semibold text-stone-500 flex-wrap">
+                      <div className="flex items-center gap-4 text-xs font-semibold text-[#A89F8C] flex-wrap">
                         <div className="hidden sm:block">
-                          Service: <span className="text-stone-900 font-bold">{formatCurrency(day.totalServiceRevenue)}</span>
-                        </div>
-                        <div className="hidden sm:block">
-                          Membership: <span className="text-stone-900 font-bold">{formatCurrency(day.totalMembershipAmount)}</span>
+                          Service: <span className="text-[#F5F0E8] font-bold">{formatCurrency(day.totalServiceRevenue)}</span>
                         </div>
                         <div className="hidden sm:block">
-                          Retail: <span className="text-stone-900 font-bold">{formatCurrency(day.totalRetailProductsRevenue)}</span>
+                          Membership: <span className="text-[#F5F0E8] font-bold">{formatCurrency(day.totalMembershipAmount)}</span>
                         </div>
                         <div className="hidden sm:block">
-                          Product Returned: <span className="text-stone-900 font-bold">{formatCurrency(day.totalProductCost)}</span>
+                          Retail: <span className="text-[#F5F0E8] font-bold">{formatCurrency(day.totalRetailProductsRevenue)}</span>
                         </div>
-                        <div className="rounded-xl bg-blue-50 border border-blue-100 px-3 py-1.5 text-blue-700">
-                          Staff: <span className="text-blue-900 font-extrabold">{formatCurrency(day.totalStaffShare)}</span>
+                        <div className="hidden sm:block">
+                          Product Returned: <span className="text-[#F5F0E8] font-bold">{formatCurrency(day.totalProductCost)}</span>
                         </div>
-                        <div className="rounded-xl bg-purple-50 border border-purple-100 px-3 py-1.5 text-purple-700">
-                          Owner: <span className="text-purple-900 font-extrabold">{formatCurrency(day.totalOwnerShare)}</span>
+                        <div className="rounded-xl bg-[#132A3A] border border-[#2B5270] px-3 py-1.5 text-[#60A5FA]">
+                          Staff: <span className="text-[#60A5FA] font-extrabold">{formatCurrency(day.totalStaffShare)}</span>
+                        </div>
+                        <div className="rounded-xl bg-[#2E1A47] border border-[#5E3E8C] px-3 py-1.5 text-[#C084FC]">
+                          Owner: <span className="text-[#C084FC] font-extrabold">{formatCurrency(day.totalOwnerShare)}</span>
                         </div>
                       </div>
                     )}
@@ -826,58 +826,58 @@ export default function SettlementsPage() {
 
                   {/* Row Details */}
                   {isExpanded && hasTransactions && (
-                    <div className="border-t border-stone-100 bg-stone-50/40 p-5">
+                    <div className="border-t border-[#2E2B24] bg-[#131210]/65 p-5">
                       {loadingDays[day.date] ? (
                         <div className="flex h-20 items-center justify-center">
-                          <div className="size-6 animate-spin rounded-full border-2 border-black border-t-transparent" />
+                          <div className="size-6 animate-spin rounded-full border-2 border-[#B8962E] border-t-transparent" />
                         </div>
                       ) : (
                         (() => {
                           const details = getDayDetails(day.date);
                           return (
-                             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                               {/* Owner Net Card */}
-                              <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-xs space-y-4 text-stone-900">
+                              <div className="rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-5 shadow-xs space-y-4 text-[#F5F0E8]">
                                 <div className="flex justify-between items-start">
                                   <div>
-                                    <h4 className="font-extrabold text-stone-900 flex items-center gap-1.5">
-                                      <ShieldCheck size={16} className="text-purple-600" />
+                                    <h4 className="font-extrabold text-[#F5F0E8] flex items-center gap-1.5">
+                                      <ShieldCheck size={16} className="text-[#B8962E]" />
                                       Owner Settlement
                                     </h4>
-                                    <span className="inline-block rounded-full bg-purple-50 text-purple-800 border border-purple-200 px-2 py-0.5 text-[10px] font-bold tracking-wide mt-1 uppercase">
+                                    <span className="inline-block rounded-full bg-[#2E1A47] text-[#C084FC] border border-[#5E3E8C] px-2 py-0.5 text-[10px] font-bold tracking-wide mt-1 uppercase">
                                       Daily Summary
                                     </span>
                                   </div>
                                   <div className="text-right">
-                                    <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider">
+                                    <span className="text-[10px] text-[#A89F8C] font-bold uppercase tracking-wider">
                                       Net Share
                                     </span>
-                                    <p className="font-black text-stone-950 text-xl mt-0.5">
+                                    <p className="font-black text-[#F5F0E8] text-xl mt-0.5">
                                       {formatCurrency(day.totalOwnerShare)}
                                     </p>
                                   </div>
                                 </div>
 
-                                <div className="border-t border-stone-100 pt-3 space-y-2 text-xs">
-                                  <div className="flex justify-between text-stone-500">
+                                <div className="border-t border-[#2E2B24] pt-3 space-y-2 text-xs">
+                                  <div className="flex justify-between text-[#A89F8C]">
                                     <span className="font-medium">Owner Direct Services:</span>
-                                    <span className="font-bold text-stone-900">{formatCurrency(details.ownerDirectRevenue)}</span>
+                                    <span className="font-bold text-[#F5F0E8]">{formatCurrency(details.ownerDirectRevenue)}</span>
                                   </div>
-                                  <div className="flex justify-between text-stone-500">
+                                  <div className="flex justify-between text-[#A89F8C]">
                                     <span className="font-medium">Stylists 50% Share:</span>
-                                    <span className="font-bold text-stone-900">+{formatCurrency(details.staffRevenueContribution)}</span>
+                                    <span className="font-bold text-[#F5F0E8]">+{formatCurrency(details.staffRevenueContribution)}</span>
                                   </div>
-                                  <div className="flex justify-between text-stone-500">
+                                  <div className="flex justify-between text-[#A89F8C]">
                                     <span className="font-medium">Stylists Product Costs:</span>
-                                    <span className="font-bold text-stone-900">+{formatCurrency(details.staffProductReimbursement)}</span>
+                                    <span className="font-bold text-[#F5F0E8]">+{formatCurrency(details.staffProductReimbursement)}</span>
                                   </div>
-                                  <div className="flex justify-between text-stone-500">
+                                  <div className="flex justify-between text-[#A89F8C]">
                                     <span className="font-medium">Membership Invoices:</span>
-                                    <span className="font-bold text-stone-900">+{formatCurrency(details.totalMembershipAmount)}</span>
+                                    <span className="font-bold text-[#F5F0E8]">+{formatCurrency(details.totalMembershipAmount)}</span>
                                   </div>
-                                  <div className="flex justify-between text-stone-500">
+                                  <div className="flex justify-between text-[#A89F8C]">
                                     <span className="font-medium">Retail Product Sales:</span>
-                                    <span className="font-bold text-stone-900">+{formatCurrency(details.retailProductsRevenue)}</span>
+                                    <span className="font-bold text-[#F5F0E8]">+{formatCurrency(details.retailProductsRevenue)}</span>
                                   </div>
                                 </div>
                               </div>
@@ -888,40 +888,40 @@ export default function SettlementsPage() {
                                 .map((sd: any) => (
                                   <div
                                     key={sd.staffId}
-                                    className="rounded-2xl border border-stone-200 bg-white p-5 shadow-xs space-y-4"
+                                    className="rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-5 shadow-xs space-y-4"
                                   >
                                     <div className="flex justify-between items-start">
                                       <div>
-                                        <h4 className="font-extrabold text-stone-900 flex items-center gap-1.5">
-                                          <Users size={16} className="text-stone-500" />
+                                        <h4 className="font-extrabold text-[#F5F0E8] flex items-center gap-1.5">
+                                          <Users size={16} className="text-[#B8962E]" />
                                           {sd.name}
                                         </h4>
-                                        <span className="inline-block rounded-full bg-blue-100 text-blue-800 border border-blue-200 px-2 py-0.5 text-[10px] font-bold tracking-wide mt-1 uppercase">
+                                        <span className="inline-block rounded-full bg-[#132A3A] text-[#60A5FA] border border-[#2B5270] px-2 py-0.5 text-[10px] font-bold tracking-wide mt-1 uppercase">
                                           Stylist Split
                                         </span>
                                       </div>
                                       <div className="text-right">
-                                        <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider">
+                                        <span className="text-[10px] text-[#A89F8C] font-bold uppercase tracking-wider">
                                           Net Share
                                         </span>
-                                        <p className="font-black text-stone-950 text-xl mt-0.5">
+                                        <p className="font-black text-[#F5F0E8] text-xl mt-0.5">
                                           {formatCurrency(sd.staffShare)}
                                         </p>
                                       </div>
                                     </div>
 
-                                    <div className="border-t border-stone-100 pt-3 space-y-2 text-xs">
-                                      <div className="flex justify-between text-stone-500">
+                                    <div className="border-t border-[#2E2B24] pt-3 space-y-2 text-xs">
+                                      <div className="flex justify-between text-[#A89F8C]">
                                         <span>Service Revenue:</span>
-                                        <span className="font-semibold text-stone-900">{formatCurrency(sd.serviceRevenue)}</span>
+                                        <span className="font-semibold text-[#F5F0E8]">{formatCurrency(sd.serviceRevenue)}</span>
                                       </div>
-                                      <div className="flex justify-between text-stone-500">
+                                      <div className="flex justify-between text-[#A89F8C]">
                                         <span>50% Base Share:</span>
-                                        <span className="font-semibold text-stone-900">{formatCurrency(0.5 * sd.serviceRevenue)}</span>
+                                        <span className="font-semibold text-[#F5F0E8]">{formatCurrency(0.5 * sd.serviceRevenue)}</span>
                                       </div>
-                                      <div className="flex justify-between text-stone-500">
+                                      <div className="flex justify-between text-[#A89F8C]">
                                         <span>Product Cost Used:</span>
-                                        <span className="font-bold text-red-660">-{formatCurrency(sd.productCost)}</span>
+                                        <span className="font-bold text-[#E57373]">-{formatCurrency(sd.productCost)}</span>
                                       </div>
                                     </div>
                                   </div>

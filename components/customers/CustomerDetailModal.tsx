@@ -114,22 +114,22 @@ export default function CustomerDetailModal({ customer, onClose }: CustomerDetai
 
   return (
     <div 
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200"
       onClick={onClose}
     >
       <div 
-        className="relative w-full max-w-4xl max-h-[85vh] flex flex-col rounded-3xl border border-stone-200 bg-[#F9FAFB] shadow-2xl text-black my-auto animate-in zoom-in-95 duration-200 overflow-hidden"
+        className="relative w-full max-w-4xl max-h-[85vh] flex flex-col rounded-3xl border border-[#2E2B24] bg-[#1C1A16] shadow-2xl text-[#A89F8C] my-auto animate-in zoom-in-95 duration-200 overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-stone-200 bg-white px-6 py-5 shrink-0">
+        <div className="flex items-center justify-between border-b border-[#2E2B24] bg-[#1C1A16] px-6 py-5 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="grid size-11 place-items-center rounded-2xl bg-stone-100 text-black">
+            <div className="grid size-11 place-items-center rounded-2xl bg-[#131210] text-[#B8962E] border border-[#2E2B24]">
               <User size={20} />
             </div>
             <div>
-              <h2 className="text-xl font-bold tracking-tight text-black">{customer.name}</h2>
-              <div className="flex items-center gap-2 mt-0.5 text-xs text-black/70">
+              <h2 className="text-xl font-bold tracking-tight text-[#F5F0E8]">{customer.name}</h2>
+              <div className="flex items-center gap-2 mt-0.5 text-xs text-[#A89F8C]">
                 <span className="flex items-center gap-1">
                   <Phone size={12} />
                   {customer.phone}
@@ -141,7 +141,7 @@ export default function CustomerDetailModal({ customer, onClose }: CustomerDetai
           </div>
           <button
             onClick={onClose}
-            className="grid size-10 place-items-center rounded-xl border border-stone-200 hover:border-stone-400 bg-white text-stone-450 hover:text-black transition cursor-pointer"
+            className="grid size-10 place-items-center rounded-xl border border-[#2E2B24] hover:border-[#B8962E] bg-[#131210] text-[#A89F8C] hover:text-[#B8962E] transition cursor-pointer"
             title="Close"
           >
             <X size={18} />
@@ -153,45 +153,45 @@ export default function CustomerDetailModal({ customer, onClose }: CustomerDetai
           
           {/* Customer Summary Cards */}
           <div className="grid gap-4 sm:grid-cols-3">
-            <div className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm flex flex-col justify-between">
-              <span className="text-xs font-bold text-black/60 uppercase tracking-wider">Total Visits</span>
-              <p className="mt-2 text-2xl font-bold tracking-tight text-black">{visitCount}</p>
-              <span className="text-xs text-black/60 mt-1">Last visit: {lastVisitDate}</span>
+            <div className="rounded-2xl border border-[#2E2B24] bg-[#131210] p-4 shadow-sm flex flex-col justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#A89F8C]">Total Visits</span>
+              <p className="mt-2 text-2xl font-extrabold tracking-[-0.04em] text-[#F5F0E8]">{visitCount}</p>
+              <span className="text-xs text-[#6B6358] mt-1">Last visit: {lastVisitDate}</span>
             </div>
 
-            <div className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm flex flex-col justify-between">
-              <span className="text-xs font-bold text-black/60 uppercase tracking-wider">Total Spend</span>
-              <p className="mt-2 text-2xl font-bold tracking-tight text-black">{formatCurrency(totalSpend)}</p>
-              <span className="text-xs text-black/60 mt-1">Average per visit: {formatCurrency(avgSpend)}</span>
+            <div className="rounded-2xl border border-[#2E2B24] bg-[#131210] p-4 shadow-sm flex flex-col justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#A89F8C]">Total Spend</span>
+              <p className="mt-2 text-2xl font-extrabold tracking-[-0.04em] text-[#F5F0E8]">{formatCurrency(totalSpend)}</p>
+              <span className="text-xs text-[#6B6358] mt-1">Average per visit: {formatCurrency(avgSpend)}</span>
             </div>
 
-            <div className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm flex flex-col justify-between">
-              <span className="text-xs font-bold text-black/60 uppercase tracking-wider">Membership Status</span>
+            <div className="rounded-2xl border border-[#2E2B24] bg-[#131210] p-4 shadow-sm flex flex-col justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#A89F8C]">Membership Status</span>
               {customer.customerType === "membership" ? (
                 <div>
                   <div className="flex items-center gap-1.5 mt-2">
                     {isMembershipActive() ? (
                       <>
-                        <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
-                        <span className="text-sm font-bold text-emerald-800">Active Membership</span>
+                        <CheckCircle2 size={18} className="text-[#B8962E] shrink-0" />
+                        <span className="text-sm font-bold text-[#B8962E]">Active Membership</span>
                       </>
                     ) : (
                       <>
-                        <AlertTriangle size={18} className="text-amber-600 shrink-0" />
-                        <span className="text-sm font-bold text-amber-800">Expired Membership</span>
+                        <AlertTriangle size={18} className="text-[#E57373] shrink-0" />
+                        <span className="text-sm font-bold text-[#E57373]">Expired Membership</span>
                       </>
                     )}
                   </div>
-                  <p className="text-[10px] text-black/70 mt-1">
+                  <p className="text-[10px] text-[#A89F8C] mt-1">
                     Valid till {customer.membershipEnd ? formatDate(customer.membershipEnd) : "N/A"}
                   </p>
                 </div>
               ) : (
                 <div>
-                  <span className="inline-block mt-2 rounded-full px-2.5 py-0.5 text-xs font-bold bg-blue-50 border border-blue-200 text-blue-700">
+                  <span className="inline-block mt-2 rounded-full px-2.5 py-0.5 text-xs font-bold bg-[#1F1A0F] border border-[#B8962E]/20 text-[#B8962E]">
                     Regular Customer
                   </span>
-                  <p className="text-[10px] text-black/60 mt-1">No active membership subscription</p>
+                  <p className="text-[10px] text-[#6B6358] mt-1">No active membership subscription</p>
                 </div>
               )}
             </div>
@@ -199,27 +199,27 @@ export default function CustomerDetailModal({ customer, onClose }: CustomerDetai
 
           {/* Membership Cost Details */}
           {customer.customerType === "membership" && (
-            <div className="rounded-2xl border border-stone-200 bg-amber-50/50 p-4 shadow-sm space-y-3">
-              <h3 className="text-xs font-bold text-black uppercase tracking-wider flex items-center gap-1.5">
-                <Sparkles size={14} className="text-black" />
+            <div className="rounded-2xl border border-[#2E2B24] bg-[#131210] p-4 shadow-sm space-y-3">
+              <h3 className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#B8962E] flex items-center gap-1.5">
+                <Sparkles size={14} className="text-[#B8962E]" />
                 Membership Details
               </h3>
               <div className="grid gap-4 grid-cols-2 sm:grid-cols-4 text-sm">
                 <div>
-                  <p className="text-xs font-semibold text-black/65">Amount Paid</p>
-                  <p className="font-bold text-black mt-0.5">{customer.membershipAmount ? formatCurrency(customer.membershipAmount) : "—"}</p>
+                  <p className="text-xs font-semibold text-[#A89F8C]">Amount Paid</p>
+                  <p className="font-bold text-[#F5F0E8] mt-0.5">{customer.membershipAmount ? formatCurrency(customer.membershipAmount) : "—"}</p>
                 </div>
                 <div>
-                  <p className="text-xs font-semibold text-black/65">Duration</p>
-                  <p className="font-bold text-black mt-0.5">{customer.membershipDuration ? `${customer.membershipDuration} Months` : "—"}</p>
+                  <p className="text-xs font-semibold text-[#A89F8C]">Duration</p>
+                  <p className="font-bold text-[#F5F0E8] mt-0.5">{customer.membershipDuration ? `${customer.membershipDuration} Months` : "—"}</p>
                 </div>
                 <div>
-                  <p className="text-xs font-semibold text-black/65">Start Date</p>
-                  <p className="font-bold text-black mt-0.5">{customer.membershipStart ? formatDate(customer.membershipStart) : "—"}</p>
+                  <p className="text-xs font-semibold text-[#A89F8C]">Start Date</p>
+                  <p className="font-bold text-[#F5F0E8] mt-0.5">{customer.membershipStart ? formatDate(customer.membershipStart) : "—"}</p>
                 </div>
                 <div>
-                  <p className="text-xs font-semibold text-black/65">End Date</p>
-                  <p className="font-bold text-black mt-0.5">{customer.membershipEnd ? formatDate(customer.membershipEnd) : "—"}</p>
+                  <p className="text-xs font-semibold text-[#A89F8C]">End Date</p>
+                  <p className="font-bold text-[#F5F0E8] mt-0.5">{customer.membershipEnd ? formatDate(customer.membershipEnd) : "—"}</p>
                 </div>
               </div>
             </div>
@@ -227,18 +227,18 @@ export default function CustomerDetailModal({ customer, onClose }: CustomerDetai
 
           {/* Visit History Section */}
           <div className="space-y-4">
-            <h3 className="text-lg font-bold text-black">Visit & Invoice History</h3>
+            <h3 className="text-lg font-bold text-[#F5F0E8]">Visit & Invoice History</h3>
 
             {loading ? (
               <div className="flex h-32 items-center justify-center">
-                <div className="size-8 animate-spin rounded-full border-3 border-black border-t-transparent" />
+                <div className="size-8 animate-spin rounded-full border-3 border-[#B8962E] border-t-transparent" />
               </div>
             ) : error ? (
-              <div className="text-center py-6 text-red-600 bg-red-50 border border-red-200 rounded-xl">
+              <div className="text-center py-6 text-[#E57373] bg-[#131210] border border-[#2E2B24] rounded-xl">
                 {error}
               </div>
             ) : visitCount === 0 ? (
-              <div className="text-center py-12 bg-white rounded-2xl border border-stone-200 text-black/60 italic">
+              <div className="text-center py-12 bg-[#131210] rounded-2xl border border-[#2E2B24] text-[#6B6358] italic">
                 No visits recorded yet. Invoices will appear here when this customer visits.
               </div>
             ) : (
@@ -249,9 +249,9 @@ export default function CustomerDetailModal({ customer, onClose }: CustomerDetai
                   return (
                     <div key={monthYear} className="space-y-3">
                       {/* Month Header */}
-                      <div className="flex items-center justify-between bg-stone-100/80 rounded-xl px-4 py-2 border border-stone-200/60 shadow-sm">
-                        <span className="font-bold text-black text-sm tracking-tight">{monthYear}</span>
-                        <div className="flex gap-3 text-xs font-semibold text-black/70">
+                      <div className="flex items-center justify-between bg-[#131210] rounded-xl px-4 py-2 border border-[#2E2B24] shadow-sm">
+                        <span className="font-bold text-[#F5F0E8] text-sm tracking-tight">{monthYear}</span>
+                        <div className="flex gap-3 text-xs font-semibold text-[#A89F8C]">
                           {(() => {
                             const mVisits = Array.from(new Set(monthInvoices.map(getInvoiceDateString).filter(Boolean))).length;
                             return (
@@ -259,7 +259,7 @@ export default function CustomerDetailModal({ customer, onClose }: CustomerDetai
                             );
                           })()}
                           <span>•</span>
-                          <span className="text-black font-bold">Total Spent: {formatCurrency(monthlyTotal)}</span>
+                          <span className="text-[#B8962E] font-bold">Total Spent: {formatCurrency(monthlyTotal)}</span>
                         </div>
                       </div>
 
@@ -279,7 +279,7 @@ export default function CustomerDetailModal({ customer, onClose }: CustomerDetai
                           return (
                             <div 
                               key={inv.id} 
-                              className="rounded-2xl border border-stone-200 bg-white shadow-sm overflow-hidden hover:border-stone-300 transition"
+                              className="rounded-2xl border border-[#2E2B24] bg-[#131210] shadow-sm overflow-hidden hover:border-[#B8962E]/50 transition"
                             >
                               {/* Invoice Header row */}
                               <div 
@@ -287,12 +287,12 @@ export default function CustomerDetailModal({ customer, onClose }: CustomerDetai
                                 className="flex flex-wrap items-center justify-between gap-4 p-4 cursor-pointer select-none"
                               >
                                 <div className="flex items-center gap-3">
-                                  <div className="grid size-9 place-items-center rounded-xl bg-stone-50 text-stone-600 border border-stone-200">
+                                  <div className="grid size-9 place-items-center rounded-xl bg-[#0E0D0B] text-[#B8962E] border border-[#2E2B24]">
                                     <Receipt size={16} />
                                   </div>
                                   <div>
-                                    <p className="font-bold text-stone-900 text-sm">{inv.invoiceNumber}</p>
-                                    <p className="text-[10px] text-stone-400 font-semibold mt-0.5">
+                                    <p className="font-bold text-[#F5F0E8] text-sm">{inv.invoiceNumber}</p>
+                                    <p className="text-[10px] text-[#A89F8C] font-semibold mt-0.5">
                                       {formatDate(inv.invoiceDate || inv.date)} at {formatTime(inv.invoiceDate || inv.date)}
                                     </p>
                                   </div>
@@ -300,20 +300,20 @@ export default function CustomerDetailModal({ customer, onClose }: CustomerDetai
 
                                 <div className="flex flex-wrap items-center gap-4">
                                   <div className="text-right">
-                                    <p className="text-xs text-stone-500 font-medium">Stylist</p>
-                                    <p className="text-xs font-semibold text-stone-900 mt-0.5">
-                                      {staffList || <span className="italic text-stone-300">—</span>}
+                                    <p className="text-xs text-[#6B6358] font-medium">Stylist</p>
+                                    <p className="text-xs font-semibold text-[#F5F0E8] mt-0.5">
+                                      {staffList || <span className="italic text-[#6B6358]">—</span>}
                                     </p>
                                   </div>
 
                                   <div className="text-right">
-                                    <p className="text-xs text-stone-500 font-medium">Total Amount</p>
-                                    <p className="text-sm font-bold text-stone-950 mt-0.5">
+                                    <p className="text-xs text-[#6B6358] font-medium">Total Amount</p>
+                                    <p className="text-sm font-bold text-[#B8962E] mt-0.5">
                                       {formatCurrency(inv.grandTotal)}
                                     </p>
                                   </div>
 
-                                  <div className="text-stone-400 pl-2">
+                                  <div className="text-[#A89F8C] pl-2">
                                     {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                                   </div>
                                 </div>
@@ -321,12 +321,12 @@ export default function CustomerDetailModal({ customer, onClose }: CustomerDetai
 
                               {/* Expanded Invoice details */}
                               {isExpanded && (
-                                <div className="border-t border-stone-100 bg-stone-50 p-4 space-y-4 text-xs animate-in slide-in-from-top-1 duration-150">
+                                <div className="border-t border-[#2E2B24] bg-[#0E0D0B] p-4 space-y-4 text-xs animate-in slide-in-from-top-1 duration-150">
                                   {/* Services & Products breakdown */}
                                   <div className="grid gap-4 sm:grid-cols-2">
                                     {/* Services */}
                                     <div className="space-y-2">
-                                      <h4 className="font-bold text-stone-700 uppercase tracking-wider text-[10px] border-b border-stone-200 pb-1 flex items-center gap-1">
+                                      <h4 className="font-bold text-[#B8962E] uppercase tracking-wider text-[10px] border-b border-[#2E2B24] pb-1 flex items-center gap-1">
                                         <Sparkles size={11} />
                                         Services
                                       </h4>
@@ -335,23 +335,23 @@ export default function CustomerDetailModal({ customer, onClose }: CustomerDetai
                                           {inv.services.map((s: any, idx: number) => (
                                             <div key={idx} className="flex justify-between py-0.5">
                                               <div>
-                                                <p className="font-semibold text-stone-800">{s.serviceName || s.service}</p>
-                                                <p className="text-[9px] text-stone-400">Stylist: {s.staffName || s.staff}</p>
+                                                <p className="font-semibold text-[#F5F0E8]">{s.serviceName || s.service}</p>
+                                                <p className="text-[9px] text-[#A89F8C]">Stylist: {s.staffName || s.staff}</p>
                                               </div>
-                                              <p className="font-bold text-stone-900">
+                                              <p className="font-bold text-[#F5F0E8]">
                                                 {formatCurrency(s.price * (s.quantity || 1))}
                                               </p>
                                             </div>
                                           ))}
                                         </div>
                                       ) : (
-                                        <p className="text-stone-400 italic">No services purchased.</p>
+                                        <p className="text-[#6B6358] italic">No services purchased.</p>
                                       )}
                                     </div>
 
                                     {/* Products */}
                                     <div className="space-y-2">
-                                      <h4 className="font-bold text-stone-700 uppercase tracking-wider text-[10px] border-b border-stone-200 pb-1 flex items-center gap-1">
+                                      <h4 className="font-bold text-[#B8962E] uppercase tracking-wider text-[10px] border-b border-[#2E2B24] pb-1 flex items-center gap-1">
                                         <ShoppingBag size={11} />
                                         Products
                                       </h4>
@@ -360,27 +360,27 @@ export default function CustomerDetailModal({ customer, onClose }: CustomerDetai
                                           {inv.products.map((p: any, idx: number) => (
                                             <div key={idx} className="flex justify-between py-0.5">
                                               <div>
-                                                <p className="font-semibold text-stone-800">{p.productName || p.product}</p>
-                                                <p className="text-[9px] text-stone-400">Qty: {p.quantity || 1}</p>
+                                                <p className="font-semibold text-[#F5F0E8]">{p.productName || p.product}</p>
+                                                <p className="text-[9px] text-[#A89F8C]">Qty: {p.quantity || 1}</p>
                                               </div>
-                                              <p className="font-bold text-stone-900">
+                                              <p className="font-bold text-[#F5F0E8]">
                                                 {formatCurrency(p.price * (p.quantity || 1))}
                                               </p>
                                             </div>
                                           ))}
                                         </div>
                                       ) : (
-                                        <p className="text-stone-400 italic">No products purchased.</p>
+                                        <p className="text-[#6B6358] italic">No products purchased.</p>
                                       )}
                                     </div>
                                   </div>
 
                                   {/* Payments split & details */}
-                                  <div className="border-t border-stone-200 pt-3 flex flex-wrap justify-between items-center gap-4 text-xs">
-                                    <div className="flex flex-wrap gap-4 text-stone-500">
+                                  <div className="border-t border-[#2E2B24] pt-3 flex flex-wrap justify-between items-center gap-4 text-xs">
+                                    <div className="flex flex-wrap gap-4 text-[#A89F8C]">
                                       <div>
                                         <span className="font-medium">Payment: </span>
-                                        <span className="font-bold capitalize text-stone-700">
+                                        <span className="font-bold capitalize text-[#F5F0E8]">
                                           {inv.paymentStatus === "paid" ? "Fully Paid" : inv.paymentStatus}
                                         </span>
                                       </div>
@@ -388,9 +388,9 @@ export default function CustomerDetailModal({ customer, onClose }: CustomerDetai
                                       {inv.paymentSplit && (
                                         <div className="flex gap-2">
                                           <span className="font-medium">Split:</span>
-                                          {inv.paymentSplit.cash > 0 && <span className="font-bold text-stone-700">Cash (₹{inv.paymentSplit.cash})</span>}
-                                          {inv.paymentSplit.upi > 0 && <span className="font-bold text-stone-700">UPI (₹{inv.paymentSplit.upi})</span>}
-                                          {inv.paymentSplit.card > 0 && <span className="font-bold text-stone-700">Card (₹{inv.paymentSplit.card})</span>}
+                                          {inv.paymentSplit.cash > 0 && <span className="font-bold text-[#F5F0E8]">Cash (₹{inv.paymentSplit.cash})</span>}
+                                          {inv.paymentSplit.upi > 0 && <span className="font-bold text-[#F5F0E8]">UPI (₹{inv.paymentSplit.upi})</span>}
+                                          {inv.paymentSplit.card > 0 && <span className="font-bold text-[#F5F0E8]">Card (₹{inv.paymentSplit.card})</span>}
                                         </div>
                                       )}
                                     </div>
@@ -398,7 +398,7 @@ export default function CustomerDetailModal({ customer, onClose }: CustomerDetai
                                     {/* Link to view invoice */}
                                     <a
                                       href={`/invoices/${inv.id}`}
-                                      className="inline-flex items-center gap-1 font-bold text-black hover:underline cursor-pointer"
+                                      className="inline-flex items-center gap-1 font-bold text-[#B8962E] hover:text-[#D4A935] hover:underline cursor-pointer"
                                       title="Open Invoice View Page"
                                     >
                                       Open Invoice Page
@@ -420,10 +420,10 @@ export default function CustomerDetailModal({ customer, onClose }: CustomerDetai
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end border-t border-stone-200 bg-stone-50 px-6 py-4 shrink-0">
+        <div className="flex justify-end border-t border-[#2E2B24] bg-[#131210] px-6 py-4 shrink-0">
           <button
             onClick={onClose}
-            className="h-10 rounded-xl border border-stone-200 bg-white px-5 text-sm font-semibold text-stone-700 hover:bg-stone-50 hover:border-stone-400 transition cursor-pointer"
+            className="h-10 rounded-xl border border-[#2E2B24] bg-[#131210] px-5 text-sm font-semibold text-[#A89F8C] hover:text-[#B8962E] hover:border-[#B8962E] hover:bg-[#1F1A0F] transition cursor-pointer"
           >
             Close Details
           </button>

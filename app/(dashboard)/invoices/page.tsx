@@ -122,13 +122,13 @@ export default function InvoicesPage() {
   }, [invoices, searchQuery]);
 
   return (
-    <div className="w-full text-stone-900">
+    <div className="w-full text-[#A89F8C]">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.32em] text-stone-500">
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#A89F8C]">
             Records
           </p>
-          <h1 className="mt-2 text-3xl font-bold tracking-tight text-stone-900">
+          <h1 className="mt-2 text-3xl font-extrabold tracking-[-0.03em] text-[#F5F0E8]">
             Invoice History
           </h1>
         </div>
@@ -137,52 +137,52 @@ export default function InvoicesPage() {
       {/* Filters and Search Bar */}
       <div className="mb-5 flex flex-wrap items-center gap-4">
         {/* Search */}
-        <div className="flex flex-1 min-w-[280px] max-w-md items-center rounded-2xl border border-stone-200 bg-white px-4 h-12 shadow-sm focus-within:border-black">
-          <Search size={18} className="text-stone-400 mr-2" />
+        <div className="flex flex-1 min-w-[280px] max-w-md items-center rounded-xl border border-[#2E2B24] bg-[#131210] px-4 h-12 shadow-sm focus-within:border-[#B8962E] transition">
+          <Search size={18} className="text-[#6B6358] mr-2" />
           <input
             type="text"
             placeholder="Search by client name, phone, or invoice no..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-transparent text-sm text-stone-900 outline-none placeholder:text-stone-400"
+            className="w-full bg-transparent text-sm text-[#F5F0E8] outline-none placeholder:text-[#6B6358]"
           />
         </div>
 
         {/* Date Selector */}
-        <div className="flex items-center gap-2 flex-wrap bg-white p-2 rounded-2xl border border-stone-200 shadow-sm">
-          <Calendar size={16} className="text-stone-400 ml-1" />
+        <div className="flex items-center gap-2 flex-wrap bg-[#131210] p-2 rounded-xl border border-[#2E2B24] shadow-sm">
+          <Calendar size={16} className="text-[#6B6358] ml-1" />
           <input
             type="date"
             value={dateFrom}
             onChange={(e) => setDateFrom(e.target.value)}
-            className="h-9 rounded-xl border border-stone-200 bg-white px-3 text-sm font-medium text-stone-800 shadow-sm outline-none focus:border-black transition"
+            className="h-9 rounded-lg border border-[#2E2B24] bg-[#0E0D0B] px-3 text-sm font-medium text-[#F5F0E8] shadow-sm outline-none focus:border-[#B8962E] transition"
           />
-          <span className="text-xs text-stone-400 font-semibold px-1">to</span>
+          <span className="text-xs text-[#A89F8C] font-semibold px-1">to</span>
           <input
             type="date"
             value={dateTo}
             onChange={(e) => setDateTo(e.target.value)}
-            className="h-9 rounded-xl border border-stone-200 bg-white px-3 text-sm font-medium text-stone-800 shadow-sm outline-none focus:border-black transition"
+            className="h-9 rounded-lg border border-[#2E2B24] bg-[#0E0D0B] px-3 text-sm font-medium text-[#F5F0E8] shadow-sm outline-none focus:border-[#B8962E] transition"
           />
         </div>
       </div>
 
       {loading && invoices.length === 0 ? (
         <div className="flex h-[40vh] items-center justify-center">
-          <div className="size-10 animate-spin rounded-full border-4 border-black border-t-transparent" />
+          <div className="size-10 animate-spin rounded-full border-4 border-[#B8962E] border-t-transparent" />
         </div>
       ) : filteredInvoices.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-2xl border border-stone-200 bg-white p-12 text-center shadow-md">
-          <h2 className="text-xl font-bold text-stone-900">No Invoices Found</h2>
-          <p className="mt-2 max-w-sm text-sm text-stone-500">
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-[#2E2B24] bg-[#131210] p-12 text-center shadow-md">
+          <h2 className="text-xl font-bold text-[#F5F0E8]">No Invoices Found</h2>
+          <p className="mt-2 max-w-sm text-sm text-[#A89F8C]">
             There are no invoices matching your search parameters in the selected date range.
           </p>
         </div>
       ) : (
         <>
-          <div className="overflow-x-auto rounded-2xl border border-stone-200 bg-white shadow-md">
-            <table className="w-full min-w-[1000px] border-collapse text-left text-sm text-stone-600">
-              <thead className="bg-stone-50 text-xs uppercase tracking-[0.2em] text-stone-500 border-b border-stone-200">
+          <div className="overflow-x-auto rounded-2xl border border-[#2E2B24] bg-[#131210] shadow-md">
+            <table className="w-full min-w-[1000px] border-collapse text-left text-sm text-[#A89F8C]">
+              <thead className="bg-[#0E0D0B] text-[10px] font-bold uppercase tracking-[0.18em] text-[#A89F8C] border-b border-[#2E2B24]">
                 <tr>
                   <th className="px-6 py-4 font-bold">Invoice Number</th>
                   <th className="px-6 py-4 font-bold">Customer Name</th>
@@ -195,7 +195,7 @@ export default function InvoicesPage() {
                   <th className="px-6 py-4 font-bold text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-stone-200">
+              <tbody className="divide-y divide-[#2E2B24]">
                 {filteredInvoices.map((inv) => {
                   const cash = inv.paymentSplit?.cash ?? inv.payments?.cash ?? (inv.paymentMethod === "Cash" ? (inv.grandTotal || 0) : 0);
                   const upi = inv.paymentSplit?.upi ?? inv.payments?.upi ?? (inv.paymentMethod === "UPI" ? (inv.grandTotal || 0) : 0);
@@ -210,13 +210,13 @@ export default function InvoicesPage() {
                   const dateLabel = dateObj ? dateObj.toLocaleDateString("en-IN") : "—";
 
                   return (
-                    <tr key={inv.id} className="hover:bg-stone-50 transition bg-white text-stone-900">
+                    <tr key={inv.id} className="hover:bg-[#1C1A16] transition bg-transparent text-[#A89F8C]">
                       <td className={`px-6 py-4 font-bold ${
-                        inv.customerType === "membership" ? "text-amber-600" : "text-stone-900"
+                        inv.customerType === "membership" ? "text-[#B8962E]" : "text-[#F5F0E8]"
                       }`}>
                         {inv.invoiceNo || inv.invoiceNumber}
                       </td>
-                      <td className="px-6 py-4 font-semibold text-stone-900">
+                      <td className="px-6 py-4 font-semibold text-[#F5F0E8]">
                         {inv.customerName}
                       </td>
                       <td className="px-6 py-4 font-medium">
@@ -225,22 +225,22 @@ export default function InvoicesPage() {
                       <td className="px-6 py-4">
                         {dateLabel}
                       </td>
-                      <td className="px-6 py-4 font-medium text-stone-700">
+                      <td className="px-6 py-4 font-medium text-[#A89F8C]">
                         {formatCurrency(cash)}
                       </td>
-                      <td className="px-6 py-4 font-medium text-stone-700">
+                      <td className="px-6 py-4 font-medium text-[#A89F8C]">
                         {formatCurrency(upi)}
                       </td>
-                      <td className="px-6 py-4 font-medium text-stone-700">
+                      <td className="px-6 py-4 font-medium text-[#A89F8C]">
                         {formatCurrency(card)}
                       </td>
-                      <td className="px-6 py-4 font-bold text-stone-900">
+                      <td className="px-6 py-4 font-bold text-[#B8962E]">
                         {formatCurrency(inv.grandTotal || 0)}
                       </td>
                       <td className="px-6 py-4 text-right">
                         <Link
                           href={`/invoices/${inv.id}`}
-                          className="inline-flex h-9 items-center justify-center gap-1 rounded-xl border border-stone-200 px-3 text-xs font-semibold text-stone-700 hover:text-black hover:border-black transition"
+                          className="inline-flex h-9 items-center justify-center gap-1 rounded-xl border border-[#2E2B24] bg-[#131210] px-3 text-xs font-semibold text-[#A89F8C] hover:text-[#B8962E] hover:border-[#B8962E] transition"
                         >
                           <Eye size={14} />
                           View
@@ -259,10 +259,10 @@ export default function InvoicesPage() {
               <button
                 disabled={loadingMore}
                 onClick={() => loadInvoices(true)}
-                className="w-full sm:w-auto inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-stone-200 hover:border-stone-400 bg-white px-6 text-sm font-semibold text-stone-700 hover:bg-stone-50 transition disabled:opacity-50"
+                className="w-full sm:w-auto inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-[#2E2B24] bg-[#131210] hover:border-[#B8962E] hover:text-[#B8962E] hover:bg-[#1F1A0F] px-6 text-sm font-semibold text-[#A89F8C] transition disabled:opacity-50 cursor-pointer"
               >
                 {loadingMore && (
-                  <div className="size-4 animate-spin rounded-full border-2 border-stone-400 border-t-transparent" />
+                  <div className="size-4 animate-spin rounded-full border-2 border-[#B8962E] border-t-transparent" />
                 )}
                 {loadingMore ? "Loading..." : "Load More Invoices"}
               </button>

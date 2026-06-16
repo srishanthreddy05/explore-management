@@ -75,37 +75,37 @@ export default function SettingsPage() {
   if (loading) {
     return (
       <div className="flex h-[50vh] items-center justify-center">
-        <div className="size-10 animate-spin rounded-full border-4 border-black border-t-transparent" />
+        <div className="size-10 animate-spin rounded-full border-4 border-[#B8962E] border-t-transparent" />
       </div>
     );
   }
 
   return (
-    <div className="w-full text-stone-900">
+    <div className="w-full text-[#F5F0E8]">
       <div className="mb-6 flex items-center justify-between gap-4">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.32em] text-stone-500">
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#A89F8C]">
             System
           </p>
-          <h1 className="mt-2 text-3xl font-bold tracking-tight text-stone-900">
+          <h1 className="mt-2 text-3xl font-extrabold tracking-[-0.03em] text-[#F5F0E8]">
             System Settings
           </h1>
         </div>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-md sm:p-6">
-          <div className="mb-5 flex items-center gap-3 border-b border-stone-100 pb-4 text-stone-900">
+        <section className="rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-5 shadow-md sm:p-6">
+          <div className="mb-5 flex items-center gap-3 border-b border-[#2E2B24] pb-4 text-[#B8962E]">
             <Sparkles size={20} />
-            <h2 className="text-lg font-bold text-stone-900 font-sans">Business Settings</h2>
+            <h2 className="text-lg font-bold text-[#F5F0E8]">Business Settings</h2>
           </div>
 
           {message && (
             <div
               className={`mb-5 rounded-2xl border p-4 text-sm font-semibold ${
                 message.type === "success"
-                  ? "border-emerald-250 bg-emerald-55 text-emerald-800"
-                  : "border-red-250 bg-red-55 text-red-800"
+                  ? "border-[#105E3C] bg-[#0C2E1D] text-[#34D399]"
+                  : "border-[#5C2424] bg-[#2E1616] text-[#E57373]"
               }`}
             >
               {message.text}
@@ -114,36 +114,36 @@ export default function SettingsPage() {
 
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block">
-              <span className="text-sm font-semibold text-stone-700">Salon Name</span>
+              <span className="text-sm font-semibold text-[#A89F8C]">Salon Name</span>
               <input
                 required
                 type="text"
                 name="salonName"
                 value={settings.salonName}
                 onChange={handleChange}
-                className="mt-2 h-12 w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 text-sm text-stone-900 outline-none focus:border-black"
+                className="mt-2 h-12 w-full rounded-2xl border border-[#2E2B24] bg-[#131210] px-4 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E]"
                 placeholder="e.g. Explore Salon"
               />
             </label>
 
             <label className="block">
-              <span className="text-sm font-semibold text-stone-700">Phone Number</span>
+              <span className="text-sm font-semibold text-[#A89F8C]">Phone Number</span>
               <input
                 type="text"
                 name="phoneNumber"
                 value={settings.phoneNumber || ""}
                 onChange={handleChange}
-                className="mt-2 h-12 w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 text-sm text-stone-900 outline-none focus:border-black"
+                className="mt-2 h-12 w-full rounded-2xl border border-[#2E2B24] bg-[#131210] px-4 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E]"
                 placeholder="e.g. +91 98765 43210"
               />
             </label>
           </div>
 
-          <div className="mt-6 border-t border-stone-150 pt-4 flex justify-end">
+          <div className="mt-6 border-t border-[#2E2B24] pt-4 flex justify-end">
             <button
               disabled={saving}
               type="submit"
-              className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-black px-6 text-sm font-semibold text-white shadow-md transition hover:-translate-y-0.5 hover:bg-stone-850 disabled:opacity-50"
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-[#B8962E] px-6 text-sm font-bold text-[#0E0D0B] shadow-md transition hover:-translate-y-0.5 hover:bg-[#D4A935] disabled:opacity-50"
             >
               <Save size={18} />
               {saving ? "Saving Changes..." : "Save Settings"}
@@ -153,27 +153,27 @@ export default function SettingsPage() {
       </form>
 
       {/* Account Security Section */}
-      <section className="mt-6 rounded-2xl border border-stone-200 bg-white p-5 shadow-md sm:p-6">
-        <div className="mb-5 flex items-center gap-3 border-b border-stone-100 pb-4 text-stone-900">
+      <section className="mt-6 rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-5 shadow-md sm:p-6">
+        <div className="mb-5 flex items-center gap-3 border-b border-[#2E2B24] pb-4 text-[#B8962E]">
           <Lock size={20} />
-          <h2 className="text-lg font-bold text-stone-900 font-sans">Account Security</h2>
+          <h2 className="text-lg font-bold text-[#F5F0E8]">Account Security</h2>
         </div>
 
         <div className="space-y-4 max-w-md">
           <div>
-            <span className="text-sm font-semibold text-stone-550 block">Current Email</span>
-            <span className="text-base font-medium text-stone-900 mt-1 block">{user?.email || "—"}</span>
+            <span className="text-sm font-semibold text-[#A89F8C] block">Current Email</span>
+            <span className="text-base font-medium text-[#F5F0E8] mt-1 block">{user?.email || "—"}</span>
           </div>
 
           <div className="pt-2">
             <button
               onClick={handleResetPassword}
               disabled={resettingPassword}
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-stone-200 bg-white px-5 text-sm font-semibold text-stone-900 hover:bg-stone-50 transition shadow-sm disabled:opacity-50"
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-[#2E2B24] bg-[#131210] px-5 text-sm font-semibold text-[#A89F8C] hover:bg-[#1C1A16] hover:text-[#F5F0E8] hover:border-[#B8962E] transition shadow-sm disabled:opacity-50"
             >
               Reset Password
             </button>
-            <p className="text-xs text-stone-400 mt-2">
+            <p className="text-xs text-[#6B6358] mt-2">
               A password reset link will be sent to your email address. You will not be logged out.
             </p>
           </div>

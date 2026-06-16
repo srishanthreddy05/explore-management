@@ -546,7 +546,7 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
     <>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-black">
+          <h1 className="text-3xl font-bold tracking-tight text-[#F5F0E8]">
             New Billing
           </h1>
         </div>
@@ -554,7 +554,7 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
           <button
             type="button"
             onClick={handleClose}
-            className="rounded-2xl border border-stone-200 bg-white p-2.5 text-stone-500 hover:text-black hover:border-black hover:-translate-y-0.5 transition shadow-sm cursor-pointer"
+            className="rounded-xl border border-[#2E2B24] bg-[#131210] p-2.5 text-[#A89F8C] hover:text-[#B8962E] hover:border-[#B8962E] hover:-translate-y-0.5 transition shadow-sm cursor-pointer"
             title="Close Terminal (ESC)"
           >
             <X size={20} />
@@ -565,8 +565,8 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
       {message && (
         <div
           className={`mb-5 rounded-2xl border p-4 text-sm max-w-4xl font-medium ${message.type === "success"
-            ? "border-emerald-250 bg-emerald-50 text-emerald-800"
-            : "border-red-250 bg-red-50 text-red-800"
+            ? "border-[#4A3A10] bg-[#2A2310] text-[#D4A935]"
+            : "border-red-900 bg-red-950/20 text-[#E57373]"
             }`}
         >
           {message.text}
@@ -574,31 +574,31 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
       )}
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,7fr)_minmax(320px,3fr)]">
-        <section className="rounded-2xl border border-stone-200 bg-white p-4 shadow-md sm:p-5 text-stone-900">
+        <section className="rounded-2xl border border-[#2E2B24] bg-[#131210] p-4 shadow-md sm:p-5 text-[#A89F8C]">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <label className="block">
-              <span className="text-sm font-semibold text-stone-700">Invoice Number</span>
+              <span className="text-sm font-semibold text-[#A89F8C]">Invoice Number</span>
               <input
                 readOnly
                 type="text"
                 value={invoiceNumberDisplay}
-                className="mt-2 h-12 w-full rounded-2xl border border-stone-200 bg-stone-100 px-4 text-sm text-stone-500 outline-none"
+                className="mt-2 h-12 w-full rounded-xl border border-[#2E2B24] bg-[#131210] px-4 text-sm text-[#6B6358] outline-none"
               />
             </label>
 
             <label className="block">
-              <span className="text-sm font-semibold text-stone-700">Date</span>
+              <span className="text-sm font-semibold text-[#A89F8C]">Date</span>
               <input
                 type="date"
                 value={dateString}
                 disabled={saved}
                 onChange={(e) => setDateString(e.target.value)}
-                className="mt-2 h-12 w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 text-sm text-stone-900 outline-none focus:border-black disabled:bg-stone-100 disabled:text-stone-500"
+                className="mt-2 h-12 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-4 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E] focus:ring-1 focus:ring-[#B8962E] disabled:bg-stone-900 disabled:text-[#6B6358]"
               />
             </label>
 
             <div className="block">
-              <span className="text-sm font-semibold text-stone-700">Customer Mobile</span>
+              <span className="text-sm font-semibold text-[#A89F8C]">Customer Mobile</span>
               <input
                 required
                 type="text"
@@ -606,16 +606,16 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
                 disabled={saved}
                 onChange={(e) => setCustomerMobile(e.target.value)}
                 placeholder="Type phone number..."
-                className="mt-2 h-12 w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 text-sm text-stone-900 outline-none focus:border-black disabled:bg-stone-100 disabled:text-stone-500"
+                className="mt-2 h-12 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-4 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E] focus:ring-1 focus:ring-[#B8962E] placeholder-[#6B6358] disabled:bg-stone-900 disabled:text-[#6B6358]"
               />
               {clientStatus && (
                 <div className="mt-2 flex justify-start">
                   <span
-                    className={`inline-block rounded-full px-3 py-1 text-xs font-bold ${clientStatus === "membership"
-                      ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                    className={`inline-block rounded-full px-3 py-1 text-[10px] font-bold tracking-wide uppercase border ${clientStatus === "membership"
+                      ? "bg-[#2A2310] text-[#D4A935] border-[#4A3A10]"
                       : clientStatus === "regular"
-                        ? "bg-blue-100 text-blue-800 border border-blue-300"
-                        : "bg-stone-100 text-stone-800 border border-stone-300 animate-pulse"
+                        ? "bg-[#1C1A16] text-[#A89F8C] border-[#2E2B24]"
+                        : "bg-[#1A1C2A] text-[#818CF8] border-[#2E3154] animate-pulse"
                       }`}
                   >
                     {clientStatus === "membership"
@@ -629,7 +629,7 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
             </div>
 
             <label className="block">
-              <span className="text-sm font-semibold text-stone-700">Customer Name</span>
+              <span className="text-sm font-semibold text-[#A89F8C]">Customer Name</span>
               <input
                 required
                 type="text"
@@ -637,7 +637,7 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
                 disabled={saved}
                 onChange={(e) => setCustomerName(e.target.value)}
                 placeholder="Enter customer name..."
-                className="mt-2 h-12 w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 text-sm text-stone-900 outline-none focus:border-black disabled:bg-stone-100 disabled:text-stone-500"
+                className="mt-2 h-12 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-4 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E] focus:ring-1 focus:ring-[#B8962E] placeholder-[#6B6358] disabled:bg-stone-900 disabled:text-[#6B6358]"
               />
             </label>
           </div>
@@ -658,15 +658,15 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
             disabled={saved}
           />
 
-          <div className="grid gap-5 md:grid-cols-2 mt-6 pt-6 border-t border-stone-200">
+          <div className="grid gap-5 md:grid-cols-2 mt-6 pt-6 border-t border-[#2E2B24]">
             {/* Offers Selector */}
-            <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm text-stone-900 flex flex-col justify-between">
+            <section className="rounded-2xl border border-[#2E2B24] bg-[#131210] p-5 shadow-sm text-[#A89F8C] flex flex-col justify-between">
               <div>
-                <h2 className="text-lg font-bold text-stone-900 mb-3">Apply Offer</h2>
+                <h2 className="text-lg font-bold text-[#F5F0E8] mb-3">Apply Offer</h2>
                 {offersList.length === 0 ? (
-                  <p className="text-sm text-stone-400">No offers have been created yet.</p>
+                  <p className="text-sm text-[#6B6358]">No offers have been created yet.</p>
                 ) : eligibleOffers.length === 0 ? (
-                  <p className="text-sm text-stone-400">
+                  <p className="text-sm text-[#6B6358]">
                     No active offers are eligible for this bill right now.
                   </p>
                 ) : (
@@ -682,7 +682,7 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
                         setManuallyDeselected(false);
                       }
                     }}
-                    className="h-11 w-full rounded-xl border border-stone-200 bg-stone-50 px-3 text-sm text-stone-900 outline-none transition focus:border-black disabled:bg-stone-100 disabled:text-stone-500"
+                    className="h-11 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-3 text-sm text-[#F5F0E8] outline-none transition focus:border-[#B8962E] focus:ring-1 focus:ring-[#B8962E] disabled:bg-stone-900 disabled:text-[#6B6358]"
                   >
                     <option value="">No offer applied</option>
                     {eligibleOffers.map((offer) => (
@@ -698,7 +698,7 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
                 )}
               </div>
               {selectedOffer && (
-                <p className="mt-3 text-xs font-semibold text-emerald-700">
+                <p className="mt-3 text-xs font-semibold text-[#B8962E]">
                   Discount applied: -{formatCurrency(totals.offerDiscount)}
                 </p>
               )}
@@ -718,15 +718,15 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
         <aside className="space-y-5">
           <SummaryCard totals={totals} />
 
-          <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-md text-stone-900">
+          <section className="rounded-2xl border border-[#2E2B24] bg-[#131210] p-5 shadow-md text-[#A89F8C]">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-stone-900">Payment Information</h2>
+              <h2 className="text-lg font-bold text-[#F5F0E8]">Payment Information</h2>
               {isSplitEdited && (
                 <button
                   type="button"
                   disabled={saved}
                   onClick={() => setIsSplitEdited(false)}
-                  className="text-xs font-semibold text-stone-500 hover:text-black transition underline cursor-pointer disabled:opacity-50 disabled:no-underline"
+                  className="text-xs font-semibold text-[#6B6358] hover:text-[#B8962E] transition underline cursor-pointer disabled:opacity-50 disabled:no-underline"
                 >
                   Reset to Full UPI
                 </button>
@@ -734,9 +734,9 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
             </div>
 
             <div className="space-y-4">
-              <div className="flex items-center justify-between border-b border-stone-100 pb-3">
-                <span className="text-sm font-semibold text-stone-700">Grand Total</span>
-                <span className="text-lg font-bold text-stone-900">{formatCurrency(totals.grandTotal)}</span>
+              <div className="flex items-center justify-between border-b border-[#2E2B24] pb-3">
+                <span className="text-sm font-semibold text-[#A89F8C]">Grand Total</span>
+                <span className="text-lg font-bold text-[#F5F0E8]">{formatCurrency(totals.grandTotal)}</span>
               </div>
 
               {/* Horizontal Payment Inputs */}
@@ -746,7 +746,7 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
                   const setFn = method === "cash" ? setCashAmount : method === "upi" ? setUpiAmount : setCardAmount;
                   return (
                     <label key={method} className="block">
-                      <span className="text-xs font-semibold text-stone-600 capitalize">{method} Amount</span>
+                      <span className="text-[10px] uppercase tracking-[0.15em] text-[#6B6358] capitalize">{method} Amount</span>
                       <input
                         type="number"
                         min="0"
@@ -758,20 +758,20 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
                           const v = e.target.value;
                           setFn(v === "" ? "" : Math.max(0, Number(v)));
                         }}
-                        className="mt-1.5 h-10 w-full rounded-xl border border-stone-200 bg-stone-50 px-2 text-sm text-stone-900 outline-none focus:border-black disabled:bg-stone-100 disabled:text-stone-500"
+                        className="mt-1.5 h-10 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-2 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E] focus:ring-1 focus:ring-[#B8962E] disabled:bg-stone-900 disabled:text-[#6B6358]"
                       />
                     </label>
                   );
                 })}
               </div>
 
-              <div className="border-t border-stone-100 pt-3 space-y-2.5">
+              <div className="border-t border-[#2E2B24] pt-3 space-y-2.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-semibold text-stone-700">Total Paid</span>
+                  <span className="text-sm font-semibold text-[#A89F8C]">Total Paid</span>
                   <div className="flex items-center gap-1.5">
-                    <span className="text-sm font-bold text-stone-900">{formatCurrency(totalPaid)}</span>
+                    <span className="text-sm font-bold text-[#F5F0E8]">{formatCurrency(totalPaid)}</span>
                     {isPaymentValid && (
-                      <span className="inline-flex size-4 items-center justify-center rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                      <span className="inline-flex size-4 items-center justify-center rounded-full bg-[#2A2310] text-[#D4A935] border border-[#4A3A10] text-[10px] font-bold">
                         ✓
                       </span>
                     )}
@@ -780,11 +780,11 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
                 {totals.grandTotal > 0 && (
                   <div className="text-xs font-semibold text-right">
                     {isPaymentValid ? (
-                      <span className="text-emerald-600">Payment matches bill total</span>
+                      <span className="text-[#B8962E]">Payment matches bill total</span>
                     ) : paymentDiff > 0 ? (
-                      <span className="text-amber-600">Remaining {formatCurrency(paymentDiff)}</span>
+                      <span className="text-[#B8962E]">Remaining {formatCurrency(paymentDiff)}</span>
                     ) : (
-                      <span className="text-red-600">Exceeds total by {formatCurrency(Math.abs(paymentDiff))}</span>
+                      <span className="text-[#E57373]">Exceeds total by {formatCurrency(Math.abs(paymentDiff))}</span>
                     )}
                   </div>
                 )}

@@ -79,15 +79,15 @@ export default function DashboardLayout({
   // While firebase resolves user state or if redirect is occurring
   if (loading || !user) {
     return (
-      <div className="flex h-screen w-screen items-center justify-center bg-[#F5F5F5]">
-        <div className="size-10 animate-spin rounded-full border-4 border-black border-t-transparent" />
+      <div className="flex h-screen w-screen items-center justify-center bg-[#0E0D0B]">
+        <div className="size-10 animate-spin rounded-full border-4 border-[#B8962E] border-t-transparent" />
       </div>
     );
   }
 
   return (
     <AppDataProvider>
-      <div className="dark-page relative min-h-screen bg-black text-white font-sans antialiased">
+      <div className="relative min-h-screen bg-[#0E0D0B] text-[#A89F8C] antialiased">
         {pathname === "/dashboard" && (
           <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
             <div 
@@ -113,7 +113,7 @@ export default function DashboardLayout({
           <main className="flex-1 px-4 pb-8 pt-4 sm:px-6 lg:px-8">
             {children}
           </main>
-          <footer className="border-t border-stone-800 bg-black py-4 px-4 sm:px-6 lg:px-8 text-xs text-stone-600 select-none">
+          <footer className="border-t border-[#2E2B24] bg-[#131210] py-4 px-4 sm:px-6 lg:px-8 text-xs text-[#6B6358] select-none">
             <div className="flex items-center justify-between">
               <span>Explore Salon ERP</span>
               <span>Built by Thrivex Labs</span>

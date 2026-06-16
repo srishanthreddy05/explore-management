@@ -26,15 +26,15 @@ export function SidebarItem({
     <Link
       href={href}
       onClick={onClick}
-      className={`group flex h-12 w-full items-center gap-3 rounded-2xl px-3 text-sm font-semibold transition duration-200 ${
+      className={`group flex h-12 w-full items-center gap-3 rounded-xl px-3 text-sm font-bold transition duration-200 ${
         isActive
-          ? "bg-white text-black shadow-md shadow-black/10"
-          : "text-stone-400 hover:bg-white/10 hover:text-white"
+          ? "border-l-2 border-[#B8962E] bg-[#1C1A16] text-[#F5F0E8]"
+          : "text-[#6B6358] hover:bg-[#1C1A16] hover:text-[#F5F0E8]"
       } ${collapsed ? "justify-center" : "justify-start"}`}
     >
       <Icon
         size={20}
-        className={isActive ? "text-black" : "transition group-hover:text-white"}
+        className={isActive ? "text-[#B8962E]" : "transition text-[#6B6358] group-hover:text-[#F5F0E8]"}
       />
       {!collapsed && <span className="truncate">{label}</span>}
     </Link>

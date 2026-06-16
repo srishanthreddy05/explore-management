@@ -32,17 +32,17 @@ export function ActionButtons({
   ] as const;
 
   return (
-    <section className="rounded-2xl border border-stone-200 bg-white p-4 shadow-md text-stone-900">
+    <section className="rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-4 shadow-md text-[#A89F8C]">
       <div className="grid gap-3">
         {actions.map((action) => {
           const Icon = action.icon;
           const isPrimary = action.tone === "primary";
           const className =
             action.tone === "primary"
-              ? "border-black bg-black text-white hover:bg-stone-800"
+              ? "border-[#B8962E] bg-[#B8962E] text-[#0E0D0B] hover:bg-[#D4A935] shadow-[0_4px_16px_rgba(184,150,46,0.3)]"
               : action.tone === "success"
-                ? "border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700"
-                : "border-stone-200 bg-stone-50 text-stone-700 hover:bg-stone-100";
+                ? "border-[#2E2B24] bg-[#1C1A16] text-[#A89F8C] hover:border-[#B8962E] hover:text-[#B8962E]"
+                : "border-[#2E2B24] bg-[#131210] text-[#A89F8C] hover:border-[#B8962E] hover:text-[#B8962E] hover:bg-[#1F1A0F]";
 
           return (
             <button
@@ -50,7 +50,7 @@ export function ActionButtons({
               disabled={isPrimary && disabled}
               type="button"
               onClick={() => handleActionClick(action.label)}
-              className={`flex h-12 items-center justify-center gap-2 rounded-2xl border text-sm font-semibold shadow-sm transition hover:-translate-y-0.5 disabled:opacity-50 ${className}`}
+              className={`flex h-12 items-center justify-center gap-2 rounded-xl border text-sm font-bold transition hover:-translate-y-0.5 disabled:opacity-50 ${className}`}
             >
               <Icon size={18} />
               {action.label}

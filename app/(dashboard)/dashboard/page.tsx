@@ -16,7 +16,7 @@ import * as staffService from "@/services/staff";
 import { formatCurrency } from "@/components/salon-dashboard/types";
 import type { Staff } from "@/types/staff";
 import { useAppData } from "@/context/AppDataContext";
-import { CalendarDays, CreditCard, TrendingUp, ShieldCheck, Users } from "lucide-react";
+import { CalendarDays, CreditCard, TrendingUp, ShieldCheck, Users, Receipt, BarChart2, UsersRound, UserPlus, PiggyBank } from "lucide-react";
 import { format } from "date-fns";
 import Link from "next/link";
 import { BillingTerminal } from "@/components/billing/BillingTerminal";
@@ -149,7 +149,7 @@ export default function DashboardPage() {
       const yyyy = now.getFullYear();
       const mm = String(now.getMonth() + 1).padStart(2, '0');
       const monthKey = `${yyyy}-${mm}`;
-      
+
       const cacheKey = `monthlyStats_${monthKey}`;
       if (!force) {
         const cached = localStorage.getItem(cacheKey);
@@ -316,7 +316,7 @@ export default function DashboardPage() {
 
       if (invDateStr === todayStr) {
         todayRevenue += cash + upi + card;
-        
+
         const customerIdentifier = inv.customerId || inv.customerPhone || inv.customerName;
         if (customerIdentifier) {
           uniqueCustomerIds.add(customerIdentifier);
@@ -388,7 +388,7 @@ export default function DashboardPage() {
 
     todayInvoices.forEach((inv) => {
       const discountFactor = inv.subtotal > 0 ? (inv.grandTotal / inv.subtotal) : 1;
-      
+
       (inv.products || []).forEach((p: any) => {
         const productBaseAmount = p.amount ?? Math.max((p.price || 0) * (p.quantity || 1) - (p.discount || 0), 0);
         const amount = productBaseAmount * discountFactor;
@@ -521,19 +521,19 @@ export default function DashboardPage() {
   if (!(invoicesLoaded && staffLoaded)) {
     return (
       <div className="flex h-[40vh] items-center justify-center">
-        <div className="size-10 animate-spin rounded-full border-4 border-black border-t-transparent" />
+        <div className="size-10 animate-spin rounded-full border-4 border-[#B8962E] border-t-transparent" />
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 text-stone-900">
+    <div className="dashboard-root space-y-6 text-[#A89F8C]">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.32em] text-stone-400">
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#A89F8C]">
             Analytics
           </p>
-          <h1 className="mt-2 text-3xl font-bold tracking-tight text-white">
+          <h1 className="mt-2 text-[1.85rem] font-extrabold tracking-[-0.03em] text-[#F5F0E8]">
             Dashboard Overview
           </h1>
         </div>
@@ -546,71 +546,72 @@ export default function DashboardPage() {
         <div className="space-y-6">
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {/* Today's Collection */}
-            <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
-              <div className="flex items-center justify-between text-emerald-600">
-                <span className="text-sm font-bold">Today's Collection</span>
-                <TrendingUp size={20} className="text-emerald-600" />
+            <div className="rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-5 shadow-sm hover:border-[#4A4535] hover:shadow-[0_4px_20px_rgba(184,150,46,0.08)] transition">
+              <div className="flex items-center justify-between text-[#B8962E]">
+                <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#A89F8C]">Today's Collection</span>
+                <TrendingUp size={20} className="text-[#B8962E]" />
               </div>
-              <p className="mt-3 text-3xl font-bold tracking-tight text-stone-900">
+              <p className="mt-3 text-[2rem] font-extrabold tracking-[-0.04em] text-[#F5F0E8]">
                 {formatCurrency(stats.todayRevenue)}
               </p>
-              <div className="mt-4 grid grid-cols-3 gap-2 border-t border-stone-100 pt-3 text-center">
+              <div className="mt-4 grid grid-cols-3 gap-2 border-t border-[#2E2B24] pt-3 text-center">
                 <div>
-                  <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider">Cash</p>
-                  <p className="text-xs font-bold text-stone-900">{formatCurrency(stats.cashToday)}</p>
+                  <p className="text-[10px] font-semibold text-[#6B6358] uppercase tracking-wider">Cash</p>
+                  <p className="text-xs font-bold text-[#F5F0E8]">{formatCurrency(stats.cashToday)}</p>
                 </div>
                 <div>
-                  <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider">UPI</p>
-                  <p className="text-xs font-bold text-stone-900">{formatCurrency(stats.upiToday)}</p>
+                  <p className="text-[10px] font-semibold text-[#6B6358] uppercase tracking-wider">UPI</p>
+                  <p className="text-xs font-bold text-[#F5F0E8]">{formatCurrency(stats.upiToday)}</p>
                 </div>
                 <div>
-                  <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider">Card</p>
-                  <p className="text-xs font-bold text-stone-900">{formatCurrency(stats.cardToday)}</p>
+                  <p className="text-[10px] font-semibold text-[#6B6358] uppercase tracking-wider">Card</p>
+                  <p className="text-xs font-bold text-[#F5F0E8]">{formatCurrency(stats.cardToday)}</p>
                 </div>
               </div>
             </div>
 
             {/* Monthly Revenue */}
-            <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm flex flex-col justify-between">
+            <div className="rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-5 shadow-sm flex flex-col justify-between hover:border-[#4A4535] hover:shadow-[0_4px_20px_rgba(184,150,46,0.08)] transition">
               <div>
-                <div className="flex items-center justify-between text-rose-600">
-                  <span className="text-sm font-bold">Monthly Revenue</span>
-                  <CreditCard size={20} className="text-rose-600" />
+                <div className="flex items-center justify-between text-[#B8962E]">
+                  <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#A89F8C]">Monthly Revenue</span>
+                  <CreditCard size={20} className="text-[#B8962E]" />
                 </div>
-                <p className="mt-3 text-3xl font-bold tracking-tight text-stone-900">
+                <p className="mt-3 text-[2rem] font-extrabold tracking-[-0.04em] text-[#F5F0E8]">
                   {formatCurrency(stats.monthlyRevenue)}
                 </p>
               </div>
-              <p className="mt-2 text-xs text-stone-400">Sales in current month</p>
+              <p className="mt-2 text-[11px] text-[#6B6358]">Sales in current month</p>
             </div>
 
             {/* Today's Visits */}
-            <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm flex flex-col justify-between">
+            <div className="rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-5 shadow-sm flex flex-col justify-between hover:border-[#4A4535] hover:shadow-[0_4px_20px_rgba(184,150,46,0.08)] transition">
               <div>
-                <div className="flex items-center justify-between text-blue-600">
-                  <span className="text-sm font-bold">Today's Visits</span>
-                  <CalendarDays size={20} className="text-blue-600" />
+                <div className="flex items-center justify-between text-[#B8962E]">
+                  <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#A89F8C]">Today's Visits</span>
+                  <CalendarDays size={20} className="text-[#B8962E]" />
                 </div>
-                <p className="mt-3 text-3xl font-bold tracking-tight text-stone-900">
+                <p className="mt-3 text-[2rem] font-extrabold tracking-[-0.04em] text-[#F5F0E8]">
                   {stats.todayVisits}
                 </p>
               </div>
-              <p className="mt-2 text-xs text-stone-400">Customers served today</p>
+              <p className="mt-2 text-[11px] text-[#6B6358]">Customers served today</p>
             </div>
           </div>
 
           {/* Quick Actions */}
-          <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
-            <h2 className="text-lg font-bold text-stone-900 mb-4">Quick Actions</h2>
-            <div className="grid grid-cols-3 divide-x divide-stone-200 gap-0">
+          <section className="rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-5 shadow-sm">
+            <h2 className="text-[0.95rem] font-bold tracking-[-0.015em] text-[#F5F0E8] mb-4">Quick Actions</h2>
+            <div className="grid grid-cols-3 divide-x divide-[#2E2B24] gap-0">
 
               {/* Col 1 — Billing */}
               <div className="flex flex-col px-4">
                 <button
                   type="button"
                   onClick={() => setIsBillingOpen(true)}
-                  className="w-full flex-1 min-h-[100px] flex flex-col items-center justify-center rounded-xl border border-stone-200 bg-white text-sm font-extrabold text-black hover:bg-stone-50 transition shadow-sm cursor-pointer p-3"
+                  className="w-full flex-1 min-h-[100px] flex flex-col items-center justify-center rounded-xl bg-[#B8962E] text-[14px] font-extrabold tracking-[0.08em] uppercase text-[#0E0D0B] hover:bg-[#D4A935] shadow-[0_4px_16px_rgba(184,150,46,0.25)] transition cursor-pointer p-3"
                 >
+                  <Receipt size={28} className="mb-2" />
                   <span>Open Billing</span>
                   <span>Terminal</span>
                 </button>
@@ -621,14 +622,16 @@ export default function DashboardPage() {
                 <button
                   type="button"
                   onClick={() => setIsSettlementsOpen(true)}
-                  className="w-full h-11 rounded-xl border border-stone-200 bg-white text-sm font-extrabold text-black hover:bg-stone-50 transition shadow-sm cursor-pointer"
+                  className="w-full h-11 flex items-center justify-center gap-2 rounded-xl border border-[#2E2B24] bg-[#131210] text-[12px] font-semibold tracking-[0.01em] text-[#A89F8C] hover:border-[#B8962E] hover:text-[#B8962E] hover:bg-[#1F1A0F] transition cursor-pointer"
                 >
+                  <BarChart2 size={15} />
                   View Settlements
                 </button>
                 <Link
                   href="/staff"
-                  className="w-full h-11 flex items-center justify-center rounded-xl border border-stone-200 bg-white text-sm font-extrabold text-black hover:bg-stone-50 transition shadow-sm"
+                  className="w-full h-11 flex items-center justify-center gap-2 rounded-xl border border-[#2E2B24] bg-[#131210] text-[12px] font-semibold tracking-[0.01em] text-[#A89F8C] hover:border-[#B8962E] hover:text-[#B8962E] hover:bg-[#1F1A0F] transition"
                 >
+                  <UsersRound size={15} />
                   Manage Staff
                 </Link>
               </div>
@@ -638,15 +641,17 @@ export default function DashboardPage() {
                 <button
                   type="button"
                   onClick={() => setIsCustomerOpen(true)}
-                  className="w-full h-11 rounded-xl border border-stone-200 bg-white text-sm font-extrabold text-black hover:bg-stone-50 transition shadow-sm cursor-pointer"
+                  className="w-full h-11 flex items-center justify-center gap-2 rounded-xl border border-[#2E2B24] bg-[#131210] text-[12px] font-semibold tracking-[0.01em] text-[#A89F8C] hover:border-[#B8962E] hover:text-[#B8962E] hover:bg-[#1F1A0F] transition cursor-pointer"
                 >
+                  <UserPlus size={15} />
                   Add Customer
                 </button>
                 <button
                   type="button"
                   onClick={() => setIsExpenseOpen(true)}
-                  className="w-full h-11 rounded-xl border border-stone-200 bg-white text-sm font-extrabold text-black hover:bg-stone-50 transition shadow-sm cursor-pointer"
+                  className="w-full h-11 flex items-center justify-center gap-2 rounded-xl border border-[#2E2B24] bg-[#131210] text-[12px] font-semibold tracking-[0.01em] text-[#A89F8C] hover:border-[#B8962E] hover:text-[#B8962E] hover:bg-[#1F1A0F] transition cursor-pointer"
                 >
+                  <PiggyBank size={15} />
                   Add Expense
                 </button>
               </div>
@@ -656,13 +661,13 @@ export default function DashboardPage() {
         </div>
 
         {/* ── E: Right — horizontal staff cards ─────────────────────────── */}
-        <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
+        <section className="rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-5 shadow-sm">
           <div className="mb-4">
-            <h2 className="text-lg font-bold text-stone-900">Stylists Floor Board</h2>
-            <p className="text-xs text-stone-400">Real-time status and floor hours today</p>
+            <h2 className="text-[0.95rem] font-bold tracking-[-0.015em] text-[#F5F0E8]">Stylists Floor Board</h2>
+            <p className="text-xs text-[#6B6358]">Real-time status and floor hours today</p>
           </div>
           {staff.length === 0 ? (
-            <p className="text-xs text-stone-400 italic">No registered staff found.</p>
+            <p className="text-xs text-[#6B6358] italic">No registered staff found.</p>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2">
               {staffWithActiveTimes.map((member) => {
@@ -671,33 +676,33 @@ export default function DashboardPage() {
                 return (
                   <div
                     key={member.id}
-                    className="rounded-2xl border border-stone-200 bg-stone-50 p-4 flex flex-col justify-between hover:border-stone-400 transition"
+                    className="rounded-2xl border border-[#2E2B24] bg-[#131210] p-4 flex flex-col justify-between hover:border-[#B8962E] hover:shadow-[0_2px_12px_rgba(184,150,46,0.12)] transition"
                   >
                     <div>
                       <div className="flex items-center justify-between">
-                        <span className="font-semibold text-stone-900 text-sm">
+                        <span className="font-bold text-[#F5F0E8] text-sm">
                           {member.name}
                         </span>
                         <span
-                          className={`inline-block rounded-full px-2.5 py-0.5 text-[10px] font-bold border ${isOnDuty
-                              ? "bg-emerald-100 text-emerald-800 border-emerald-300"
-                              : "bg-stone-100 text-stone-600 border-stone-300"
+                          className={`inline-block rounded-full px-2.5 py-0.5 text-[10px] font-bold border tracking-[0.1em] uppercase ${isOnDuty
+                            ? "bg-[#2A2310] text-[#D4A935] border-[#4A3A10]"
+                            : "bg-[#1C1A16] text-[#6B6358] border-[#2E2B24]"
                             }`}
                         >
                           {isOnDuty ? "On Duty" : "Off Duty"}
                         </span>
                       </div>
-                      <p className="text-xs text-stone-400 mt-0.5">{member.role}</p>
-                      <div className="mt-2 flex items-center justify-between border-t border-stone-200 pt-2 text-xs">
-                        <span className="text-stone-500">Active today</span>
-                        <span className="font-bold text-stone-900">{activeTime}</span>
+                      <p className="text-[10px] font-semibold tracking-[0.12em] uppercase text-[#6B6358] mt-0.5">{member.role}</p>
+                      <div className="mt-2 flex items-center justify-between border-t border-[#2E2B24] pt-2 text-xs">
+                        <span className="text-[#6B6358]">Active today</span>
+                        <span className="font-bold text-[#F5F0E8]">{activeTime}</span>
                       </div>
                     </div>
                     <button
                       onClick={() => toggleDutyStatus(member)}
-                      className={`mt-3 h-8 w-full rounded-xl text-xs font-bold text-white transition ${isOnDuty
-                          ? "bg-red-600 hover:bg-red-700"
-                          : "bg-emerald-600 hover:bg-emerald-700"
+                      className={`mt-3 h-8 w-full rounded-xl text-[11px] font-bold tracking-wide transition ${isOnDuty
+                        ? "bg-[#1C1A16] border border-[#2E2B24] text-[#A89F8C] hover:border-[#B8962E] hover:text-[#B8962E] hover:bg-[#1F1A0F]"
+                        : "bg-[#B8962E] text-[#0E0D0B] hover:bg-[#D4A935]"
                         }`}
                     >
                       {isOnDuty ? "Go Off Duty" : "Go On Duty"}
@@ -711,27 +716,27 @@ export default function DashboardPage() {
       </div>
 
       {/* ── B: Today's invoices list ──────────────────────────────────────── */}
-      <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
+      <section className="rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-5 shadow-sm">
         <div className="mb-4">
-          <h2 className="text-lg font-bold text-stone-900">Today's Invoices</h2>
+          <h2 className="text-[0.95rem] font-bold tracking-[-0.015em] text-[#F5F0E8]">Today's Invoices</h2>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[560px] border-collapse text-left text-sm text-stone-600">
-            <thead className="bg-stone-50 text-xs uppercase tracking-[0.2em] text-stone-500 border-b border-stone-200">
+          <table className="w-full min-w-[560px] border-collapse text-left text-sm text-[#A89F8C]">
+            <thead className="bg-[#131210] border-b border-[#2E2B24]">
               <tr>
-                <th className="px-4 py-3 font-bold">Invoice #</th>
-                <th className="px-4 py-3 font-bold">Customer</th>
-                <th className="px-4 py-3 font-bold">Cust Type</th>
-                <th className="px-4 py-3 font-bold">Staff</th>
-                <th className="px-4 py-3 font-bold">Time</th>
-                <th className="px-4 py-3 font-bold text-right">Amount</th>
+                <th className="px-4 py-3 text-[10px] uppercase tracking-[0.2em] text-[#6B6358] font-bold">Invoice #</th>
+                <th className="px-4 py-3 text-[10px] uppercase tracking-[0.2em] text-[#6B6358] font-bold">Customer</th>
+                <th className="px-4 py-3 text-[10px] uppercase tracking-[0.2em] text-[#6B6358] font-bold">Cust Type</th>
+                <th className="px-4 py-3 text-[10px] uppercase tracking-[0.2em] text-[#6B6358] font-bold">Staff</th>
+                <th className="px-4 py-3 text-[10px] uppercase tracking-[0.2em] text-[#6B6358] font-bold">Time</th>
+                <th className="px-4 py-3 text-[10px] uppercase tracking-[0.2em] text-[#6B6358] font-bold text-right">Amount</th>
                 <th className="px-4 py-3 text-right"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-stone-100">
+            <tbody className="divide-y divide-[#242118]">
               {todayInvoices.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-stone-400 italic">
+                  <td colSpan={7} className="px-4 py-8 text-center text-[#6B6358] italic">
                     No bills recorded today.
                   </td>
                 </tr>
@@ -758,22 +763,21 @@ export default function DashboardPage() {
                   const customerType = inv.customerType || "regular";
 
                   return (
-                    <tr key={inv.id} className="hover:bg-stone-50 transition">
-                      <td className="px-4 py-3 font-bold text-stone-900">
+                    <tr key={inv.id} className="bg-transparent hover:bg-[#1F1A0F] transition">
+                      <td className="px-4 py-3 font-bold text-[#F5F0E8]">
                         {inv.invoiceNumber}
                       </td>
-                      <td className="px-4 py-3 font-medium text-stone-800">
+                      <td className="px-4 py-3 font-medium text-[#F5F0E8]">
                         {inv.customerName}
                       </td>
                       <td className="px-4 py-3">
                         <span
-                          className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-bold border ${
-                            customerType === "membership"
-                              ? "bg-emerald-50 text-emerald-800 border-emerald-300"
-                              : customerType === "regular"
-                                ? "bg-blue-50 text-blue-800 border-blue-300"
-                                : "bg-stone-50 text-stone-800 border-stone-300"
-                          }`}
+                          className={`inline-block rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wide uppercase border ${customerType === "membership"
+                            ? "bg-[#2A2310] text-[#D4A935] border-[#4A3A10]"
+                            : customerType === "regular"
+                              ? "bg-[#1C1A16] text-[#A89F8C] border-[#2E2B24]"
+                              : "bg-[#1A1C2A] text-[#818CF8] border-[#2E3154]"
+                            }`}
                         >
                           {customerType === "membership"
                             ? "Membership"
@@ -782,19 +786,19 @@ export default function DashboardPage() {
                               : "Regular"}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-stone-600">
+                      <td className="px-4 py-3 text-[#A89F8C]">
                         {staffListStr || (
-                          <span className="italic text-stone-400">—</span>
+                          <span className="italic text-[#6B6358]">—</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-stone-500">{time}</td>
-                      <td className="px-4 py-3 font-bold text-stone-900 text-right">
+                      <td className="px-4 py-3 text-[#6B6358]">{time}</td>
+                      <td className="px-4 py-3 font-bold text-[#F5F0E8] text-right">
                         {formatCurrency(inv.grandTotal)}
                       </td>
                       <td className="px-4 py-3 text-right">
                         <Link
                           href={`/invoices/${inv.id}`}
-                          className="inline-flex h-8 items-center justify-center rounded-lg border border-stone-200 bg-white px-3 text-xs font-semibold text-stone-700 hover:text-black hover:border-black transition"
+                          className="inline-flex h-8 items-center justify-center rounded-lg border border-[#2E2B24] bg-[#131210] px-3 text-xs font-semibold text-[#A89F8C] hover:border-[#B8962E] hover:text-[#B8962E] hover:bg-[#1F1A0F] transition"
                         >
                           View
                         </Link>
@@ -809,12 +813,12 @@ export default function DashboardPage() {
       </section>
 
       {isBillingOpen && (
-        <div 
-          className="fixed inset-0 z-[60] flex items-start justify-center bg-black/60 backdrop-blur-sm p-4 sm:p-6 md:p-10 overflow-y-auto animate-in fade-in duration-200"
+        <div
+          className="fixed inset-0 z-[60] flex items-start justify-center bg-black/70 backdrop-blur-sm p-4 sm:p-6 md:p-10 overflow-y-auto animate-in fade-in duration-200"
           onClick={() => setIsBillingOpen(false)}
         >
-          <div 
-            className="relative w-full max-w-7xl bg-[#F5F5F5] rounded-3xl border border-stone-200 shadow-2xl p-4 sm:p-6 md:p-8 my-auto animate-in zoom-in-95 duration-200"
+          <div
+            className="relative w-full max-w-7xl bg-[#1C1A16] rounded-3xl border border-[#2E2B24] shadow-2xl p-4 sm:p-6 md:p-8 my-auto animate-in zoom-in-95 duration-200"
             onClick={(e) => e.stopPropagation()}
           >
             <BillingTerminal
@@ -853,26 +857,26 @@ export default function DashboardPage() {
       )}
 
       {isSettlementsOpen && (
-        <div 
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 sm:p-6 md:p-10 overflow-y-auto animate-in fade-in duration-200"
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 sm:p-6 md:p-10 overflow-y-auto animate-in fade-in duration-200"
           onClick={() => setIsSettlementsOpen(false)}
         >
-          <div 
-            className="relative w-full max-w-4xl bg-[#F5F5F5] rounded-3xl border border-stone-200 shadow-2xl p-6 md:p-8 max-h-[90vh] overflow-y-auto my-auto animate-in zoom-in-95 duration-200"
+          <div
+            className="relative w-full max-w-4xl bg-[#1C1A16] rounded-3xl border border-[#2E2B24] shadow-2xl p-6 md:p-8 max-h-[90vh] overflow-y-auto my-auto animate-in zoom-in-95 duration-200"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
-            <div className="flex items-center justify-between pb-4 border-b border-stone-200">
+            <div className="flex items-center justify-between pb-4 border-b border-[#2E2B24]">
               <div>
-                <h3 className="text-xl font-bold text-stone-900">Today's Settlements Breakdown</h3>
-                <p className="text-xs text-stone-400 font-medium mt-1">
+                <h3 className="text-xl font-bold text-[#F5F0E8]">Today's Settlements Breakdown</h3>
+                <p className="text-xs text-[#6B6358] font-medium mt-1">
                   Showing detailed splits for {format(new Date(), "dd MMM yyyy")}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setIsSettlementsOpen(false)}
-                className="grid size-10 place-items-center rounded-2xl border border-stone-200 hover:border-black transition text-stone-500 hover:text-black cursor-pointer font-bold bg-white shadow-xs"
+                className="grid size-10 place-items-center rounded-xl border border-[#2E2B24] hover:border-[#B8962E] transition text-[#A89F8C] hover:text-[#B8962E] cursor-pointer font-bold bg-[#131210] shadow-xs"
               >
                 ✕
               </button>
@@ -882,53 +886,53 @@ export default function DashboardPage() {
             <div className="mt-6">
               {/* Details Cards */}
               {todayInvoices.length === 0 ? (
-                <div className="text-center py-12 border border-dashed border-stone-200 rounded-2xl bg-white shadow-xs">
-                  <p className="text-sm font-semibold text-stone-500 italic">No sales or settlements recorded today.</p>
+                <div className="text-center py-12 border border-dashed border-[#2E2B24] rounded-2xl bg-[#131210] shadow-xs">
+                  <p className="text-sm font-semibold text-[#6B6358] italic">No sales or settlements recorded today.</p>
                 </div>
               ) : (
                 <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
                   {/* Owner Net Card */}
-                  <div className="rounded-2xl border border-purple-200 bg-purple-50/15 p-5 shadow-xs space-y-4">
+                  <div className="rounded-2xl border border-[#4A3A10] bg-[#1A1500] p-5 shadow-xs space-y-4">
                     <div className="flex justify-between items-start">
                       <div>
-                        <h4 className="font-extrabold text-purple-950 flex items-center gap-1.5">
-                          <ShieldCheck size={16} className="text-purple-700" />
+                        <h4 className="font-extrabold text-[#D4A935] flex items-center gap-1.5">
+                          <ShieldCheck size={16} className="text-[#D4A935]" />
                           Owner Settlement
                         </h4>
-                        <span className="inline-block rounded-full bg-purple-100 text-purple-800 border border-purple-200 px-2 py-0.5 text-[10px] font-bold tracking-wide mt-1 uppercase">
+                        <span className="inline-block rounded-full bg-[#2A2310] text-[#D4A935] border border-[#4A3A10] px-2 py-0.5 text-[10px] font-bold tracking-wide mt-1 uppercase">
                           Today Summary
                         </span>
                       </div>
                       <div className="text-right">
-                        <span className="text-[10px] text-purple-600 font-bold uppercase tracking-wider">
+                        <span className="text-[10px] text-[#D4A935] font-bold uppercase tracking-wider">
                           Net Share
                         </span>
-                        <p className="font-black text-purple-950 text-xl mt-0.5">
+                        <p className="font-black text-[#D4A935] text-xl mt-0.5">
                           {formatCurrency(todaySettlement.totalOwnerShare)}
                         </p>
                       </div>
                     </div>
 
-                    <div className="border-t border-purple-100 pt-3 space-y-2 text-xs text-purple-900">
+                    <div className="border-t border-[#2E2B24] pt-3 space-y-2 text-xs text-[#A89F8C]">
                       <div className="flex justify-between">
-                        <span className="text-purple-700 font-medium">Owner Direct Services:</span>
-                        <span className="font-bold text-purple-950">{formatCurrency(todaySettlement.ownerDirectRevenue)}</span>
+                        <span className="text-[#A89F8C] font-medium">Owner Direct Services:</span>
+                        <span className="font-bold text-[#F5F0E8]">{formatCurrency(todaySettlement.ownerDirectRevenue)}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-purple-700 font-medium">Stylists 50% Share:</span>
-                        <span className="font-bold text-purple-950">+{formatCurrency(todaySettlement.staffRevenueContribution)}</span>
+                        <span className="text-[#A89F8C] font-medium">Stylists 50% Share:</span>
+                        <span className="font-bold text-[#F5F0E8]">+{formatCurrency(todaySettlement.staffRevenueContribution)}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-purple-700 font-medium">Stylists Product Costs:</span>
-                        <span className="font-bold text-purple-950">+{formatCurrency(todaySettlement.staffProductReimbursement)}</span>
+                        <span className="text-[#A89F8C] font-medium">Stylists Product Costs:</span>
+                        <span className="font-bold text-[#F5F0E8]">+{formatCurrency(todaySettlement.staffProductReimbursement)}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-purple-700 font-medium">Membership Invoices:</span>
-                        <span className="font-bold text-purple-950">+{formatCurrency(todaySettlement.totalMembershipAmount)}</span>
+                        <span className="text-[#A89F8C] font-medium">Membership Invoices:</span>
+                        <span className="font-bold text-[#F5F0E8]">+{formatCurrency(todaySettlement.totalMembershipAmount)}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-purple-700 font-medium">Retail Product Sales:</span>
-                        <span className="font-bold text-purple-950">+{formatCurrency(todaySettlement.retailProductsRevenue)}</span>
+                        <span className="text-[#A89F8C] font-medium">Retail Product Sales:</span>
+                        <span className="font-bold text-[#F5F0E8]">+{formatCurrency(todaySettlement.retailProductsRevenue)}</span>
                       </div>
                     </div>
                   </div>
@@ -939,40 +943,40 @@ export default function DashboardPage() {
                     .map((sd) => (
                       <div
                         key={sd.staffId}
-                        className="rounded-2xl border border-stone-200 bg-white p-5 shadow-xs space-y-4"
+                        className="rounded-2xl border border-[#2E2B24] bg-[#131210] p-5 shadow-xs space-y-4"
                       >
                         <div className="flex justify-between items-start">
                           <div>
-                            <h4 className="font-extrabold text-stone-900 flex items-center gap-1.5">
-                              <Users size={16} className="text-stone-500" />
+                            <h4 className="font-extrabold text-[#F5F0E8] flex items-center gap-1.5">
+                              <Users size={16} className="text-[#B8962E]" />
                               {sd.name}
                             </h4>
-                            <span className="inline-block rounded-full bg-blue-100 text-blue-800 border border-blue-200 px-2 py-0.5 text-[10px] font-bold tracking-wide mt-1 uppercase">
+                            <span className="inline-block rounded-full bg-[#1C1A16] text-[#A89F8C] border border-[#2E2B24] px-2 py-0.5 text-[10px] font-bold tracking-wide mt-1 uppercase">
                               Stylist Split
                             </span>
                           </div>
                           <div className="text-right">
-                            <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider">
+                            <span className="text-[10px] text-[#6B6358] font-bold uppercase tracking-wider">
                               Net Share
                             </span>
-                            <p className="font-black text-stone-950 text-xl mt-0.5">
+                            <p className="font-black text-[#F5F0E8] text-xl mt-0.5">
                               {formatCurrency(sd.staffShare)}
                             </p>
                           </div>
                         </div>
 
-                        <div className="border-t border-stone-100 pt-3 space-y-2 text-xs">
-                          <div className="flex justify-between text-stone-500">
+                        <div className="border-t border-[#2E2B24] pt-3 space-y-2 text-xs">
+                          <div className="flex justify-between text-[#6B6358]">
                             <span>Service Revenue:</span>
-                            <span className="font-semibold text-stone-900">{formatCurrency(sd.serviceRevenue)}</span>
+                            <span className="font-semibold text-[#F5F0E8]">{formatCurrency(sd.serviceRevenue)}</span>
                           </div>
-                          <div className="flex justify-between text-stone-500">
+                          <div className="flex justify-between text-[#6B6358]">
                             <span>50% Base Share:</span>
-                            <span className="font-semibold text-stone-900">{formatCurrency(0.5 * sd.serviceRevenue)}</span>
+                            <span className="font-semibold text-[#F5F0E8]">{formatCurrency(0.5 * sd.serviceRevenue)}</span>
                           </div>
-                          <div className="flex justify-between text-stone-500">
+                          <div className="flex justify-between text-[#6B6358]">
                             <span>Product Cost Used:</span>
-                            <span className="font-bold text-red-650">-{formatCurrency(sd.productCost)}</span>
+                            <span className="font-bold text-[#E57373]">-{formatCurrency(sd.productCost)}</span>
                           </div>
                         </div>
                       </div>

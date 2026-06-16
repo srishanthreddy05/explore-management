@@ -146,17 +146,17 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
   };
 
   return (
-    <div className="w-full text-stone-900 max-w-7xl px-4 sm:px-6 lg:px-8 mx-auto space-y-6">
+    <div className="w-full text-[#A89F8C] max-w-7xl px-4 sm:px-6 lg:px-8 mx-auto space-y-6">
       {/* Header Row */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-3">
           <Link
             href="/invoices"
-            className="grid size-10 place-items-center rounded-xl border border-stone-200 bg-white text-stone-700 hover:text-black hover:border-black transition"
+            className="grid size-10 place-items-center rounded-xl border border-[#2E2B24] bg-[#131210] text-[#A89F8C] hover:text-[#B8962E] hover:border-[#B8962E] transition"
           >
             <ChevronLeft size={18} />
           </Link>
-          <h1 className="text-2xl font-bold tracking-tight text-stone-900">
+          <h1 className="text-2xl font-extrabold tracking-[-0.03em] text-[#F5F0E8]">
             Invoice Detail View
           </h1>
         </div>
@@ -164,7 +164,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
         {/* WhatsApp share button */}
         <button
           onClick={handleWhatsApp}
-          className="inline-flex h-11 items-center gap-2 rounded-2xl bg-emerald-600 px-5 text-sm font-semibold text-white shadow-md transition hover:-translate-y-0.5 hover:bg-emerald-700 cursor-pointer"
+          className="inline-flex h-11 items-center gap-2 rounded-xl bg-emerald-600 px-5 text-sm font-semibold text-white shadow-md transition hover:-translate-y-0.5 hover:bg-emerald-700 cursor-pointer"
         >
           <Send size={16} />
           Share on WhatsApp
@@ -174,63 +174,63 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
       {/* Main Content Layout Grid */}
       <div className="grid gap-5 xl:grid-cols-[minmax(0,7fr)_minmax(320px,3fr)]">
         {/* Left Column: Form Details & Tables (Billing Terminal format) */}
-        <section className="rounded-2xl border border-stone-200 bg-white p-4 shadow-md sm:p-5 text-stone-900 space-y-6">
+        <section className="rounded-2xl border border-[#2E2B24] bg-[#131210] p-4 shadow-md sm:p-5 text-[#A89F8C] space-y-6">
           {/* Top Form Grid (Invoice metadata) */}
           <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             <label className="block">
-              <span className="text-sm font-semibold text-stone-700">Invoice Number</span>
+              <span className="text-sm font-semibold text-[#A89F8C]">Invoice Number</span>
               <input
                 readOnly
                 type="text"
                 value={invoiceNumber}
-                className={`mt-2 h-12 w-full rounded-2xl border border-stone-200 bg-stone-100 px-4 text-sm outline-none font-bold ${
-                  customerType === "membership" ? "text-amber-600" : "text-stone-500"
+                className={`mt-2 h-12 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-4 text-sm outline-none font-bold ${
+                  customerType === "membership" ? "text-[#B8962E]" : "text-[#F5F0E8]"
                 }`}
               />
             </label>
 
             <label className="block">
-              <span className="text-sm font-semibold text-stone-700">Date</span>
+              <span className="text-sm font-semibold text-[#A89F8C]">Date</span>
               <input
                 readOnly
                 type="text"
                 value={invoiceDateLabel}
-                className="mt-2 h-12 w-full rounded-2xl border border-stone-200 bg-stone-100 px-4 text-sm text-stone-500 outline-none"
+                className="mt-2 h-12 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-4 text-sm text-[#F5F0E8] outline-none"
               />
             </label>
 
             <label className="block">
-              <span className="text-sm font-semibold text-stone-700">Time</span>
+              <span className="text-sm font-semibold text-[#A89F8C]">Time</span>
               <input
                 readOnly
                 type="text"
                 value={invoiceTimeLabel}
-                className="mt-2 h-12 w-full rounded-2xl border border-stone-200 bg-stone-100 px-4 text-sm text-stone-500 outline-none"
+                className="mt-2 h-12 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-4 text-sm text-[#F5F0E8] outline-none"
               />
             </label>
 
             <label className="block">
-              <span className="text-sm font-semibold text-stone-700">Customer Mobile</span>
+              <span className="text-sm font-semibold text-[#A89F8C]">Customer Mobile</span>
               <input
                 readOnly
                 type="text"
                 value={customerPhone || "—"}
-                className="mt-2 h-12 w-full rounded-2xl border border-stone-200 bg-stone-100 px-4 text-sm text-stone-500 outline-none"
+                className="mt-2 h-12 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-4 text-sm text-[#F5F0E8] outline-none"
               />
             </label>
 
             <label className="block">
-              <span className="text-sm font-semibold text-stone-700">Customer Name</span>
+              <span className="text-sm font-semibold text-[#A89F8C]">Customer Name</span>
               <input
                 readOnly
                 type="text"
                 value={invoice.customerName}
-                className="mt-2 h-12 w-full rounded-2xl border border-stone-200 bg-stone-100 px-4 text-sm text-stone-500 outline-none"
+                className="mt-2 h-12 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-4 text-sm text-[#F5F0E8] outline-none"
               />
             </label>
 
             <label className="block">
-              <span className="text-sm font-semibold text-stone-700">Customer Type</span>
+              <span className="text-sm font-semibold text-[#A89F8C]">Customer Type</span>
               <input
                 readOnly
                 type="text"
@@ -241,7 +241,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                       ? "New"
                       : "Regular"
                 }
-                className="mt-2 h-12 w-full rounded-2xl border border-stone-200 bg-stone-100 px-4 text-sm text-stone-500 font-semibold outline-none"
+                className="mt-2 h-12 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-4 text-sm text-[#F5F0E8] font-semibold outline-none"
               />
             </label>
           </div>
@@ -249,10 +249,10 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
           {/* Services Rendered Table */}
           {invoice.services && invoice.services.length > 0 && (
             <section className="mt-6">
-              <h2 className="text-lg font-bold text-stone-900 mb-3">Services</h2>
-              <div className="overflow-x-auto rounded-2xl border border-stone-200 bg-white">
+              <h2 className="text-lg font-bold text-[#F5F0E8] mb-3">Services</h2>
+              <div className="overflow-x-auto rounded-2xl border border-[#2E2B24] bg-[#131210]">
                 <table className="w-full min-w-[600px] border-collapse text-left text-sm">
-                  <thead className="bg-stone-50 text-xs uppercase tracking-[0.2em] text-stone-500 border-b border-stone-200">
+                  <thead className="bg-[#0E0D0B] text-[10px] font-bold uppercase tracking-[0.18em] text-[#A89F8C] border-b border-[#2E2B24]">
                     <tr>
                       <th className="px-4 py-4 font-semibold">Service</th>
                       <th className="px-4 py-4 font-semibold">Staff</th>
@@ -261,18 +261,18 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                       <th className="px-4 py-4 font-semibold text-right">Amount</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-stone-200">
+                  <tbody className="divide-y divide-[#2E2B24]">
                     {invoice.services.map((item: any, idx: number) => {
                       const name = item.serviceName || item.service;
                       const staffName = item.staffName || item.staff;
                       const amount = item.amount ?? Math.max((item.price || 0) - (item.discount || 0), 0);
                       return (
-                        <tr key={idx} className="bg-white transition hover:bg-stone-50">
-                          <td className="px-4 py-3 font-semibold text-stone-900">{name}</td>
-                          <td className="px-4 py-3 text-stone-900">{staffName}</td>
-                          <td className="px-4 py-3">{formatCurrency(item.price)}</td>
-                          <td className="px-4 py-3 text-emerald-600">- {formatCurrency(item.discount || 0)}</td>
-                          <td className="px-4 py-3 font-semibold text-stone-900 text-right">
+                        <tr key={idx} className="bg-transparent transition hover:bg-[#1C1A16]">
+                          <td className="px-4 py-3 font-semibold text-[#F5F0E8]">{name}</td>
+                          <td className="px-4 py-3 text-[#F5F0E8]">{staffName}</td>
+                          <td className="px-4 py-3 text-[#A89F8C]">{formatCurrency(item.price)}</td>
+                          <td className="px-4 py-3 text-[#B8962E] font-medium">- {formatCurrency(item.discount || 0)}</td>
+                          <td className="px-4 py-3 font-semibold text-[#F5F0E8] text-right">
                             {formatCurrency(amount)}
                           </td>
                         </tr>
@@ -287,10 +287,10 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
           {/* Products Purchased Table */}
           {invoice.products && invoice.products.length > 0 && (
             <section className="mt-6">
-              <h2 className="text-lg font-bold text-stone-900 mb-3">Products</h2>
-              <div className="overflow-x-auto rounded-2xl border border-stone-200 bg-white">
+              <h2 className="text-lg font-bold text-[#F5F0E8] mb-3">Products</h2>
+              <div className="overflow-x-auto rounded-2xl border border-[#2E2B24] bg-[#131210]">
                 <table className="w-full min-w-[600px] border-collapse text-left text-sm">
-                  <thead className="bg-stone-50 text-xs uppercase tracking-[0.2em] text-stone-500 border-b border-stone-200">
+                  <thead className="bg-[#0E0D0B] text-[10px] font-bold uppercase tracking-[0.18em] text-[#A89F8C] border-b border-[#2E2B24]">
                     <tr>
                       <th className="px-4 py-4 font-semibold">Product</th>
                       <th className="px-4 py-4 font-semibold">Price</th>
@@ -299,17 +299,17 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                       <th className="px-4 py-4 font-semibold text-right">Amount</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-stone-200">
+                  <tbody className="divide-y divide-[#2E2B24]">
                     {invoice.products.map((item: any, idx: number) => {
                       const name = item.productName || item.product;
                       const amount = item.amount ?? Math.max((item.price || 0) * (item.quantity || 1) - (item.discount || 0), 0);
                       return (
-                        <tr key={idx} className="bg-white transition hover:bg-stone-50">
-                          <td className="px-4 py-3 font-semibold text-stone-900">{name}</td>
-                          <td className="px-4 py-3">{formatCurrency(item.price)}</td>
-                          <td className="px-4 py-3 text-stone-900">{item.quantity}</td>
-                          <td className="px-4 py-3 text-emerald-600">- {formatCurrency(item.discount || 0)}</td>
-                          <td className="px-4 py-3 font-semibold text-stone-900 text-right">
+                        <tr key={idx} className="bg-transparent transition hover:bg-[#1C1A16]">
+                          <td className="px-4 py-3 font-semibold text-[#F5F0E8]">{name}</td>
+                          <td className="px-4 py-3 text-[#A89F8C]">{formatCurrency(item.price)}</td>
+                          <td className="px-4 py-3 text-[#F5F0E8]">{item.quantity}</td>
+                          <td className="px-4 py-3 text-[#B8962E] font-medium">- {formatCurrency(item.discount || 0)}</td>
+                          <td className="px-4 py-3 font-semibold text-[#F5F0E8] text-right">
                             {formatCurrency(amount)}
                           </td>
                         </tr>
@@ -325,66 +325,67 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
         {/* Right Column: Totals Summary, Offer if applied, Payment split info */}
         <aside className="space-y-5">
           {/* Totals Summary */}
-          <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-md text-stone-900 space-y-4">
-            <div className="flex items-center gap-2 mb-2">
+          <div className="rounded-2xl border border-[#2E2B24] bg-[#131210] p-5 shadow-md text-[#A89F8C] space-y-4">
+            <div className="flex items-center gap-2 mb-2 text-[#F5F0E8]">
               <Receipt size={18} />
               <h2 className="text-sm font-bold">Totals Summary</h2>
             </div>
 
-            <div className="space-y-2 border-t border-stone-100 pt-3 text-sm">
+            <div className="space-y-2 border-t border-[#2E2B24] pt-3 text-sm">
               {invoice.totalServices !== undefined && (
-                <div className="flex items-center justify-between text-stone-500">
+                <div className="flex items-center justify-between text-[#A89F8C]">
                   <span>Total Services</span>
-                  <span className="font-semibold text-stone-800">{formatCurrency(invoice.totalServices)}</span>
+                  <span className="font-semibold text-[#F5F0E8]">{formatCurrency(invoice.totalServices)}</span>
                 </div>
               )}
               {invoice.totalProducts !== undefined && (
-                <div className="flex items-center justify-between text-stone-500">
+                <div className="flex items-center justify-between text-[#A89F8C]">
                   <span>Total Products</span>
-                  <span className="font-semibold text-stone-800">{formatCurrency(invoice.totalProducts)}</span>
+                  <span className="font-semibold text-[#F5F0E8]">{formatCurrency(invoice.totalProducts)}</span>
                 </div>
               )}
-              <div className="flex items-center justify-between text-stone-500">
+              <div className="flex items-center justify-between text-[#A89F8C]">
                 <span>Subtotal</span>
-                <span className="font-semibold text-stone-800">{formatCurrency(invoice.subtotal)}</span>
+                <span className="font-semibold text-[#F5F0E8]">{formatCurrency(invoice.subtotal)}</span>
               </div>
-              <div className="flex items-center justify-between text-stone-500">
+              <div className="flex items-center justify-between text-[#A89F8C]">
                 <span>Overall Discount</span>
-                <span className="font-semibold text-emerald-600">- {formatCurrency(totalDiscount)}</span>
+                <span className="font-semibold text-[#B8962E]">- {formatCurrency(totalDiscount)}</span>
               </div>
-              <div className="flex items-center justify-between text-stone-800 font-bold border-t border-stone-100 pt-2 text-base">
+              <div className="flex items-center justify-between text-[#F5F0E8] font-bold border-t border-[#2E2B24] pt-2 text-base">
                 <span>Grand Total</span>
-                <span>{formatCurrency(invoice.grandTotal)}</span>
+                <span className="text-[#B8962E]">{formatCurrency(invoice.grandTotal)}</span>
               </div>
             </div>
           </div>
 
           {/* Offer if applied */}
           {appliedOffer && (
-            <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-md text-stone-900">
-              <h2 className="text-lg font-bold text-stone-900 mb-3">Applied Offer</h2>
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3.5 flex items-start gap-2.5">
-                <Tag size={16} className="text-emerald-700 mt-0.5 shrink-0" />
-                <div className="text-xs text-emerald-800 leading-normal">
+            <section className="rounded-2xl border border-[#2E2B24] bg-[#131210] p-5 shadow-md text-[#A89F8C]">
+              <h2 className="text-lg font-bold text-[#F5F0E8] mb-3">Applied Offer</h2>
+              <div className="rounded-xl border border-[#B8962E]/20 bg-[#1F1A0F] p-3.5 flex items-start gap-2.5">
+                <Tag size={16} className="text-[#B8962E] mt-0.5 shrink-0" />
+                <div className="text-xs text-[#B8962E] leading-normal">
                   <span className="font-bold uppercase tracking-wider">{appliedOffer.code}</span>
-                  {" "}— {appliedOffer.name}
-                  <p className="mt-1.5 font-bold text-emerald-700">Discount: -{formatCurrency(appliedOffer.discountAmount)}</p>
+                  {" "}— <span className="text-[#A89F8C]">{appliedOffer.name}</span>
+                  <p className="mt-1.5 font-bold text-[#B8962E]">Discount: -{formatCurrency(appliedOffer.discountAmount)}</p>
                 </div>
               </div>
             </section>
           )}
 
           {/* Payment Method & Split */}
-          <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-md text-stone-900">
+          <section className="rounded-2xl border border-[#2E2B24] bg-[#131210] p-5 shadow-md text-[#A89F8C]">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-stone-900">Payment Information</h2>
+              <h2 className="text-lg font-bold text-[#F5F0E8]">Payment Information</h2>
               <span
-                className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-bold border ${paymentStatus === "paid"
-                    ? "bg-emerald-50 text-emerald-800 border-emerald-300"
+                className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-bold border ${
+                  paymentStatus === "paid"
+                    ? "bg-[#1F1A0F] text-[#B8962E] border-[#B8962E]/20"
                     : paymentStatus === "unpaid"
-                      ? "bg-red-50 text-red-800 border-red-300"
-                      : "bg-amber-50 text-amber-800 border-amber-300"
-                  }`}
+                      ? "bg-[#1A1814] text-[#E57373] border-[#E57373]/20"
+                      : "bg-[#1A1814] text-[#B8962E] border-[#B8962E]/20"
+                }`}
               >
                 {paymentStatus === "paid"
                   ? "Paid"
@@ -395,9 +396,9 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
             </div>
 
             <div className="space-y-4">
-              <div className="flex items-center justify-between border-b border-stone-100 pb-3 text-sm">
-                <span className="font-semibold text-stone-700">Grand Total</span>
-                <span className="font-bold text-stone-900">{formatCurrency(invoice.grandTotal)}</span>
+              <div className="flex items-center justify-between border-b border-[#2E2B24] pb-3 text-sm">
+                <span className="font-semibold text-[#A89F8C]">Grand Total</span>
+                <span className="font-bold text-[#B8962E]">{formatCurrency(invoice.grandTotal)}</span>
               </div>
 
               {/* Horizontal Payment Inputs */}
@@ -406,31 +407,31 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                   const val = method === "cash" ? cashPaid : method === "upi" ? upiPaid : cardPaid;
                   return (
                     <label key={method} className="block">
-                      <span className="text-xs font-semibold text-stone-600 capitalize">{method} Paid</span>
+                      <span className="text-xs font-semibold text-[#A89F8C] capitalize">{method} Paid</span>
                       <input
                         readOnly
                         type="text"
                         value={formatCurrency(val || 0)}
-                        className="mt-1.5 h-10 w-full rounded-xl border border-stone-200 bg-stone-100 px-2 text-xs text-stone-500 font-semibold outline-none"
+                        className="mt-1.5 h-10 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-2 text-xs text-[#F5F0E8] font-semibold outline-none"
                       />
                     </label>
                   );
                 })}
               </div>
 
-              <div className="border-t border-stone-100 pt-3 space-y-2.5 text-sm">
+              <div className="border-t border-[#2E2B24] pt-3 space-y-2.5 text-sm">
                 <div className="flex items-center justify-between">
-                  <span className="font-semibold text-stone-700">Total Paid</span>
+                  <span className="font-semibold text-[#A89F8C]">Total Paid</span>
                   <div className="flex items-center gap-1.5">
-                    <span className="font-bold text-stone-900">{formatCurrency(totalPaid)}</span>
+                    <span className="font-bold text-[#F5F0E8]">{formatCurrency(totalPaid)}</span>
                     {paymentStatus === "paid" && (
-                      <span className="inline-flex size-4 items-center justify-center rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                      <span className="inline-flex size-4 items-center justify-center rounded-full bg-[#1F1A0F] text-[#B8962E] text-[10px] font-bold border border-[#B8962E]/20">
                         ✓
                       </span>
                     )}
                   </div>
                 </div>
-                <div className="text-[10px] text-stone-400 text-right uppercase tracking-wider font-semibold">
+                <div className="text-[10px] text-[#6B6358] text-right uppercase tracking-wider font-semibold">
                   Method: {invoice.paymentMethod || "Split"}
                 </div>
               </div>

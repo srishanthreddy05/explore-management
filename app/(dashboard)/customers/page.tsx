@@ -370,13 +370,13 @@ export default function CustomersPage() {
     : `Membership Customers (${stats.membershipCount})`;
 
   return (
-    <div className="w-full text-stone-900">
+    <div className="w-full text-[#A89F8C]">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.32em] text-stone-500">
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#A89F8C]">
             CRM
           </p>
-          <h1 className="mt-2 text-3xl font-bold tracking-tight text-stone-900">
+          <h1 className="mt-2 text-3xl font-extrabold tracking-[-0.03em] text-[#F5F0E8]">
             Customers ({stats.regularCount + stats.membershipCount})
           </h1>
         </div>
@@ -385,16 +385,16 @@ export default function CustomersPage() {
 
       {loading ? (
         <div className="flex h-[40vh] items-center justify-center">
-          <div className="size-10 animate-spin rounded-full border-4 border-black border-t-transparent" />
+          <div className="size-10 animate-spin rounded-full border-4 border-[#B8962E] border-t-transparent" />
         </div>
       ) : (stats.regularCount + stats.membershipCount) === 0 ? (
         // Empty State UI
-        <div className="flex flex-col items-center justify-center rounded-2xl border border-stone-200 bg-white p-12 text-center shadow-md">
-          <div className="grid size-16 place-items-center rounded-2xl bg-stone-100 text-stone-900 mb-4">
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-[#2E2B24] bg-[#131210] p-12 text-center shadow-md">
+          <div className="grid size-16 place-items-center rounded-2xl bg-[#0E0D0B] text-[#B8962E] border border-[#2E2B24] mb-4">
             <Users size={32} />
           </div>
-          <h2 className="text-xl font-bold text-stone-900">No Customers Found</h2>
-          <p className="mt-2 max-w-sm text-sm text-stone-500">
+          <h2 className="text-xl font-bold text-[#F5F0E8]">No Customers Found</h2>
+          <p className="mt-2 max-w-sm text-sm text-[#A89F8C]">
             Create profiles to track salon memberships and schedule visits.
           </p>
 
@@ -402,18 +402,18 @@ export default function CustomersPage() {
       ) : (
         <>
           {/* Search bar */}
-          <div className="mb-6 flex max-w-md items-center rounded-2xl border border-stone-200 bg-white px-4 h-12 shadow-sm focus-within:border-black">
+          <div className="mb-6 flex max-w-md items-center rounded-xl border border-[#2E2B24] bg-[#131210] px-4 h-12 shadow-sm focus-within:border-[#B8962E] transition">
             {searchLoading ? (
-              <div className="size-4 animate-spin rounded-full border-2 border-stone-400 border-t-transparent mr-2 shrink-0" />
+              <div className="size-4 animate-spin rounded-full border-2 border-[#B8962E] border-t-transparent mr-2 shrink-0" />
             ) : (
-              <Search size={18} className="text-stone-400 mr-2 shrink-0" />
+              <Search size={18} className="text-[#6B6358] mr-2 shrink-0" />
             )}
             <input
               type="text"
               placeholder="Search by name or phone..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-transparent text-sm text-stone-900 outline-none placeholder:text-stone-400"
+              className="w-full bg-transparent text-sm text-[#F5F0E8] outline-none placeholder:text-[#6B6358]"
             />
           </div>
 
@@ -421,24 +421,24 @@ export default function CustomersPage() {
           <div className="grid gap-6 lg:grid-cols-2">
             {/* Regular Customers Section */}
             <div className="space-y-4">
-              <div className="flex items-center justify-between border-b border-stone-150 pb-2">
-                <h2 className="text-lg font-bold text-stone-900">
+              <div className="flex items-center justify-between border-b border-[#2E2B24] pb-2">
+                <h2 className="text-lg font-bold text-[#F5F0E8]">
                   {regularHeader}
                 </h2>
               </div>
-              <div className="overflow-x-auto rounded-2xl border border-stone-200 bg-white shadow-md">
-                <table className="w-full min-w-[340px] border-collapse text-left text-sm text-stone-600">
-                  <thead className="bg-stone-50 text-xs uppercase tracking-[0.2em] text-stone-500 border-b border-stone-200">
+              <div className="overflow-x-auto rounded-2xl border border-[#2E2B24] bg-[#131210] shadow-md">
+                <table className="w-full min-w-[340px] border-collapse text-left text-sm text-[#A89F8C]">
+                  <thead className="bg-[#0E0D0B] text-[10px] font-bold uppercase tracking-[0.18em] text-[#A89F8C] border-b border-[#2E2B24]">
                     <tr>
                       <th className="px-4 py-3.5 font-bold">Name</th>
                       <th className="px-4 py-3.5 font-bold">Phone</th>
                       <th className="px-4 py-3.5 font-bold text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-stone-200">
+                  <tbody className="divide-y divide-[#2E2B24]">
                     {regularToDisplay.length === 0 ? (
                       <tr>
-                        <td colSpan={3} className="px-4 py-8 text-center text-stone-400 font-medium italic bg-white">
+                        <td colSpan={3} className="px-4 py-8 text-center text-[#6B6358] font-medium italic bg-transparent">
                           {debouncedQuery.trim()
                             ? "No matching regular customers."
                             : "No regular customers."}
@@ -446,28 +446,28 @@ export default function CustomersPage() {
                       </tr>
                     ) : (
                       regularToDisplay.map((customer) => (
-                        <tr key={customer.id} className="hover:bg-stone-50 transition bg-white text-stone-900">
-                          <td className="px-4 py-3 font-semibold text-stone-900">{customer.name}</td>
+                        <tr key={customer.id} className="hover:bg-[#1C1A16] transition bg-transparent text-[#A89F8C]">
+                          <td className="px-4 py-3 font-semibold text-[#F5F0E8]">{customer.name}</td>
                           <td className="px-4 py-3 font-medium">{customer.phone}</td>
                           <td className="px-4 py-3 text-right">
                             <div className="flex justify-end gap-1.5">
                               <button
                                 onClick={() => handleOpenDetail(customer)}
-                                className="grid size-8 place-items-center rounded-lg border border-stone-200 text-stone-400 hover:text-black hover:border-black transition cursor-pointer"
+                                className="grid size-8 place-items-center rounded-lg border border-[#2E2B24] bg-[#131210] text-[#A89F8C] hover:text-[#B8962E] hover:border-[#B8962E] transition cursor-pointer"
                                 title="View Details"
                               >
                                 <Eye size={13} />
                               </button>
                               <button
                                 onClick={() => handleOpenEdit(customer)}
-                                className="grid size-8 place-items-center rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 transition cursor-pointer"
+                                className="grid size-8 place-items-center rounded-lg bg-[#131210] border border-[#2E2B24] text-[#B8962E] hover:bg-[#1F1A0F] hover:border-[#B8962E] transition cursor-pointer"
                                 title="Edit"
                               >
                                 <Edit2 size={13} />
                               </button>
                               <button
                                 onClick={() => customer.id && handleDeleteTrigger(customer.id)}
-                                className="grid size-8 place-items-center rounded-lg bg-red-50 border border-red-200 text-red-700 hover:bg-red-100 transition cursor-pointer"
+                                className="grid size-8 place-items-center rounded-lg bg-[#131210] border border-[#2E2B24] text-[#E57373] hover:bg-[#131210] hover:border-[#E57373] transition cursor-pointer"
                                 title="Delete"
                               >
                                 <Trash2 size={13} />
@@ -484,10 +484,10 @@ export default function CustomersPage() {
                 <button
                   onClick={() => loadRegular(true)}
                   disabled={loadingMoreRegular}
-                  className="w-full h-11 border border-stone-200 hover:border-stone-400 rounded-2xl text-sm font-semibold text-stone-700 hover:bg-stone-50 transition flex items-center justify-center gap-2 disabled:opacity-50"
+                  className="w-full h-11 border border-[#2E2B24] bg-[#131210] hover:border-[#B8962E] hover:text-[#B8962E] hover:bg-[#1F1A0F] rounded-2xl text-sm font-semibold text-[#A89F8C] transition flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
                 >
                   {loadingMoreRegular && (
-                    <div className="size-4 animate-spin rounded-full border-2 border-stone-400 border-t-transparent" />
+                    <div className="size-4 animate-spin rounded-full border-2 border-[#B8962E] border-t-transparent" />
                   )}
                   {loadingMoreRegular ? "Loading..." : "Load More"}
                 </button>
@@ -496,24 +496,24 @@ export default function CustomersPage() {
 
             {/* Membership Customers Section */}
             <div className="space-y-4">
-              <div className="flex items-center justify-between border-b border-stone-150 pb-2">
-                <h2 className="text-lg font-bold text-amber-600">
+              <div className="flex items-center justify-between border-b border-[#2E2B24] pb-2">
+                <h2 className="text-lg font-bold text-[#B8962E]">
                   {membershipHeader}
                 </h2>
               </div>
-              <div className="overflow-x-auto rounded-2xl border border-stone-200 bg-white shadow-md">
-                <table className="w-full min-w-[340px] border-collapse text-left text-sm text-stone-600">
-                  <thead className="bg-stone-50 text-xs uppercase tracking-[0.2em] text-stone-500 border-b border-stone-200">
+              <div className="overflow-x-auto rounded-2xl border border-[#2E2B24] bg-[#131210] shadow-md">
+                <table className="w-full min-w-[340px] border-collapse text-left text-sm text-[#A89F8C]">
+                  <thead className="bg-[#0E0D0B] text-[10px] font-bold uppercase tracking-[0.18em] text-[#A89F8C] border-b border-[#2E2B24]">
                     <tr>
                       <th className="px-4 py-3.5 font-bold">Name</th>
                       <th className="px-4 py-3.5 font-bold">Phone</th>
                       <th className="px-4 py-3.5 font-bold text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-stone-200">
+                  <tbody className="divide-y divide-[#2E2B24]">
                     {membershipToDisplay.length === 0 ? (
                       <tr>
-                        <td colSpan={3} className="px-4 py-8 text-center text-stone-400 font-medium italic bg-white">
+                        <td colSpan={3} className="px-4 py-8 text-center text-[#6B6358] font-medium italic bg-transparent">
                           {debouncedQuery.trim()
                             ? "No matching membership customers."
                             : "No membership customers."}
@@ -521,28 +521,28 @@ export default function CustomersPage() {
                       </tr>
                     ) : (
                       membershipToDisplay.map((customer) => (
-                        <tr key={customer.id} className="hover:bg-stone-50 transition bg-white text-stone-900">
-                          <td className="px-4 py-3 font-semibold text-stone-900">{customer.name}</td>
+                        <tr key={customer.id} className="hover:bg-[#1C1A16] transition bg-transparent text-[#A89F8C]">
+                          <td className="px-4 py-3 font-semibold text-[#F5F0E8]">{customer.name}</td>
                           <td className="px-4 py-3 font-medium">{customer.phone}</td>
                           <td className="px-4 py-3 text-right">
                             <div className="flex justify-end gap-1.5">
                               <button
                                 onClick={() => handleOpenDetail(customer)}
-                                className="grid size-8 place-items-center rounded-lg border border-stone-200 text-stone-400 hover:text-black hover:border-black transition cursor-pointer"
+                                className="grid size-8 place-items-center rounded-lg border border-[#2E2B24] bg-[#131210] text-[#A89F8C] hover:text-[#B8962E] hover:border-[#B8962E] transition cursor-pointer"
                                 title="View Details"
                               >
                                 <Eye size={13} />
                               </button>
                               <button
                                 onClick={() => handleOpenEdit(customer)}
-                                className="grid size-8 place-items-center rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 transition cursor-pointer"
+                                className="grid size-8 place-items-center rounded-lg bg-[#131210] border border-[#2E2B24] text-[#B8962E] hover:bg-[#1F1A0F] hover:border-[#B8962E] transition cursor-pointer"
                                 title="Edit"
                               >
                                 <Edit2 size={13} />
                               </button>
                               <button
                                 onClick={() => customer.id && handleDeleteTrigger(customer.id)}
-                                className="grid size-8 place-items-center rounded-lg bg-red-50 border border-red-200 text-red-700 hover:bg-red-100 transition cursor-pointer"
+                                className="grid size-8 place-items-center rounded-lg bg-[#131210] border border-[#2E2B24] text-[#E57373] hover:bg-[#131210] hover:border-[#E57373] transition cursor-pointer"
                                 title="Delete"
                               >
                                 <Trash2 size={13} />
@@ -559,10 +559,10 @@ export default function CustomersPage() {
                 <button
                   onClick={() => loadMembership(true)}
                   disabled={loadingMoreMembership}
-                  className="w-full h-11 border border-stone-200 hover:border-stone-400 rounded-2xl text-sm font-semibold text-stone-700 hover:bg-stone-50 transition flex items-center justify-center gap-2 disabled:opacity-50"
+                  className="w-full h-11 border border-[#2E2B24] bg-[#131210] hover:border-[#B8962E] hover:text-[#B8962E] hover:bg-[#1F1A0F] rounded-2xl text-sm font-semibold text-[#A89F8C] transition flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
                 >
                   {loadingMoreMembership && (
-                    <div className="size-4 animate-spin rounded-full border-2 border-stone-400 border-t-transparent" />
+                    <div className="size-4 animate-spin rounded-full border-2 border-[#B8962E] border-t-transparent" />
                   )}
                   {loadingMoreMembership ? "Loading..." : "Load More"}
                 </button>
@@ -575,42 +575,42 @@ export default function CustomersPage() {
       {/* Modal Overlay Dialog */}
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setModalOpen(false)} />
-          <div className="relative w-full max-w-md rounded-2xl border border-stone-250 bg-white p-6 shadow-2xl text-stone-900">
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setModalOpen(false)} />
+          <div className="relative w-full max-w-md rounded-3xl border border-[#2E2B24] bg-[#1C1A16] p-6 shadow-2xl text-[#A89F8C] animate-in zoom-in-95 duration-200 z-10 max-h-[90vh] overflow-y-auto">
             <button
               onClick={() => setModalOpen(false)}
-              className="absolute top-4 right-4 text-stone-400 hover:text-black"
+              className="absolute top-4 right-4 text-[#A89F8C] hover:text-[#B8962E] transition cursor-pointer"
             >
               <X size={20} />
             </button>
-            <h2 className="text-xl font-bold text-stone-900 mb-4">
+            <h2 className="text-xl font-bold text-[#F5F0E8] mb-4">
               {editingCustomer ? "Edit Customer Details" : "Add Customer"}
             </h2>
             <form onSubmit={handleSubmit} className="space-y-4">
               <label className="block">
-                <span className="text-sm font-semibold text-stone-700">Name</span>
+                <span className="text-sm font-semibold text-[#A89F8C]">Name</span>
                 <input
                   required
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="mt-2 h-11 w-full rounded-xl border border-stone-200 bg-stone-50 px-4 text-sm text-stone-900 outline-none focus:border-black"
+                  className="mt-2 h-11 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-4 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E] focus:ring-1 focus:ring-[#B8962E] placeholder-[#6B6358]"
                 />
               </label>
 
               <label className="block">
-                <span className="text-sm font-semibold text-stone-700">Phone Number</span>
+                <span className="text-sm font-semibold text-[#A89F8C]">Phone Number</span>
                 <input
                   required
                   type="text"
                   value={formData.phone}
                   onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  className="mt-2 h-11 w-full rounded-xl border border-stone-200 bg-stone-50 px-4 text-sm text-stone-900 outline-none focus:border-black"
+                  className="mt-2 h-11 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-4 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E] focus:ring-1 focus:ring-[#B8962E] placeholder-[#6B6358]"
                 />
               </label>
 
               <label className="block">
-                <span className="text-sm font-semibold text-stone-700">Customer Type</span>
+                <span className="text-sm font-semibold text-[#A89F8C]">Customer Type</span>
                 <select
                   value={formData.customerType}
                   onChange={(e) => {
@@ -621,7 +621,7 @@ export default function CustomersPage() {
                       recordInvoice: newType === "membership" ? (editingCustomer?.customerType !== "membership") : false
                     });
                   }}
-                  className="mt-2 h-11 w-full rounded-xl border border-stone-200 bg-stone-50 px-4 text-sm text-stone-900 outline-none focus:border-black"
+                  className="mt-2 h-11 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-4 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E] focus:ring-1 focus:ring-[#B8962E]"
                 >
                   <option value="regular">Regular</option>
                   <option value="membership">Membership</option>
@@ -629,48 +629,48 @@ export default function CustomersPage() {
               </label>
 
               {formData.customerType === "membership" && (
-                <div className="space-y-4 border-l-2 border-stone-200 pl-3 mt-3 animate-in slide-in-from-left-2 duration-200">
+                <div className="space-y-4 border-l-2 border-[#2E2B24] pl-3 mt-3 animate-in slide-in-from-left-2 duration-200">
                   <label className="block">
-                    <span className="text-sm font-semibold text-stone-700">Membership Amount (₹)</span>
+                    <span className="text-sm font-semibold text-[#A89F8C]">Membership Amount (₹)</span>
                     <input
                       required
                       type="number"
                       placeholder="e.g. 5000"
                       value={formData.membershipAmount}
                       onChange={(e) => setFormData({ ...formData, membershipAmount: e.target.value })}
-                      className="mt-2 h-11 w-full rounded-xl border border-stone-200 bg-stone-50 px-4 text-sm text-stone-900 outline-none focus:border-black"
+                      className="mt-2 h-11 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-4 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E] focus:ring-1 focus:ring-[#B8962E]"
                     />
                   </label>
 
                   <label className="block">
-                    <span className="text-sm font-semibold text-stone-700">Duration (in months)</span>
+                    <span className="text-sm font-semibold text-[#A89F8C]">Duration (in months)</span>
                     <input
                       required
                       type="number"
                       placeholder="e.g. 3"
                       value={formData.membershipDuration}
                       onChange={(e) => setFormData({ ...formData, membershipDuration: e.target.value })}
-                      className="mt-2 h-11 w-full rounded-xl border border-stone-200 bg-stone-50 px-4 text-sm text-stone-900 outline-none focus:border-black"
+                      className="mt-2 h-11 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-4 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E] focus:ring-1 focus:ring-[#B8962E]"
                     />
                   </label>
 
                   <label className="block">
-                    <span className="text-sm font-semibold text-stone-700">Start Date</span>
+                    <span className="text-sm font-semibold text-[#A89F8C]">Start Date</span>
                     <input
                       required
                       type="date"
                       value={formData.membershipStart}
                       onChange={(e) => setFormData({ ...formData, membershipStart: e.target.value })}
-                      className="mt-2 h-11 w-full rounded-xl border border-stone-200 bg-stone-50 px-4 text-sm text-stone-900 outline-none focus:border-black"
+                      className="mt-2 h-11 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-4 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E] focus:ring-1 focus:ring-[#B8962E]"
                     />
                   </label>
 
                   <label className="block">
-                    <span className="text-sm font-semibold text-stone-700">Payment Method</span>
+                    <span className="text-sm font-semibold text-[#A89F8C]">Payment Method</span>
                     <select
                       value={formData.paymentMethod}
                       onChange={(e) => setFormData({ ...formData, paymentMethod: e.target.value as "UPI" | "Cash" | "Card" })}
-                      className="mt-2 h-11 w-full rounded-xl border border-stone-200 bg-stone-50 px-4 text-sm text-stone-900 outline-none focus:border-black"
+                      className="mt-2 h-11 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-4 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E] focus:ring-1 focus:ring-[#B8962E]"
                     >
                       <option value="UPI">UPI</option>
                       <option value="Cash">Cash</option>
@@ -684,9 +684,9 @@ export default function CustomersPage() {
                       id="recordInvoice"
                       checked={formData.recordInvoice}
                       onChange={(e) => setFormData({ ...formData, recordInvoice: e.target.checked })}
-                      className="size-4 rounded border-stone-300 text-black focus:ring-black cursor-pointer"
+                      className="size-4 rounded border-[#2E2B24] bg-[#0E0D0B] text-[#B8962E] focus:ring-[#B8962E] accent-[#B8962E] cursor-pointer"
                     />
-                    <label htmlFor="recordInvoice" className="text-sm font-semibold text-stone-700 cursor-pointer select-none">
+                    <label htmlFor="recordInvoice" className="text-sm font-semibold text-[#A89F8C] cursor-pointer select-none">
                       Record payment & generate membership invoice
                     </label>
                   </div>
@@ -697,13 +697,13 @@ export default function CustomersPage() {
                 <button
                   type="button"
                   onClick={() => setModalOpen(false)}
-                  className="h-11 rounded-xl border border-stone-200 px-4 text-sm font-semibold text-stone-700 hover:bg-stone-50 transition"
+                  className="h-11 rounded-xl border border-[#2E2B24] bg-[#131210] px-4 text-sm font-semibold text-[#A89F8C] hover:border-[#B8962E] hover:text-[#B8962E] hover:bg-[#1F1A0F] transition cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="h-11 rounded-xl bg-black px-6 text-sm font-semibold text-white hover:bg-stone-850 transition"
+                  className="h-11 rounded-xl bg-[#B8962E] px-6 text-sm font-bold text-[#0E0D0B] hover:bg-[#D4A935] shadow-[0_4px_16px_rgba(184,150,46,0.25)] transition disabled:opacity-50 cursor-pointer"
                 >
                   Save Profile
                 </button>
@@ -716,20 +716,20 @@ export default function CustomersPage() {
       {/* Delete Confirmation Modal */}
       {deleteConfirmOpen && (
         <div className="fixed inset-0 z-55 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setDeleteConfirmOpen(false)} />
-          <div className="relative w-full max-w-sm rounded-2xl border border-stone-250 bg-white p-6 shadow-2xl text-stone-900 z-10">
-            <h3 className="text-lg font-bold text-stone-900">Are you sure you want to delete this record?</h3>
-            <p className="mt-2 text-sm text-stone-500">This action cannot be undone and will remove the record immediately.</p>
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setDeleteConfirmOpen(false)} />
+          <div className="relative w-full max-w-sm rounded-3xl border border-[#2E2B24] bg-[#1C1A16] p-6 shadow-2xl text-[#A89F8C] z-10 animate-in zoom-in-95 duration-200">
+            <h3 className="text-lg font-bold text-[#F5F0E8]">Are you sure you want to delete this record?</h3>
+            <p className="mt-2 text-sm text-[#A89F8C]">This action cannot be undone and will remove the record immediately.</p>
             <div className="mt-6 flex gap-3 justify-end">
               <button
                 onClick={() => setDeleteConfirmOpen(false)}
-                className="h-10 rounded-xl border border-stone-200 px-4 text-xs font-semibold text-stone-700 hover:bg-stone-50 transition"
+                className="h-10 rounded-xl border border-[#2E2B24] bg-[#131210] px-4 text-xs font-semibold text-[#A89F8C] hover:border-[#B8962E] hover:text-[#B8962E] transition cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 onClick={handleConfirmDelete}
-                className="h-10 rounded-xl bg-red-600 hover:bg-red-700 px-4 text-xs font-semibold text-white shadow-sm transition"
+                className="h-10 rounded-xl bg-[#E57373] hover:bg-[#ef5350] px-4 text-xs font-bold text-[#0E0D0B] shadow-sm transition cursor-pointer"
               >
                 Delete
               </button>
