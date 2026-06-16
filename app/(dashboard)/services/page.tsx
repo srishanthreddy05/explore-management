@@ -11,7 +11,7 @@ export default function ServicesPage() {
   const { services, refreshServices, loadingAppData } = useAppData();
   const loading = loadingAppData;
   const [searchQuery, setSearchQuery] = useState("");
-  
+
   // Modal states
   const [modalOpen, setModalOpen] = useState(false);
   const [editingService, setEditingService] = useState<Service | null>(null);
@@ -222,10 +222,15 @@ export default function ServicesPage() {
                   className="mt-2 h-11 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-4 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E] focus:ring-1 focus:ring-[#B8962E]"
                 >
                   <option value="Hair">Hair Care</option>
-                  <option value="Skin">Skin Rituals</option>
-                  <option value="Nails">Nails Spa</option>
-                  <option value="Bridal">Bridal Makeups</option>
-                  <option value="Massage">Massage Therapy</option>
+                  <option value="Skin">Hair Cuts</option>
+                  <option value="Bridal">Hair Colors</option>
+                  <option value="Massage">Hair Treatments</option>
+                  <option value="Hair">D-Tan /Bleach</option>
+                  <option value="Skin">Clean Ups</option>
+                  <option value="Bridal">Facials</option>
+                  <option value="Massage">Luxury Facials</option>
+                  <option value="Bridal">Makeup</option>
+
                 </select>
               </label>
 
