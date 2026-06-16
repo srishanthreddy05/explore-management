@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Bell, Package, AlertTriangle, UserCheck, UserX, Check, Trash, Sparkles } from "lucide-react";
 import * as productService from "@/services/products";
 import * as customerService from "@/services/customers";
@@ -16,6 +17,8 @@ export default function DashboardNotifications() {
   const [dbNotifications, setDbNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [isOpen, setIsOpen] = useState(false);
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, right: 0 });
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
   const fetchData = async () => {
     try {
@@ -62,6 +65,30 @@ export default function DashboardNotifications() {
     return () => clearInterval(interval);
   }, []);
 
+  // Recalculate dropdown position whenever it opens
+  const handleToggle = () => {
+    if (!isOpen && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setDropdownPos({
+        top: rect.bottom + 8,
+        right: window.innerWidth - rect.right,
+      });
+    }
+    setIsOpen((prev) => !prev);
+  };
+
+  // Close on scroll/resize to avoid stale positioning
+  useEffect(() => {
+    if (!isOpen) return;
+    const close = () => setIsOpen(false);
+    window.addEventListener("scroll", close, { passive: true });
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("scroll", close);
+      window.removeEventListener("resize", close);
+    };
+  }, [isOpen]);
+
   const handleMarkAsRead = async (id: string) => {
     try {
       await notificationService.markAsRead(id);
@@ -92,7 +119,8 @@ export default function DashboardNotifications() {
   return (
     <div className="relative">
       <button
-        onClick={() => setIsOpen(!isOpen)}
+        ref={buttonRef}
+        onClick={handleToggle}
         className="relative grid size-11 place-items-center rounded-2xl border border-stone-200 bg-stone-50 text-black transition hover:bg-stone-100 cursor-pointer"
         aria-label="Notifications"
         title="Notifications"
@@ -105,13 +133,19 @@ export default function DashboardNotifications() {
         )}
       </button>
 
-      {isOpen && (
+      {isOpen && typeof window !== "undefined" && createPortal(
         <>
-          {/* Backdrop to close the dropdown when clicking outside */}
-          <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
-          
-          {/* Dropdown panel */}
-          <div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-2xl border border-stone-200 bg-white p-5 shadow-xl z-50 animate-in fade-in slide-in-from-top-2 duration-200 space-y-4">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 z-[9998]"
+            onClick={() => setIsOpen(false)}
+          />
+
+          {/* Dropdown panel — rendered on <body> to escape header stacking context */}
+          <div
+            className="fixed z-[9999] w-80 sm:w-96 rounded-2xl border border-stone-200 bg-white p-5 shadow-xl animate-in fade-in slide-in-from-top-2 duration-200 space-y-4"
+            style={{ top: dropdownPos.top, right: dropdownPos.right }}
+          >
             <div className="flex items-center justify-between border-b border-stone-100 pb-3">
               <div className="flex items-center gap-2">
                 <div className="grid size-9 place-items-center rounded-xl bg-amber-50 text-amber-600 border border-amber-200">
@@ -140,7 +174,7 @@ export default function DashboardNotifications() {
                 <>
                   {/* 1. Low Stock Products Alerts */}
                   {lowStockProducts.map((p) => (
-                    <div 
+                    <div
                       key={p.id}
                       className="flex items-center justify-between gap-4 p-3 bg-rose-50/50 border border-rose-100 rounded-2xl text-xs text-rose-900"
                     >
@@ -158,8 +192,8 @@ export default function DashboardNotifications() {
                         </div>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        <Link 
-                          href="/products" 
+                        <Link
+                          href="/products"
                           onClick={() => setIsOpen(false)}
                           className="font-bold text-rose-700 hover:text-rose-900 hover:underline transition px-2 py-1 rounded-lg hover:bg-rose-100/50"
                         >
@@ -181,9 +215,9 @@ export default function DashboardNotifications() {
                     const daysLeft = Math.ceil(
                       (new Date(c.membershipEnd!).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
                     );
-                    
+
                     return (
-                      <div 
+                      <div
                         key={c.id}
                         className="flex items-center justify-between gap-4 p-3 bg-amber-50/50 border border-amber-100 rounded-2xl text-xs text-amber-900"
                       >
@@ -197,8 +231,8 @@ export default function DashboardNotifications() {
                           </div>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
-                          <Link 
-                            href="/customers" 
+                          <Link
+                            href="/customers"
                             onClick={() => setIsOpen(false)}
                             className="font-bold text-amber-700 hover:text-amber-900 hover:underline transition px-2 py-1 rounded-lg hover:bg-amber-100/50"
                           >
@@ -218,7 +252,7 @@ export default function DashboardNotifications() {
 
                   {/* 3. DB Notifications */}
                   {dbNotifications.map((n) => (
-                    <div 
+                    <div
                       key={n.id}
                       className="flex items-center justify-between gap-4 p-3 bg-stone-50 border border-stone-200 rounded-2xl text-xs text-stone-700"
                     >
@@ -242,7 +276,8 @@ export default function DashboardNotifications() {
               )}
             </div>
           </div>
-        </>
+        </>,
+        document.body
       )}
     </div>
   );

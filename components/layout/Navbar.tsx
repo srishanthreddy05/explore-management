@@ -10,7 +10,7 @@ interface NavbarProps {
 export function Navbar({ onToggleMobileSidebar }: NavbarProps) {
   return (
     <header
-      className="sticky top-0 z-20 border-b shadow-md overflow-hidden"
+      className="sticky top-0 z-20 border-b shadow-md"
       style={{ backgroundColor: "#000000", borderColor: "#2E2B24", height: "80px" }}
     >
       {/* Banner image — centered, contained */}
