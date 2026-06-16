@@ -134,10 +134,17 @@ export default function DashboardPage() {
   }, []);
 
   const staffWithActiveTimes = useMemo(() => {
-    return staff.map((member) => ({
+    const mapped = staff.map((member) => ({
       ...member,
       activeTime: computeTodayActiveTime(member.clockLogs),
     }));
+    return mapped.sort((a, b) => {
+      const aIsOwner = a.role === "Owner";
+      const bIsOwner = b.role === "Owner";
+      if (aIsOwner && !bIsOwner) return -1;
+      if (!aIsOwner && bIsOwner) return 1;
+      return a.name.localeCompare(b.name);
+    });
   }, [staff, tick]);
 
   const [monthlyStats, setMonthlyStats] = useState<{ totalRevenue: number; totalVisits: number } | null>(null);
@@ -317,11 +324,16 @@ export default function DashboardPage() {
       if (invDateStr === todayStr) {
         todayRevenue += cash + upi + card;
 
-        const customerIdentifier = inv.customerId || inv.customerPhone || inv.customerName;
-        if (customerIdentifier) {
-          uniqueCustomerIds.add(customerIdentifier);
+        const isGuest = inv.customerPhone === "0000000000" || inv.customerName === "Guest";
+        if (isGuest) {
+          uniqueCustomerIds.add(inv.id || inv.invoiceNumber || Math.random().toString());
         } else {
-          uniqueCustomerIds.add(inv.id || Math.random().toString());
+          const customerIdentifier = inv.customerId || inv.customerPhone || inv.customerName;
+          if (customerIdentifier) {
+            uniqueCustomerIds.add(customerIdentifier);
+          } else {
+            uniqueCustomerIds.add(inv.id || Math.random().toString());
+          }
         }
 
         cashToday += cash;

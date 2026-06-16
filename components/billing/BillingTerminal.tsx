@@ -7,7 +7,7 @@ import { ProductTable } from "@/components/salon-dashboard/product-table";
 import { SummaryCard } from "@/components/salon-dashboard/summary-card";
 import type { ProductRow, ServiceRow } from "@/components/salon-dashboard/types";
 import { formatCurrency } from "@/components/salon-dashboard/types";
-import { X } from "lucide-react";
+import { X, UserX } from "lucide-react";
 
 import * as customerService from "@/services/customers";
 import * as productsService from "@/services/products";
@@ -20,6 +20,9 @@ import type { Service } from "@/types/service";
 import type { Product } from "@/types/product";
 import type { Staff } from "@/types/staff";
 import type { Offer } from "@/types/offer";
+
+const GUEST_PHONE = "0000000000";
+const GUEST_NAME = "Guest";
 
 interface BillingTerminalProps {
   onClose?: () => void;
@@ -276,15 +279,39 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
 
       // Step 1: Resolve or create customer
       let customerId = foundCustomerId;
-      let resolvedCustomerType: "regular" | "membership" | "new" = clientStatus ?? "new";
+      let resolvedCustomerType: "regular" | "membership" | "new" = 
+        clientStatus ?? "new";
 
-      if (!customerId) {
+      const isGuestPhone = customerMobile.trim() === GUEST_PHONE;
+      const isGuestName = customerName.trim() === GUEST_NAME || 
+        customerName.trim() === "";
+
+      if (isGuestPhone || isGuestName) {
+        // Any combination where phone or name is guest
+        // always resolves to the single shared Guest record
+        const existingGuest = await customerService.getByPhone(GUEST_PHONE);
+        if (existingGuest && existingGuest.id) {
+          customerId = existingGuest.id;
+        } else {
+          customerId = await customerService.create({
+            name: GUEST_NAME,
+            phone: GUEST_PHONE,
+            customerType: "regular",
+          });
+        }
+        resolvedCustomerType = "regular";
+      } else if (!customerId) {
+        // Real customer — phone given, not found in DB yet
         customerId = await customerService.create({
           name: customerName.trim(),
           phone: customerMobile.trim(),
           customerType: "regular",
         });
         resolvedCustomerType = "regular";
+      }
+
+      if (!customerId) {
+        throw new Error("Could not resolve customer ID");
       }
 
       // Step 2: Get a collision-safe invoice number via Firestore transaction
@@ -598,7 +625,19 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
             </label>
 
             <div className="block">
-              <span className="text-sm font-semibold text-[#A89F8C]">Customer Mobile</span>
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold text-[#A89F8C]">Customer Mobile</span>
+                <button
+                  type="button"
+                  disabled={saved}
+                  title="Customer didn't share number — use guest number"
+                  onClick={() => setCustomerMobile(GUEST_PHONE)}
+                  className="flex items-center gap-1 rounded-lg border border-[#2E2B24] bg-[#131210] px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.1em] text-[#A89F8C] hover:border-[#B8962E] hover:text-[#B8962E] hover:bg-[#1F1A0F] transition disabled:opacity-50 disabled:pointer-events-none"
+                >
+                  <UserX size={11} />
+                  Guest #
+                </button>
+              </div>
               <input
                 required
                 type="text"
@@ -628,8 +667,20 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
               )}
             </div>
 
-            <label className="block">
-              <span className="text-sm font-semibold text-[#A89F8C]">Customer Name</span>
+            <div className="block">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold text-[#A89F8C]">Customer Name</span>
+                <button
+                  type="button"
+                  disabled={saved}
+                  title="Customer didn't share name — use guest name"
+                  onClick={() => setCustomerName(GUEST_NAME)}
+                  className="flex items-center gap-1 rounded-lg border border-[#2E2B24] bg-[#131210] px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.1em] text-[#A89F8C] hover:border-[#B8962E] hover:text-[#B8962E] hover:bg-[#1F1A0F] transition disabled:opacity-50 disabled:pointer-events-none"
+                >
+                  <UserX size={11} />
+                  Guest Name
+                </button>
+              </div>
               <input
                 required
                 type="text"
@@ -639,7 +690,7 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
                 placeholder="Enter customer name..."
                 className="mt-2 h-12 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-4 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E] focus:ring-1 focus:ring-[#B8962E] placeholder-[#6B6358] disabled:bg-stone-900 disabled:text-[#6B6358]"
               />
-            </label>
+            </div>
           </div>
 
           <BillingTable
