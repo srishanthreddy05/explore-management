@@ -20,6 +20,7 @@ type OfferFormData = {
   minBillAmount: number;
   applicableServiceIds: string[];
   applicableProductIds: string[];
+  customerType: "all" | "regular" | "membership";
 };
 
 const emptyForm: OfferFormData = {
@@ -33,12 +34,13 @@ const emptyForm: OfferFormData = {
   minBillAmount: 0,
   applicableServiceIds: [],
   applicableProductIds: [],
+  customerType: "all",
 };
 
 export default function OffersPage() {
   const { offers, services, products, refreshOffers, loadingAppData } = useAppData();
   const servicesList = services;
-  const productsList = products;
+  const productsList = products.filter((p) => !p.type || p.type === "retail");
   const loading = loadingAppData;
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -67,6 +69,7 @@ export default function OffersPage() {
       minBillAmount: o.minBillAmount || 0,
       applicableServiceIds: o.applicableServiceIds || [],
       applicableProductIds: o.applicableProductIds || [],
+      customerType: o.customerType || "all",
     });
     setModalOpen(true);
   };
@@ -95,6 +98,7 @@ export default function OffersPage() {
         minBillAmount: formData.minBillAmount || 0,
         applicableServiceIds: formData.applicableServiceIds,
         applicableProductIds: formData.applicableProductIds,
+        customerType: formData.customerType,
       };
       if (editingOffer?.id) {
         await offersService.update(editingOffer.id, payload);
@@ -135,6 +139,9 @@ export default function OffersPage() {
   // Helper to describe an offer's applicability/validity inline in the list
   const describeOffer = (o: Offer) => {
     const parts: string[] = [];
+    if (o.customerType && o.customerType !== "all") {
+      parts.push(`Target: ${o.customerType === "membership" ? "Membership Only" : "Regular Only"}`);
+    }
     if (o.startDate || o.endDate) {
       parts.push(`Valid ${o.startDate || "anytime"} → ${o.endDate || "no end"}`);
     }
@@ -168,7 +175,7 @@ export default function OffersPage() {
         {!loading && offers.length > 0 && (
           <button
             onClick={handleOpenAdd}
-            className="inline-flex h-12 items-center gap-2 rounded-2xl bg-black px-6 text-sm font-semibold text-white shadow-md transition hover:-translate-y-0.5 hover:bg-stone-850"
+            className="inline-flex h-12 items-center gap-2 rounded-2xl border border-stone-200 bg-white px-6 text-sm font-semibold text-black shadow-sm transition hover:-translate-y-0.5 hover:bg-stone-50"
           >
             <Plus size={18} />
             Add Offer
@@ -191,7 +198,7 @@ export default function OffersPage() {
           </p>
           <button
             onClick={handleOpenAdd}
-            className="mt-6 inline-flex h-12 items-center gap-2 rounded-2xl bg-black px-6 text-sm font-semibold text-white shadow-md transition hover:-translate-y-0.5 hover:bg-stone-850"
+            className="mt-6 inline-flex h-12 items-center gap-2 rounded-2xl border border-stone-200 bg-white px-6 text-sm font-semibold text-black shadow-sm transition hover:-translate-y-0.5 hover:bg-stone-50"
           >
             <Plus size={18} />
             Add Offer
@@ -251,14 +258,14 @@ export default function OffersPage() {
                       <div className="flex justify-end gap-2">
                         <button
                           onClick={() => handleOpenEdit(offer)}
-                          className="grid size-10 place-items-center rounded-xl border border-stone-200 text-stone-400 hover:text-black hover:border-black transition"
+                          className="grid size-10 place-items-center rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 transition animate-fade-in"
                           title="Edit"
                         >
                           <Edit2 size={16} />
                         </button>
                         <button
                           onClick={() => offer.id && handleDelete(offer.id)}
-                          className="grid size-10 place-items-center rounded-xl border border-stone-200 text-stone-400 hover:text-red-650 hover:border-red-500 hover:bg-red-50 transition"
+                          className="grid size-10 place-items-center rounded-xl bg-red-50 border border-red-200 text-red-700 hover:bg-red-100 transition"
                           title="Delete"
                         >
                           <Trash2 size={16} />
@@ -422,6 +429,19 @@ export default function OffersPage() {
                   )}
                 </div>
               </div>
+
+              <label className="block">
+                <span className="text-sm font-semibold text-stone-700">Target Customer Type</span>
+                <select
+                  value={formData.customerType}
+                  onChange={(e) => setFormData({ ...formData, customerType: e.target.value as "all" | "regular" | "membership" })}
+                  className="mt-2 h-11 w-full rounded-xl border border-stone-200 bg-stone-50 px-4 text-sm text-stone-900 outline-none transition focus:border-black"
+                >
+                  <option value="all">All Customers</option>
+                  <option value="regular">Regular Customers Only</option>
+                  <option value="membership">Membership Customers Only</option>
+                </select>
+              </label>
 
               <label className="block">
                 <span className="text-sm font-semibold text-stone-700">Campaign Status</span>

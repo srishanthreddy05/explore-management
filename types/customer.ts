@@ -4,4 +4,8 @@ export interface Customer {
   phone: string;
   customerType: "regular" | "membership";
   createdAt?: string;
+  membershipAmount?: number | null;
+  membershipDuration?: number | null;
+  membershipStart?: string | null;
+  membershipEnd?: string | null;
 }

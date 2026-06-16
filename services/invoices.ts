@@ -13,9 +13,12 @@ import {
   runTransaction,
   serverTimestamp,
   Timestamp,
+  increment,
+  writeBatch,
 } from "firebase/firestore";
 import type { Invoice } from "@/types/invoice";
 import { toTitleCase } from "@/lib/utils/text";
+import { toLocalDateString } from "@/lib/utils/date";
 
 const COLLECTION = "invoices";
 const COUNTER_DOC = doc(db, "counters", "invoice");  // /counters/invoice { lastNumber: 1000 }
@@ -57,17 +60,336 @@ export { getNextInvoiceNumber };
 
 // ── CRUD ──────────────────────────────────────────────────────────────────────
 
+function getInvoiceDateKeys(invoice: any): { dateKey: string; monthKey: string } {
+  let dateKey = invoice.dateKey;
+  if (!dateKey) {
+    let d = new Date();
+    if (invoice.date) {
+      d = typeof invoice.date.toDate === "function" ? invoice.date.toDate() : new Date(invoice.date);
+    }
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    dateKey = `${yyyy}-${mm}-${dd}`;
+  }
+  return {
+    dateKey,
+    monthKey: dateKey.slice(0, 7),
+  };
+}
+
+function summarizeStaffServices(services: any[], inv: any): Record<string, { revenue: number; servicesCount: number; productCost: number }> {
+  const summary: Record<string, { revenue: number; servicesCount: number; productCost: number }> = {};
+  const discountFactor = inv && inv.subtotal > 0 ? (inv.grandTotal / inv.subtotal) : 1;
+  services.forEach((s: any) => {
+    const staffId = s.staffId || "unassigned";
+    if (!summary[staffId]) {
+      summary[staffId] = { revenue: 0, servicesCount: 0, productCost: 0 };
+    }
+    const serviceBaseAmount = s.amount ?? Math.max((s.price || 0) - (s.discount || 0), 0);
+    const amount = serviceBaseAmount * discountFactor;
+    const cost = s.usedProductCost || 0;
+    summary[staffId].revenue += amount;
+    summary[staffId].servicesCount += 1;
+    summary[staffId].productCost += cost;
+  });
+  return summary;
+}
+
+function getInvoicePayments(inv: any) {
+  return {
+    cash:
+      inv.paymentSplit?.cash ??
+      inv.payments?.cash ??
+      (inv.paymentMethod === "Cash" ? inv.grandTotal || 0 : 0),
+    upi:
+      inv.paymentSplit?.upi ??
+      inv.payments?.upi ??
+      (inv.paymentMethod === "UPI" ? inv.grandTotal || 0 : 0),
+    card:
+      inv.paymentSplit?.card ??
+      inv.payments?.card ??
+      (inv.paymentMethod === "Card" ? inv.grandTotal || 0 : 0),
+  };
+}
+
+function getServiceCommission(s: any, inv: any): { serviceRevenue: number; productCost: number; stylistShare: number; ownerShare: number } {
+  const serviceBaseAmount = s.amount ?? Math.max((s.price || 0) - (s.discount || 0), 0);
+  const discountFactor = inv && inv.subtotal > 0 ? (inv.grandTotal / inv.subtotal) : 1;
+  const amount = serviceBaseAmount * discountFactor;
+  const cost = s.usedProductCost || 0;
+  
+  let role = s.staffRole;
+  if (!role) {
+    if (s.serviceId === "membership_fee" || s.staffId === "system" || s.staffName === "System") {
+      role = "Owner";
+    } else {
+      role = "Stylist";
+    }
+  }
+
+  let stylistShare = 0;
+  let ownerShare = 0;
+
+  if (role === "Owner") {
+    stylistShare = 0;
+    ownerShare = amount;
+  } else {
+    stylistShare = 0.5 * amount - cost;
+    ownerShare = 0.5 * amount + cost;
+  }
+
+  return {
+    serviceRevenue: amount,
+    productCost: cost,
+    stylistShare,
+    ownerShare,
+  };
+}
+
+export function applyStatsAndInventoryDiff(
+  batch: any, // WriteBatch or Transaction
+  oldInv: any | null,
+  newInv: any | null
+) {
+  const monthlyChanges: Record<string, { totalRevenue: number; totalVisits: number; cash: number; upi: number; card: number }> = {};
+  const dailyChanges: Record<string, {
+    totalRevenue: number;
+    totalVisits: number;
+    cash: number;
+    upi: number;
+    card: number;
+    serviceRevenue: number;
+    productCost: number;
+    stylistShare: number;
+    ownerShare: number;
+    totalMembershipAmount: number;
+    retailProductsRevenue: number;
+  }> = {};
+  const staffChanges: Record<string, { revenue: number; servicesCount: number; visits: number; productCost: number }> = {};
+
+  const productQuantityChanges: Record<string, number> = {};
+  const productServingsChanges: Record<string, number> = {};
+
+  // 1. Process old invoice subtractions
+  if (oldInv) {
+    const { dateKey, monthKey } = getInvoiceDateKeys(oldInv);
+    
+    if (!monthlyChanges[monthKey]) {
+      monthlyChanges[monthKey] = { totalRevenue: 0, totalVisits: 0, cash: 0, upi: 0, card: 0 };
+    }
+    monthlyChanges[monthKey].totalRevenue -= (oldInv.grandTotal || 0);
+    monthlyChanges[monthKey].totalVisits -= 1;
+    const oldPayments = getInvoicePayments(oldInv);
+    monthlyChanges[monthKey].cash -= oldPayments.cash;
+    monthlyChanges[monthKey].upi -= oldPayments.upi;
+    monthlyChanges[monthKey].card -= oldPayments.card;
+
+    if (!dailyChanges[dateKey]) {
+      dailyChanges[dateKey] = { totalRevenue: 0, totalVisits: 0, cash: 0, upi: 0, card: 0, serviceRevenue: 0, productCost: 0, stylistShare: 0, ownerShare: 0, totalMembershipAmount: 0, retailProductsRevenue: 0 };
+    }
+    dailyChanges[dateKey].totalRevenue -= (oldInv.grandTotal || 0);
+    dailyChanges[dateKey].totalVisits -= 1;
+    dailyChanges[dateKey].cash -= oldPayments.cash;
+    dailyChanges[dateKey].upi -= oldPayments.upi;
+    dailyChanges[dateKey].card -= oldPayments.card;
+    (oldInv.services || []).forEach((s: any) => {
+      const comm = getServiceCommission(s, oldInv);
+      dailyChanges[dateKey].serviceRevenue -= comm.serviceRevenue;
+      dailyChanges[dateKey].productCost -= comm.productCost;
+      dailyChanges[dateKey].stylistShare -= comm.stylistShare;
+      dailyChanges[dateKey].ownerShare -= comm.ownerShare;
+      if (s.serviceId === "membership_fee" || s.staffId === "system" || s.staffName === "System") {
+        dailyChanges[dateKey].totalMembershipAmount -= comm.serviceRevenue;
+      }
+    });
+
+    const oldDiscountFactor = oldInv.subtotal > 0 ? (oldInv.grandTotal / oldInv.subtotal) : 1;
+    (oldInv.products || []).forEach((p: any) => {
+      const productBaseAmount = p.amount ?? Math.max((p.price || 0) * (p.quantity || 1) - (p.discount || 0), 0);
+      const amount = productBaseAmount * oldDiscountFactor;
+      dailyChanges[dateKey].ownerShare -= amount;
+      dailyChanges[dateKey].retailProductsRevenue -= amount;
+    });
+
+    const staffSummary = summarizeStaffServices(oldInv.services || [], oldInv);
+    Object.entries(staffSummary).forEach(([staffId, summary]) => {
+      const staffMonthKey = `${staffId}_${monthKey}`;
+      if (!staffChanges[staffMonthKey]) {
+        staffChanges[staffMonthKey] = { revenue: 0, servicesCount: 0, visits: 0, productCost: 0 };
+      }
+      staffChanges[staffMonthKey].revenue -= summary.revenue;
+      staffChanges[staffMonthKey].servicesCount -= summary.servicesCount;
+      staffChanges[staffMonthKey].visits -= 1;
+      staffChanges[staffMonthKey].productCost -= summary.productCost;
+    });
+
+    (oldInv.products || []).forEach((p: any) => {
+      if (p.productId) {
+        productQuantityChanges[p.productId] = (productQuantityChanges[p.productId] || 0) + (p.quantity || 1);
+      }
+    });
+    (oldInv.services || []).forEach((s: any) => {
+      if (s.usedProductId) {
+        productServingsChanges[s.usedProductId] = (productServingsChanges[s.usedProductId] || 0) + 1;
+      }
+    });
+  }
+
+  // 2. Process new invoice additions
+  if (newInv) {
+    const { dateKey, monthKey } = getInvoiceDateKeys(newInv);
+
+    if (!monthlyChanges[monthKey]) {
+      monthlyChanges[monthKey] = { totalRevenue: 0, totalVisits: 0, cash: 0, upi: 0, card: 0 };
+    }
+    monthlyChanges[monthKey].totalRevenue += (newInv.grandTotal || 0);
+    monthlyChanges[monthKey].totalVisits += 1;
+    const newPayments = getInvoicePayments(newInv);
+    monthlyChanges[monthKey].cash += newPayments.cash;
+    monthlyChanges[monthKey].upi += newPayments.upi;
+    monthlyChanges[monthKey].card += newPayments.card;
+
+    if (!dailyChanges[dateKey]) {
+      dailyChanges[dateKey] = { totalRevenue: 0, totalVisits: 0, cash: 0, upi: 0, card: 0, serviceRevenue: 0, productCost: 0, stylistShare: 0, ownerShare: 0, totalMembershipAmount: 0, retailProductsRevenue: 0 };
+    }
+    dailyChanges[dateKey].totalRevenue += (newInv.grandTotal || 0);
+    dailyChanges[dateKey].totalVisits += 1;
+    dailyChanges[dateKey].cash += newPayments.cash;
+    dailyChanges[dateKey].upi += newPayments.upi;
+    dailyChanges[dateKey].card += newPayments.card;
+    (newInv.services || []).forEach((s: any) => {
+      const comm = getServiceCommission(s, newInv);
+      dailyChanges[dateKey].serviceRevenue += comm.serviceRevenue;
+      dailyChanges[dateKey].productCost += comm.productCost;
+      dailyChanges[dateKey].stylistShare += comm.stylistShare;
+      dailyChanges[dateKey].ownerShare += comm.ownerShare;
+      if (s.serviceId === "membership_fee" || s.staffId === "system" || s.staffName === "System") {
+        dailyChanges[dateKey].totalMembershipAmount += comm.serviceRevenue;
+      }
+    });
+
+    const newDiscountFactor = newInv.subtotal > 0 ? (newInv.grandTotal / newInv.subtotal) : 1;
+    (newInv.products || []).forEach((p: any) => {
+      const productBaseAmount = p.amount ?? Math.max((p.price || 0) * (p.quantity || 1) - (p.discount || 0), 0);
+      const amount = productBaseAmount * newDiscountFactor;
+      dailyChanges[dateKey].ownerShare += amount;
+      dailyChanges[dateKey].retailProductsRevenue += amount;
+    });
+
+    const staffSummary = summarizeStaffServices(newInv.services || [], newInv);
+    Object.entries(staffSummary).forEach(([staffId, summary]) => {
+      const staffMonthKey = `${staffId}_${monthKey}`;
+      if (!staffChanges[staffMonthKey]) {
+        staffChanges[staffMonthKey] = { revenue: 0, servicesCount: 0, visits: 0, productCost: 0 };
+      }
+      staffChanges[staffMonthKey].revenue += summary.revenue;
+      staffChanges[staffMonthKey].servicesCount += summary.servicesCount;
+      staffChanges[staffMonthKey].visits += 1;
+      staffChanges[staffMonthKey].productCost += summary.productCost;
+    });
+
+    (newInv.products || []).forEach((p: any) => {
+      if (p.productId) {
+        productQuantityChanges[p.productId] = (productQuantityChanges[p.productId] || 0) - (p.quantity || 1);
+      }
+    });
+    (newInv.services || []).forEach((s: any) => {
+      if (s.usedProductId) {
+        productServingsChanges[s.usedProductId] = (productServingsChanges[s.usedProductId] || 0) - 1;
+      }
+    });
+  }
+
+  // Write changes to batch/transaction
+  Object.entries(monthlyChanges).forEach(([monthKey, change]) => {
+    if (change.totalRevenue === 0 && change.totalVisits === 0 && change.cash === 0 && change.upi === 0 && change.card === 0) return;
+    const ref = doc(db, "stats", `revenue_${monthKey}`);
+    batch.set(ref, {
+      totalRevenue: increment(change.totalRevenue),
+      totalVisits: increment(change.totalVisits),
+      cash: increment(change.cash),
+      upi: increment(change.upi),
+      card: increment(change.card)
+    }, { merge: true });
+  });
+
+  Object.entries(dailyChanges).forEach(([dateKey, change]) => {
+    const isZero =
+      change.totalRevenue === 0 &&
+      change.totalVisits === 0 &&
+      change.cash === 0 &&
+      change.upi === 0 &&
+      change.card === 0 &&
+      change.serviceRevenue === 0 &&
+      change.productCost === 0 &&
+      change.stylistShare === 0 &&
+      change.ownerShare === 0 &&
+      change.totalMembershipAmount === 0;
+    if (isZero) return;
+
+    const ref = doc(db, "stats", `daily_${dateKey}`);
+    batch.set(ref, {
+      dateKey,
+      totalRevenue: increment(change.totalRevenue),
+      totalVisits: increment(change.totalVisits),
+      cash: increment(change.cash),
+      upi: increment(change.upi),
+      card: increment(change.card),
+      serviceRevenue: increment(change.serviceRevenue),
+      productCost: increment(change.productCost),
+      stylistShare: increment(change.stylistShare),
+      ownerShare: increment(change.ownerShare),
+      totalMembershipAmount: increment(change.totalMembershipAmount),
+      retailProductsRevenue: increment(change.retailProductsRevenue)
+    }, { merge: true });
+  });
+
+  Object.entries(staffChanges).forEach(([staffMonthKey, change]) => {
+    if (change.revenue === 0 && change.servicesCount === 0 && change.visits === 0 && change.productCost === 0) return;
+    const [staffId, monthKey] = staffMonthKey.split("_");
+    const ref = doc(db, "stats", `staff_${staffId}_${monthKey}`);
+    batch.set(ref, {
+      revenue: increment(change.revenue),
+      servicesCount: increment(change.servicesCount),
+      visits: increment(change.visits),
+      productCost: increment(change.productCost)
+    }, { merge: true });
+  });
+
+  const allProductIds = new Set([
+    ...Object.keys(productQuantityChanges),
+    ...Object.keys(productServingsChanges)
+  ]);
+
+  allProductIds.forEach((prodId) => {
+    const qtyChange = productQuantityChanges[prodId] || 0;
+    const srvChange = productServingsChanges[prodId] || 0;
+    if (qtyChange === 0 && srvChange === 0) return;
+
+    const ref = doc(db, "products", prodId);
+    const updateFields: any = {};
+    if (qtyChange !== 0) {
+      updateFields.quantity = increment(qtyChange);
+    }
+    if (srvChange !== 0) {
+      updateFields.noOfServings = increment(srvChange);
+    }
+    batch.update(ref, updateFields);
+  });
+}
+
 /**
  * Save a new invoice. Invoice number must come from getNextInvoiceNumber()
  * called by the billing page — do not pass a client-generated number.
  */
 export async function create(
-  invoice: Omit<Invoice, "id" | "createdAt" | "date"> & { dateString: string }
+  invoice: Omit<Invoice, "id" | "createdAt" | "date"> & { dateString: string },
+  providedBatch?: any,
+  providedDocRef?: any
 ): Promise<string> {
   try {
-    // Convert the YYYY-MM-DD string the date input gives us into a Firestore Timestamp
     const dateTs = Timestamp.fromDate(new Date(invoice.dateString));
-
     const { dateString, ...rest } = invoice;
 
     const normalizedServices = rest.services?.map((s: any) => ({
@@ -88,13 +410,11 @@ export async function create(
         }
       : undefined;
 
-    // Create invoiceDate combining selected date with current time
     const now = new Date();
     const selectedDate = new Date(invoice.dateString);
     selectedDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
     const invoiceDate = Timestamp.fromDate(selectedDate);
 
-    // Compute dateKey (YYYY-MM-DD) and timeKey (HH:MM:SS) in local browser time
     const yyyy = now.getFullYear();
     const mmStr = String(now.getMonth() + 1).padStart(2, '0');
     const ddStr = String(now.getDate()).padStart(2, '0');
@@ -105,7 +425,8 @@ export async function create(
     const secStr = String(now.getSeconds()).padStart(2, '0');
     const timeKey = `${hhStr}:${minStr}:${secStr}`;
 
-    const docRef = await addDoc(collection(db, COLLECTION), {
+    const docRef = providedDocRef || doc(collection(db, COLLECTION));
+    const invoiceData = {
       ...rest,
       customerName: toTitleCase(rest.customerName),
       services: normalizedServices,
@@ -116,8 +437,19 @@ export async function create(
       createdAt: serverTimestamp(),
       dateKey,
       timeKey,
-    });
-    return docRef.id;
+    };
+
+    if (providedBatch) {
+      providedBatch.set(docRef, invoiceData);
+      applyStatsAndInventoryDiff(providedBatch, null, invoiceData);
+      return docRef.id;
+    } else {
+      const batch = writeBatch(db);
+      batch.set(docRef, invoiceData);
+      applyStatsAndInventoryDiff(batch, null, invoiceData);
+      await batch.commit();
+      return docRef.id;
+    }
   } catch (error) {
     console.error("Error creating invoice:", error);
     throw error;
@@ -218,16 +550,124 @@ export async function update(
         name: normalizedData.appliedOffer.name ? toTitleCase(normalizedData.appliedOffer.name) : normalizedData.appliedOffer.name,
       };
     }
-    await updateDoc(doc(db, COLLECTION, id), normalizedData as Record<string, unknown>);
+
+    await runTransaction(db, async (tx) => {
+      const docRef = doc(db, COLLECTION, id);
+      const oldSnap = await tx.get(docRef);
+      if (!oldSnap.exists()) {
+        throw new Error("Invoice does not exist");
+      }
+      const oldInv = { id, ...oldSnap.data() } as Invoice;
+      const newInv = { ...oldInv, ...normalizedData } as Invoice;
+
+      applyStatsAndInventoryDiff(tx, oldInv, newInv);
+      tx.update(docRef, normalizedData);
+    });
   } catch (error) {
     console.error(`Error updating invoice ${id}:`, error);
     throw error;
   }
 }
 
+export async function getByCustomerId(customerId: string): Promise<Invoice[]> {
+  try {
+    const q = query(
+      collection(db, COLLECTION),
+      where("customerId", "==", customerId)
+    );
+    const snap = await getDocs(q);
+    const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Invoice));
+    return docs.sort((a, b) => {
+      const dateA = a.invoiceDate || a.date;
+      const dateB = b.invoiceDate || b.date;
+      const timeA = dateA && typeof dateA.toMillis === "function" ? dateA.toMillis() : 0;
+      const timeB = dateB && typeof dateB.toMillis === "function" ? dateB.toMillis() : 0;
+      return timeB - timeA;
+    });
+  } catch (error) {
+    console.error(`Error fetching invoices for customer ${customerId}:`, error);
+    throw error;
+  }
+}
+
+export async function createMembershipInvoice(params: {
+  customerId: string;
+  customerName: string;
+  customerPhone: string;
+  membershipAmount: number;
+  paymentMethod: "Cash" | "UPI" | "Card";
+  dateString?: string;
+}): Promise<string> {
+  const invoiceNumber = await getNextInvoiceNumber();
+  const dateStr = params.dateString || toLocalDateString(new Date());
+
+  const cashVal = params.paymentMethod === "Cash" ? params.membershipAmount : 0;
+  const upiVal = params.paymentMethod === "UPI" ? params.membershipAmount : 0;
+  const cardVal = params.paymentMethod === "Card" ? params.membershipAmount : 0;
+
+  const services = [
+    {
+      serviceId: "membership_fee",
+      serviceName: "Membership Fee",
+      staffId: "system",
+      staffName: "System",
+      price: params.membershipAmount,
+      discount: 0,
+      amount: params.membershipAmount,
+      usedProductId: null,
+      usedProductName: null,
+      usedProductCost: 0,
+    },
+  ];
+
+  return create({
+    invoiceNumber,
+    dateString: dateStr,
+    customerId: params.customerId,
+    customerName: params.customerName,
+    customerPhone: params.customerPhone,
+    customerType: "membership",
+    services: services as any,
+    products: [],
+    totalServices: params.membershipAmount,
+    totalProducts: 0,
+    subtotal: params.membershipAmount,
+    totalDiscount: 0,
+    grandTotal: params.membershipAmount,
+    paymentSplit: {
+      cash: cashVal,
+      upi: upiVal,
+      card: cardVal,
+    },
+    paymentStatus: "paid",
+  });
+}
+
+export async function getByDateKey(dateKey: string): Promise<Invoice[]> {
+  try {
+    const q = query(
+      collection(db, COLLECTION),
+      where("dateKey", "==", dateKey)
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Invoice));
+  } catch (error) {
+    console.error(`Error fetching invoices for date key ${dateKey}:`, error);
+    throw error;
+  }
+}
+
 async function deleteInvoice(id: string): Promise<void> {
   try {
-    await deleteDoc(doc(db, COLLECTION, id));
+    await runTransaction(db, async (tx) => {
+      const docRef = doc(db, COLLECTION, id);
+      const oldSnap = await tx.get(docRef);
+      if (!oldSnap.exists()) return;
+      const oldInv = { id, ...oldSnap.data() } as Invoice;
+
+      applyStatsAndInventoryDiff(tx, oldInv, null);
+      tx.delete(docRef);
+    });
   } catch (error) {
     console.error(`Error deleting invoice ${id}:`, error);
     throw error;

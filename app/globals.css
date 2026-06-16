@@ -34,3 +34,40 @@ body,
   -ms-overflow-style: none !important;  /* IE and Edge */
   scrollbar-width: none !important;      /* Firefox */
 }
+
+/* ── Number input: hide spin buttons (arrows) globally ─────────────────── */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield; /* Firefox */
+  appearance: textfield;
+}
+
+/* ── Dark page: flip stone text to white on black background ────────────── */
+.dark-page .text-stone-900 { color: white; }
+.dark-page .text-stone-800 { color: #e7e5e4; }
+.dark-page .text-stone-700 { color: #d6d3d1; }
+.dark-page .text-stone-600 { color: #a8a29e; }
+.dark-page .text-stone-500 { color: #78716c; }
+
+/* RESTORE dark text inside white / light cards */
+.dark-page .bg-white .text-stone-900 { color: #1c1917 !important; }
+.dark-page .bg-white .text-stone-800 { color: #292524 !important; }
+.dark-page .bg-white .text-stone-700 { color: #44403c !important; }
+.dark-page .bg-white .text-stone-600 { color: #57534e !important; }
+.dark-page .bg-white .text-stone-500 { color: #78716c !important; }
+.dark-page .bg-white .text-stone-400 { color: #a8a29e !important; }
+
+.dark-page .bg-stone-50 .text-stone-900 { color: #1c1917 !important; }
+.dark-page .bg-stone-50 .text-stone-800 { color: #292524 !important; }
+.dark-page .bg-stone-50 .text-stone-700 { color: #44403c !important; }
+.dark-page .bg-stone-50 .text-stone-600 { color: #57534e !important; }
+.dark-page .bg-stone-50 .text-stone-500 { color: #78716c !important; }
+.dark-page .bg-stone-50 .text-stone-400 { color: #a8a29e !important; }
+
+
+

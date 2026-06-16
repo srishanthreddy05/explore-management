@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
+import { initializeFirestore, getFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
 const firebaseConfig = {
@@ -13,7 +13,21 @@ const firebaseConfig = {
 
 // Initialize Firebase safely for SSR/CSR nextjs lifecycle
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-const db = getFirestore(app);
+
+// Conditionally enable persistent cache for offline capabilities on client browser
+let db: any;
+if (typeof window !== "undefined") {
+  db = getApps().length === 0
+    ? initializeFirestore(app, {
+        localCache: persistentLocalCache({
+          tabManager: persistentMultipleTabManager(),
+        }),
+      })
+    : getFirestore(app);
+} else {
+  db = getFirestore(app);
+}
+
 const auth = getAuth(app);
 
 export { app, db, auth };

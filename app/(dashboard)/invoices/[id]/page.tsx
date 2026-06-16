@@ -183,7 +183,9 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                 readOnly
                 type="text"
                 value={invoiceNumber}
-                className="mt-2 h-12 w-full rounded-2xl border border-stone-200 bg-stone-100 px-4 text-sm text-stone-500 outline-none"
+                className={`mt-2 h-12 w-full rounded-2xl border border-stone-200 bg-stone-100 px-4 text-sm outline-none font-bold ${
+                  customerType === "membership" ? "text-amber-600" : "text-stone-500"
+                }`}
               />
             </label>
 

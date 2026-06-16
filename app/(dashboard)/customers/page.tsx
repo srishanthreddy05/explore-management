@@ -2,9 +2,12 @@
 
 import { useEffect, useState } from "react";
 import * as customerService from "@/services/customers";
+import * as invoicesService from "@/services/invoices";
 import type { Customer } from "@/types/customer";
-import { Plus, Search, Edit2, Trash2, X, Users } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, X, Users, Eye } from "lucide-react";
+import CustomerDetailModal from "@/components/customers/CustomerDetailModal";
 import { db } from "@/lib/firebase";
+import { toast } from "react-hot-toast";
 import {
   query,
   collection,
@@ -49,10 +52,17 @@ export default function CustomersPage() {
     name: "",
     phone: "",
     customerType: "regular" as "regular" | "membership",
+    membershipAmount: "",
+    membershipDuration: "",
+    membershipStart: "",
+    paymentMethod: "UPI" as "UPI" | "Cash" | "Card",
+    recordInvoice: false,
   });
 
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [idToDelete, setIdToDelete] = useState<string | null>(null);
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [selectedCustomerForDetail, setSelectedCustomerForDetail] = useState<Customer | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(searchQuery), 300);
@@ -73,7 +83,7 @@ export default function CustomersPage() {
         collection(db, "customers"),
         where("customerType", "==", "regular"),
         orderBy("name", "asc"),
-        limit(25)
+        limit(10)
       );
 
       if (isLoadMore && lastRegularDoc) {
@@ -82,7 +92,7 @@ export default function CustomersPage() {
           where("customerType", "==", "regular"),
           orderBy("name", "asc"),
           startAfter(lastRegularDoc),
-          limit(25)
+          limit(10)
         );
       }
 
@@ -102,7 +112,7 @@ export default function CustomersPage() {
       } else if (!isLoadMore) {
         setLastRegularDoc(null);
       }
-      setHasMoreRegular(snap.docs.length === 25);
+      setHasMoreRegular(snap.docs.length === 10);
     } catch (error) {
       console.error("Error loading regular customers:", error);
     } finally {
@@ -121,7 +131,7 @@ export default function CustomersPage() {
         collection(db, "customers"),
         where("customerType", "==", "membership"),
         orderBy("name", "asc"),
-        limit(25)
+        limit(10)
       );
 
       if (isLoadMore && lastMembershipDoc) {
@@ -130,7 +140,7 @@ export default function CustomersPage() {
           where("customerType", "==", "membership"),
           orderBy("name", "asc"),
           startAfter(lastMembershipDoc),
-          limit(25)
+          limit(10)
         );
       }
 
@@ -150,7 +160,7 @@ export default function CustomersPage() {
       } else if (!isLoadMore) {
         setLastMembershipDoc(null);
       }
-      setHasMoreMembership(snap.docs.length === 25);
+      setHasMoreMembership(snap.docs.length === 10);
     } catch (error) {
       console.error("Error loading membership customers:", error);
     } finally {
@@ -224,11 +234,22 @@ export default function CustomersPage() {
     }
   }, [debouncedQuery]);
 
+  const handleOpenDetail = (customer: Customer) => {
+    setSelectedCustomerForDetail(customer);
+    setDetailModalOpen(true);
+  };
+
   const handleRefresh = async () => {
     await initializeData();
     if (debouncedQuery.trim()) {
       runSearch(debouncedQuery);
     }
+  };
+
+  const calculateMembershipEnd = (start: string, months: number): string => {
+    const d = new Date(start);
+    d.setMonth(d.getMonth() + months);
+    return d.toISOString();
   };
 
   const handleOpenAdd = () => {
@@ -237,6 +258,11 @@ export default function CustomersPage() {
       name: "",
       phone: "",
       customerType: "regular",
+      membershipAmount: "",
+      membershipDuration: "",
+      membershipStart: new Date().toISOString().split("T")[0],
+      paymentMethod: "UPI",
+      recordInvoice: true,
     });
     setModalOpen(true);
   };
@@ -247,6 +273,11 @@ export default function CustomersPage() {
       name: customer.name || "",
       phone: customer.phone || "",
       customerType: customer.customerType || "regular",
+      membershipAmount: customer.membershipAmount?.toString() || "",
+      membershipDuration: customer.membershipDuration?.toString() || "",
+      membershipStart: customer.membershipStart ? new Date(customer.membershipStart).toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
+      paymentMethod: "UPI",
+      recordInvoice: false,
     });
     setModalOpen(true);
   };
@@ -260,22 +291,61 @@ export default function CustomersPage() {
     if (!idToDelete) return;
     try {
       await customerService.delete(idToDelete);
+      toast.success("Customer deleted successfully!");
       setDeleteConfirmOpen(false);
       setIdToDelete(null);
       await handleRefresh();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to delete customer:", error);
+      if (error?.code === "failed-precondition" || error?.message?.includes("failed-precondition")) {
+        toast.error("This customer was already removed — list refreshed");
+      } else {
+        toast.error("Failed to delete customer.");
+      }
+      setDeleteConfirmOpen(false);
+      setIdToDelete(null);
+      await handleRefresh();
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const dataToSave = {
+        name: formData.name,
+        phone: formData.phone,
+        customerType: formData.customerType,
+        ...(formData.customerType === "membership" ? {
+          membershipAmount: parseFloat(formData.membershipAmount) || 0,
+          membershipDuration: parseInt(formData.membershipDuration) || 0,
+          membershipStart: new Date(formData.membershipStart).toISOString(),
+          membershipEnd: calculateMembershipEnd(formData.membershipStart, parseInt(formData.membershipDuration) || 0),
+        } : {
+          membershipAmount: null,
+          membershipDuration: null,
+          membershipStart: null,
+          membershipEnd: null,
+        })
+      };
+
+      let customerId = editingCustomer?.id;
       if (editingCustomer?.id) {
-        await customerService.update(editingCustomer.id, formData);
+        await customerService.update(editingCustomer.id, dataToSave);
       } else {
-        await customerService.create(formData);
+        customerId = await customerService.create(dataToSave);
       }
+
+      if (formData.customerType === "membership" && formData.recordInvoice && customerId) {
+        await invoicesService.createMembershipInvoice({
+          customerId,
+          customerName: formData.name.trim(),
+          customerPhone: formData.phone.trim(),
+          membershipAmount: parseFloat(formData.membershipAmount) || 0,
+          paymentMethod: formData.paymentMethod,
+          dateString: formData.membershipStart,
+        });
+      }
+
       setModalOpen(false);
       await handleRefresh();
     } catch (error) {
@@ -310,15 +380,7 @@ export default function CustomersPage() {
             Customers ({stats.regularCount + stats.membershipCount})
           </h1>
         </div>
-        {!loading && (stats.regularCount + stats.membershipCount > 0) && (
-          <button
-            onClick={handleOpenAdd}
-            className="inline-flex h-12 items-center gap-2 rounded-2xl bg-black px-6 text-sm font-semibold text-white shadow-md transition hover:-translate-y-0.5 hover:bg-stone-850"
-          >
-            <Plus size={18} />
-            Add Customer
-          </button>
-        )}
+
       </div>
 
       {loading ? (
@@ -335,13 +397,7 @@ export default function CustomersPage() {
           <p className="mt-2 max-w-sm text-sm text-stone-500">
             Create profiles to track salon memberships and schedule visits.
           </p>
-          <button
-            onClick={handleOpenAdd}
-            className="mt-6 inline-flex h-12 items-center gap-2 rounded-2xl bg-black px-6 text-sm font-semibold text-white shadow-md transition hover:-translate-y-0.5 hover:bg-stone-850"
-          >
-            <Plus size={18} />
-            Add Customer
-          </button>
+
         </div>
       ) : (
         <>
@@ -396,15 +452,22 @@ export default function CustomersPage() {
                           <td className="px-4 py-3 text-right">
                             <div className="flex justify-end gap-1.5">
                               <button
+                                onClick={() => handleOpenDetail(customer)}
+                                className="grid size-8 place-items-center rounded-lg border border-stone-200 text-stone-400 hover:text-black hover:border-black transition cursor-pointer"
+                                title="View Details"
+                              >
+                                <Eye size={13} />
+                              </button>
+                              <button
                                 onClick={() => handleOpenEdit(customer)}
-                                className="grid size-8 place-items-center rounded-lg border border-stone-200 text-stone-400 hover:text-black hover:border-black transition"
+                                className="grid size-8 place-items-center rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 transition cursor-pointer"
                                 title="Edit"
                               >
                                 <Edit2 size={13} />
                               </button>
                               <button
                                 onClick={() => customer.id && handleDeleteTrigger(customer.id)}
-                                className="grid size-8 place-items-center rounded-lg border border-stone-200 text-stone-400 hover:text-red-650 hover:border-red-500 hover:bg-red-50 transition"
+                                className="grid size-8 place-items-center rounded-lg bg-red-50 border border-red-200 text-red-700 hover:bg-red-100 transition cursor-pointer"
                                 title="Delete"
                               >
                                 <Trash2 size={13} />
@@ -434,7 +497,7 @@ export default function CustomersPage() {
             {/* Membership Customers Section */}
             <div className="space-y-4">
               <div className="flex items-center justify-between border-b border-stone-150 pb-2">
-                <h2 className="text-lg font-bold text-stone-900">
+                <h2 className="text-lg font-bold text-amber-600">
                   {membershipHeader}
                 </h2>
               </div>
@@ -464,15 +527,22 @@ export default function CustomersPage() {
                           <td className="px-4 py-3 text-right">
                             <div className="flex justify-end gap-1.5">
                               <button
+                                onClick={() => handleOpenDetail(customer)}
+                                className="grid size-8 place-items-center rounded-lg border border-stone-200 text-stone-400 hover:text-black hover:border-black transition cursor-pointer"
+                                title="View Details"
+                              >
+                                <Eye size={13} />
+                              </button>
+                              <button
                                 onClick={() => handleOpenEdit(customer)}
-                                className="grid size-8 place-items-center rounded-lg border border-stone-200 text-stone-400 hover:text-black hover:border-black transition"
+                                className="grid size-8 place-items-center rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 transition cursor-pointer"
                                 title="Edit"
                               >
                                 <Edit2 size={13} />
                               </button>
                               <button
                                 onClick={() => customer.id && handleDeleteTrigger(customer.id)}
-                                className="grid size-8 place-items-center rounded-lg border border-stone-200 text-stone-400 hover:text-red-650 hover:border-red-500 hover:bg-red-50 transition"
+                                className="grid size-8 place-items-center rounded-lg bg-red-50 border border-red-200 text-red-700 hover:bg-red-100 transition cursor-pointer"
                                 title="Delete"
                               >
                                 <Trash2 size={13} />
@@ -543,13 +613,85 @@ export default function CustomersPage() {
                 <span className="text-sm font-semibold text-stone-700">Customer Type</span>
                 <select
                   value={formData.customerType}
-                  onChange={(e) => setFormData({ ...formData, customerType: e.target.value as "regular" | "membership" })}
+                  onChange={(e) => {
+                    const newType = e.target.value as "regular" | "membership";
+                    setFormData({
+                      ...formData,
+                      customerType: newType,
+                      recordInvoice: newType === "membership" ? (editingCustomer?.customerType !== "membership") : false
+                    });
+                  }}
                   className="mt-2 h-11 w-full rounded-xl border border-stone-200 bg-stone-50 px-4 text-sm text-stone-900 outline-none focus:border-black"
                 >
                   <option value="regular">Regular</option>
                   <option value="membership">Membership</option>
                 </select>
               </label>
+
+              {formData.customerType === "membership" && (
+                <div className="space-y-4 border-l-2 border-stone-200 pl-3 mt-3 animate-in slide-in-from-left-2 duration-200">
+                  <label className="block">
+                    <span className="text-sm font-semibold text-stone-700">Membership Amount (₹)</span>
+                    <input
+                      required
+                      type="number"
+                      placeholder="e.g. 5000"
+                      value={formData.membershipAmount}
+                      onChange={(e) => setFormData({ ...formData, membershipAmount: e.target.value })}
+                      className="mt-2 h-11 w-full rounded-xl border border-stone-200 bg-stone-50 px-4 text-sm text-stone-900 outline-none focus:border-black"
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="text-sm font-semibold text-stone-700">Duration (in months)</span>
+                    <input
+                      required
+                      type="number"
+                      placeholder="e.g. 3"
+                      value={formData.membershipDuration}
+                      onChange={(e) => setFormData({ ...formData, membershipDuration: e.target.value })}
+                      className="mt-2 h-11 w-full rounded-xl border border-stone-200 bg-stone-50 px-4 text-sm text-stone-900 outline-none focus:border-black"
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="text-sm font-semibold text-stone-700">Start Date</span>
+                    <input
+                      required
+                      type="date"
+                      value={formData.membershipStart}
+                      onChange={(e) => setFormData({ ...formData, membershipStart: e.target.value })}
+                      className="mt-2 h-11 w-full rounded-xl border border-stone-200 bg-stone-50 px-4 text-sm text-stone-900 outline-none focus:border-black"
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="text-sm font-semibold text-stone-700">Payment Method</span>
+                    <select
+                      value={formData.paymentMethod}
+                      onChange={(e) => setFormData({ ...formData, paymentMethod: e.target.value as "UPI" | "Cash" | "Card" })}
+                      className="mt-2 h-11 w-full rounded-xl border border-stone-200 bg-stone-50 px-4 text-sm text-stone-900 outline-none focus:border-black"
+                    >
+                      <option value="UPI">UPI</option>
+                      <option value="Cash">Cash</option>
+                      <option value="Card">Card</option>
+                    </select>
+                  </label>
+
+                  <div className="flex items-center gap-2.5 pt-2">
+                    <input
+                      type="checkbox"
+                      id="recordInvoice"
+                      checked={formData.recordInvoice}
+                      onChange={(e) => setFormData({ ...formData, recordInvoice: e.target.checked })}
+                      className="size-4 rounded border-stone-300 text-black focus:ring-black cursor-pointer"
+                    />
+                    <label htmlFor="recordInvoice" className="text-sm font-semibold text-stone-700 cursor-pointer select-none">
+                      Record payment & generate membership invoice
+                    </label>
+                  </div>
+                </div>
+              )}
 
               <div className="flex gap-3 justify-end pt-2">
                 <button
@@ -594,6 +736,16 @@ export default function CustomersPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {detailModalOpen && selectedCustomerForDetail && (
+        <CustomerDetailModal
+          customer={selectedCustomerForDetail}
+          onClose={() => {
+            setDetailModalOpen(false);
+            setSelectedCustomerForDetail(null);
+          }}
+        />
       )}
     </div>
   );

@@ -5,6 +5,9 @@ export type ServiceRow = {
   price: number;
   quantity: number;
   discount: number;
+  usedProductId?: string;
+  usedProductName?: string;
+  usedProductCost?: number;
 };
 
 export type ProductRow = {

@@ -96,7 +96,7 @@ export default function ServicesPage() {
         {!loading && services.length > 0 && (
           <button
             onClick={handleOpenAdd}
-            className="inline-flex h-12 items-center gap-2 rounded-2xl bg-black px-6 text-sm font-semibold text-white shadow-md transition hover:-translate-y-0.5 hover:bg-stone-850"
+            className="inline-flex h-12 items-center gap-2 rounded-2xl border border-stone-200 bg-white px-6 text-sm font-semibold text-black shadow-sm transition hover:-translate-y-0.5 hover:bg-stone-50"
           >
             <Plus size={18} />
             Add Service
@@ -120,7 +120,7 @@ export default function ServicesPage() {
           </p>
           <button
             onClick={handleOpenAdd}
-            className="mt-6 inline-flex h-12 items-center gap-2 rounded-2xl bg-black px-6 text-sm font-semibold text-white shadow-md transition hover:-translate-y-0.5 hover:bg-stone-850"
+            className="mt-6 inline-flex h-12 items-center gap-2 rounded-2xl border border-stone-200 bg-white px-6 text-sm font-semibold text-black shadow-sm transition hover:-translate-y-0.5 hover:bg-stone-50"
           >
             <Plus size={18} />
             Add Service
@@ -165,14 +165,14 @@ export default function ServicesPage() {
                       <div className="flex justify-end gap-2">
                         <button
                           onClick={() => handleOpenEdit(service)}
-                          className="grid size-10 place-items-center rounded-xl border border-stone-200 text-stone-400 hover:text-black hover:border-black transition"
+                          className="grid size-10 place-items-center rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 transition"
                           title="Edit"
                         >
                           <Edit2 size={16} />
                         </button>
                         <button
                           onClick={() => service.id && handleDeleteTrigger(service.id)}
-                          className="grid size-10 place-items-center rounded-xl border border-stone-200 text-stone-400 hover:text-red-650 hover:border-red-500 hover:bg-red-50 transition"
+                          className="grid size-10 place-items-center rounded-xl bg-red-50 border border-red-200 text-red-700 hover:bg-red-100 transition"
                           title="Delete"
                         >
                           <Trash2 size={16} />

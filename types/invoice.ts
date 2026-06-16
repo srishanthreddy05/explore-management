@@ -46,6 +46,7 @@ export interface Invoice {
     cash: number;
     card: number;
   };
+  paymentMethod?: "Cash" | "UPI" | "Card" | "Split";
   paymentStatus: "paid" | "partial" | "unpaid";
   receivedAmount?: number;
   balanceDue?: number;

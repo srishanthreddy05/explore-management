@@ -2,7 +2,6 @@
 
 import {
   BadgePercent,
-  BarChart3,
   CreditCard,
   Gauge,
   Menu,
@@ -12,7 +11,6 @@ import {
   WalletCards,
   Settings,
   X,
-  Boxes,
   History,
   Coins,
   LogOut,
@@ -32,7 +30,7 @@ const menuGroups = [
   {
     title: "Daily Operations",
     items: [
-      { label: "Billing", href: "/billing", icon: CreditCard },
+      { label: "Settlements", href: "/settlements", icon: Coins },
       { label: "Invoices", href: "/invoices", icon: History },
       { label: "Customers", href: "/customers", icon: Users },
     ],
@@ -54,7 +52,6 @@ const menuGroups = [
   {
     title: "Business",
     items: [
-      { label: "Reports", href: "/reports", icon: BarChart3 },
       { label: "Expenses", href: "/expenses", icon: Coins },
     ],
   },
@@ -97,9 +94,7 @@ export function Sidebar({
     return settings.salonName.split(" ")[0];
   }, [settings]);
 
-  const lowStockCount = useMemo(() => {
-    return products.filter((p) => p.quantity <= 5).length;
-  }, [products]);
+
 
   const navList = (isMobile: boolean) => (
     <div className="space-y-6">
@@ -146,10 +141,12 @@ export function Sidebar({
           <div className="mb-8 flex h-14 items-center justify-between">
             <div className="flex min-w-0 items-center">
               {!collapsed && (
-                <div>
-                  <p className="text-lg font-bold tracking-wide text-white">{salonName}</p>
-                  <p className="text-xs uppercase tracking-[0.28em] text-stone-400">Salon ERP</p>
-                </div>
+                <img
+                  src="/pic1.jpeg"
+                  alt="Explore Salon"
+                  className="h-16 w-auto object-contain"
+                  style={{ maxWidth: "220px" }}
+                />
               )}
             </div>
             <button
@@ -180,19 +177,7 @@ export function Sidebar({
             </div>
           </div>
 
-          {!collapsed && (
-            <div className="mt-auto rounded-2xl border border-white/10 bg-white/5 p-4">
-              <div className="mb-3 flex items-center gap-2 text-white">
-                <Boxes size={18} />
-                <span className="text-sm font-semibold">Inventory Alert</span>
-              </div>
-              <p className="text-sm leading-6 text-stone-300">
-                {lowStockCount > 0
-                  ? `${lowStockCount} products are close to reorder level.`
-                  : "All products are sufficiently stocked."}
-              </p>
-            </div>
-          )}
+
         </div>
       </aside>
 
@@ -242,17 +227,7 @@ export function Sidebar({
               </div>
             </div>
 
-            <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
-              <div className="mb-3 flex items-center gap-2 text-white">
-                <Boxes size={18} />
-                <span className="text-sm font-semibold">Inventory Alert</span>
-              </div>
-              <p className="text-sm leading-6 text-stone-300">
-                {lowStockCount > 0
-                  ? `${lowStockCount} products are close to reorder level.`
-                  : "All products are sufficiently stocked."}
-              </p>
-            </div>
+
           </aside>
         </div>
       )}

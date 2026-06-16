@@ -3,22 +3,23 @@
 import { useEffect, useMemo, useState } from "react";
 import * as expensesService from "@/services/expenses";
 import type { Expense } from "@/types/expense";
-import { Plus, Search, Edit2, Trash2, X, Receipt } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, X, Receipt, Calendar } from "lucide-react";
 import { formatCurrency } from "@/components/salon-dashboard/types";
+import { toLocalDateString } from "@/lib/utils/date";
 
 export default function ExpensesPage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Filters
+  // Date range filters
+  const now = new Date();
+  const firstDayStr = toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1));
+  const todayStr = toLocalDateString(now);
+
   const [typeFilter, setTypeFilter] = useState<"all" | "daily" | "monthly">("all");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
-  const [selectedMonth, setSelectedMonth] = useState(() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  });
+  const [dateFrom, setDateFrom] = useState(firstDayStr);
+  const [dateTo, setDateTo] = useState(todayStr);
 
   // Modal states
   const [modalOpen, setModalOpen] = useState(false);
@@ -35,11 +36,13 @@ export default function ExpensesPage() {
   const [idToDelete, setIdToDelete] = useState<string | null>(null);
 
   const loadExpenses = async () => {
+    if (!dateFrom || !dateTo) return;
     setLoading(true);
     try {
-      const [year, month] = selectedMonth.split("-").map(Number);
-      const start = new Date(year, month - 1, 1, 0, 0, 0, 0);
-      const end = new Date(year, month, 0, 23, 59, 59, 999);
+      const start = new Date(dateFrom);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(dateTo);
+      end.setHours(23, 59, 59, 999);
       const data = await expensesService.getByDateRange(start, end);
       setExpenses(data);
     } catch (error) {
@@ -51,7 +54,7 @@ export default function ExpensesPage() {
 
   useEffect(() => {
     loadExpenses();
-  }, [selectedMonth]);
+  }, [dateFrom, dateTo]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -174,7 +177,7 @@ export default function ExpensesPage() {
         {!loading && expenses.length > 0 && (
           <button
             onClick={handleOpenAdd}
-            className="inline-flex h-12 items-center gap-2 rounded-2xl bg-black px-6 text-sm font-semibold text-white shadow-md transition hover:-translate-y-0.5 hover:bg-stone-800"
+            className="inline-flex h-12 items-center gap-2 rounded-2xl border border-stone-200 bg-white px-6 text-sm font-semibold text-black shadow-sm transition hover:-translate-y-0.5 hover:bg-stone-50"
           >
             <Plus size={18} />
             Log Expense
@@ -197,7 +200,7 @@ export default function ExpensesPage() {
           </p>
           <button
             onClick={handleOpenAdd}
-            className="mt-6 inline-flex h-12 items-center gap-2 rounded-2xl bg-black px-6 text-sm font-semibold text-white shadow-md transition hover:-translate-y-0.5 hover:bg-stone-800"
+            className="mt-6 inline-flex h-12 items-center gap-2 rounded-2xl border border-stone-200 bg-white px-6 text-sm font-semibold text-black shadow-sm transition hover:-translate-y-0.5 hover:bg-stone-50"
           >
             <Plus size={18} />
             Log Expense
@@ -212,7 +215,7 @@ export default function ExpensesPage() {
                 Today's Daily Expenses
               </p>
               <p className="mt-2 text-2xl font-bold text-red-600">
-                -{formatCurrency(summary.todayDaily)}
+                {formatCurrency(summary.todayDaily)}
               </p>
               <p className="mt-1 text-xs text-stone-400">
                 Tiffin, fuel, misc logged today
@@ -223,20 +226,20 @@ export default function ExpensesPage() {
                 This Month's Fixed Costs
               </p>
               <p className="mt-2 text-2xl font-bold text-red-600">
-                -{formatCurrency(summary.monthFixed)}
+                {formatCurrency(summary.monthFixed)}
               </p>
               <p className="mt-1 text-xs text-stone-400">
                 Rent, electricity, salaries
               </p>
             </div>
-            <div className="rounded-2xl border border-stone-200 bg-stone-900 p-5 shadow-sm">
+            <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
               <p className="text-xs font-bold uppercase tracking-wider text-stone-400">
                 Total Expenses
               </p>
-              <p className="mt-2 text-2xl font-bold text-white">
-                -{formatCurrency(summary.total)}
+              <p className="mt-2 text-2xl font-bold text-stone-900">
+                {formatCurrency(summary.total)}
               </p>
-              <p className="mt-1 text-xs text-stone-500">
+              <p className="mt-1 text-xs text-stone-400">
                 Today's daily + month's fixed
               </p>
             </div>
@@ -267,36 +270,31 @@ export default function ExpensesPage() {
               <option value="monthly">Monthly only</option>
             </select>
 
-            {/* Month picker */}
-            <input
-              type="month"
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-              className="h-11 rounded-2xl border border-stone-200 bg-white px-4 text-sm font-semibold text-stone-800 shadow-sm outline-none focus:border-black"
-            />
-
-            {/* Date range */}
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              className="h-11 rounded-2xl border border-stone-200 bg-white px-4 text-sm text-stone-800 shadow-sm outline-none focus:border-black"
-            />
-            <span className="text-xs text-stone-400 font-medium">to</span>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              className="h-11 rounded-2xl border border-stone-200 bg-white px-4 text-sm text-stone-800 shadow-sm outline-none focus:border-black"
-            />
+            {/* Date Selector */}
+            <div className="flex items-center gap-2 flex-wrap bg-white p-2 rounded-2xl border border-stone-200 shadow-sm">
+              <Calendar size={16} className="text-stone-400 ml-1" />
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="h-9 rounded-xl border border-stone-200 bg-white px-3 text-sm font-medium text-stone-800 shadow-sm outline-none focus:border-black transition"
+              />
+              <span className="text-xs text-stone-400 font-semibold px-1">to</span>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="h-9 rounded-xl border border-stone-200 bg-white px-3 text-sm font-medium text-stone-800 shadow-sm outline-none focus:border-black transition"
+              />
+            </div>
 
             {/* Clear filters */}
-            {(typeFilter !== "all" || dateFrom || dateTo) && (
+            {(typeFilter !== "all" || dateFrom !== firstDayStr || dateTo !== todayStr) && (
               <button
-                onClick={() => { setTypeFilter("all"); setDateFrom(""); setDateTo(""); }}
+                onClick={() => { setTypeFilter("all"); setDateFrom(firstDayStr); setDateTo(todayStr); }}
                 className="h-11 rounded-2xl border border-stone-200 bg-white px-4 text-sm font-semibold text-stone-600 shadow-sm hover:bg-stone-50 transition"
               >
-                Clear
+                Reset
               </button>
             )}
           </div>
@@ -347,20 +345,20 @@ export default function ExpensesPage() {
                       </td>
                       <td className="px-6 py-4">{expense.date}</td>
                       <td className="px-6 py-4 font-bold text-red-600">
-                        -{formatCurrency(expense.amount)}
+                        {formatCurrency(expense.amount)}
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex justify-end gap-2">
                           <button
                             onClick={() => handleOpenEdit(expense)}
-                            className="grid size-10 place-items-center rounded-xl border border-stone-200 text-stone-400 hover:text-black hover:border-black transition"
+                            className="grid size-10 place-items-center rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 transition"
                             title="Edit"
                           >
                             <Edit2 size={16} />
                           </button>
                           <button
                             onClick={() => expense.id && handleDeleteTrigger(expense.id)}
-                            className="grid size-10 place-items-center rounded-xl border border-stone-200 text-stone-400 hover:text-red-600 hover:border-red-500 hover:bg-red-50 transition"
+                            className="grid size-10 place-items-center rounded-xl bg-red-50 border border-red-200 text-red-700 hover:bg-red-100 transition"
                             title="Delete"
                           >
                             <Trash2 size={16} />

@@ -5,6 +5,7 @@ export interface Offer {
   discountType: "percentage" | "flat" | string;
   discountValue: number;
   status: "Active" | "Inactive" | string;
+  customerType?: "all" | "regular" | "membership";
 
   // ── Validity window ──────────────────────────────────────────────────────
   // Stored as "YYYY-MM-DD" strings to match the rest of the app's date handling

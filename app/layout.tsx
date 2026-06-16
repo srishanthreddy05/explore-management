@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 import { Toaster } from "react-hot-toast";
+import { NoScrollNumbers } from "@/components/NoScrollNumbers";
 
 export const metadata: Metadata = {
   title: "Explore Salon Management",
@@ -20,6 +21,7 @@ export default function RootLayout({
     >
       <body className="flex min-h-full flex-col">
         <AuthProvider>
+          <NoScrollNumbers />
           {children}
           <Toaster position="top-right" />
         </AuthProvider>

@@ -8,6 +8,7 @@ import {
   query,
   orderBy,
   where,
+  getCountFromServer,
 } from "firebase/firestore";
 import type { Notification } from "@/types/notification";
 
@@ -59,8 +60,8 @@ export async function markAsRead(id: string): Promise<void> {
 export async function getUnreadCount(): Promise<number> {
   try {
     const q = query(collection(db, COLLECTION_NAME), where("read", "==", false));
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.size;
+    const querySnapshot = await getCountFromServer(q);
+    return querySnapshot.data().count;
   } catch (error) {
     console.error("Error getting unread notifications count:", error);
     return 0;

@@ -53,69 +53,75 @@ export function ProductTable({
           type="button"
           disabled={disabled}
           onClick={() => setShowModal(true)}
-          className="inline-flex h-10 items-center gap-2 rounded-2xl bg-black px-4 text-sm font-semibold text-white shadow-md transition hover:-translate-y-0.5 hover:bg-stone-800 disabled:opacity-50 disabled:pointer-events-none"
+          className="inline-flex h-10 items-center gap-2 rounded-2xl border border-stone-200 bg-white px-4 text-sm font-semibold text-black shadow-sm transition hover:-translate-y-0.5 hover:bg-stone-50 disabled:opacity-50 disabled:pointer-events-none"
         >
           <Plus size={17} />
           Add Product
         </button>
       </div>
       <div className="mt-3 overflow-x-auto rounded-2xl border border-stone-200 bg-white">
-        <table className="w-full min-w-[700px] border-collapse text-left text-sm">
+        <table className="w-full min-w-[700px] table-fixed border-collapse text-left text-sm">
           <thead className="bg-stone-55 text-xs uppercase tracking-[0.2em] text-stone-500 border-b border-stone-200">
             <tr>
-              {["Product", "Price", "Quantity", "Discount", "Amount", ""].map((heading) => (
-                <th key={heading} className="px-4 py-4 font-semibold">
-                  {heading}
-                </th>
-              ))}
+              <th className="px-2 py-3 font-semibold">Product</th>
+              <th className="px-2 py-3 font-semibold w-[130px]">{/* Spacer to align with Staff */}</th>
+              <th className="px-2 py-3 font-semibold w-[160px]">Quantity{/* Aligns with Used Product */}</th>
+              <th className="px-2 py-3 font-semibold w-[90px]">Price</th>
+              <th className="px-2 py-3 font-semibold w-[90px]">Discount</th>
+              <th className="px-2 py-3 font-semibold w-[90px]">Amount</th>
+              <th className="px-2 py-3 font-semibold w-[50px]"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-stone-200">
             {rows.map((row) => (
               <tr key={row.id} className="bg-white transition hover:bg-stone-50">
-                <td className="px-4 py-3 font-semibold text-stone-900">
+                <td className="px-2 py-2 font-bold text-stone-900 truncate" title={row.product}>
                   {row.product}
                 </td>
-                <td className="px-4 py-3">
-                  <input
-                    type="number"
-                    min="0"
-                    disabled={disabled}
-                    value={row.price === 0 ? "" : row.price}
-                    onChange={(event) => updateRow(row.id, { price: event.target.value === "" ? 0 : Number(event.target.value) })}
-                    className="h-10 w-28 rounded-xl border border-stone-200 bg-stone-50 px-3 text-stone-900 outline-none transition focus:border-black disabled:bg-stone-100 disabled:text-stone-500"
-                  />
-                </td>
-                <td className="px-4 py-3">
+                <td className="px-2 py-2 w-[130px]" />
+                <td className="px-2 py-2 w-[160px]">
                   <input
                     type="number"
                     min="1"
+                    placeholder="1"
                     disabled={disabled}
                     value={row.quantity === 0 ? "" : row.quantity}
                     onChange={(event) => updateRow(row.id, { quantity: event.target.value === "" ? 0 : Number(event.target.value) })}
-                    className="h-10 w-28 rounded-xl border border-stone-200 bg-stone-50 px-3 text-stone-900 outline-none transition focus:border-black disabled:bg-stone-100 disabled:text-stone-500"
+                    className="h-10 w-full rounded-xl border border-stone-200 bg-stone-50 px-2 text-stone-900 outline-none transition focus:border-black focus:bg-white disabled:bg-stone-100 disabled:text-stone-500 text-xs font-semibold shadow-2xs"
                   />
                 </td>
-                <td className="px-4 py-3">
+                <td className="px-2 py-2 w-[90px]">
                   <input
                     type="number"
                     min="0"
+                    placeholder="0"
+                    disabled={disabled}
+                    value={row.price === 0 ? "" : row.price}
+                    onChange={(event) => updateRow(row.id, { price: event.target.value === "" ? 0 : Number(event.target.value) })}
+                    className="h-10 w-full rounded-xl border border-stone-200 bg-stone-50 px-2 text-stone-900 outline-none transition focus:border-black focus:bg-white disabled:bg-stone-100 disabled:text-stone-500 text-xs font-semibold shadow-2xs"
+                  />
+                </td>
+                <td className="px-2 py-2 w-[90px]">
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="0"
                     disabled={disabled}
                     value={row.discount === 0 ? "" : row.discount}
                     onChange={(event) => updateRow(row.id, { discount: event.target.value === "" ? 0 : Number(event.target.value) })}
-                    className="h-10 w-28 rounded-xl border border-stone-200 bg-stone-50 px-3 text-stone-900 outline-none transition focus:border-black disabled:bg-stone-100 disabled:text-stone-500"
+                    className="h-10 w-full rounded-xl border border-stone-200 bg-stone-50 px-2 text-stone-900 outline-none transition focus:border-black focus:bg-white disabled:bg-stone-100 disabled:text-stone-500 text-xs font-semibold shadow-2xs"
                   />
                 </td>
-                <td className="px-4 py-3 font-semibold text-stone-900">
+                <td className="px-2 py-2 font-bold text-stone-900 text-xs w-[90px]">
                   {formatCurrency(Math.max(row.price * row.quantity - row.discount, 0))}
                 </td>
-                <td className="px-4 py-3 text-right">
+                <td className="px-2 py-2 text-right w-[50px]">
                   <button
                     aria-label="Delete product"
                     type="button"
                     disabled={disabled}
                     onClick={() => onRowsChange(rows.filter((item) => item.id !== row.id))}
-                    className="grid size-10 place-items-center rounded-xl border border-stone-200 text-stone-400 transition hover:border-red-500 hover:bg-red-55 hover:text-red-650 disabled:opacity-50 disabled:pointer-events-none"
+                    className="grid size-9 place-items-center rounded-xl border border-stone-200 text-stone-400 transition hover:border-red-55 hover:bg-red-65 hover:text-red-650 disabled:opacity-50 disabled:pointer-events-none mx-auto"
                   >
                     <Trash2 size={16} />
                   </button>

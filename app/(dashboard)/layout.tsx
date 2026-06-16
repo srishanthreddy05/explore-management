@@ -87,7 +87,15 @@ export default function DashboardLayout({
 
   return (
     <AppDataProvider>
-      <div className="min-h-screen bg-[#F5F5F5] text-stone-900 font-sans antialiased">
+      <div className="dark-page relative min-h-screen bg-black text-white font-sans antialiased">
+        {pathname === "/dashboard" && (
+          <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
+            <div 
+              className="absolute inset-0 bg-cover bg-center filter blur-2xl opacity-20 scale-105"
+              style={{ backgroundImage: "url('/banner.jpeg')" }}
+            />
+          </div>
+        )}
         
         <Sidebar
           collapsed={collapsed}
@@ -97,7 +105,7 @@ export default function DashboardLayout({
         />
         
         <div
-          className={`min-h-screen flex flex-col transition-all duration-300 ${
+          className={`min-h-screen flex flex-col transition-all duration-300 relative ${
             collapsed ? "lg:pl-24" : "lg:pl-72"
           }`}
         >
@@ -105,7 +113,7 @@ export default function DashboardLayout({
           <main className="flex-1 px-4 pb-8 pt-4 sm:px-6 lg:px-8">
             {children}
           </main>
-          <footer className="border-t border-stone-200 bg-white py-4 px-4 sm:px-6 lg:px-8 text-xs text-stone-400 select-none">
+          <footer className="border-t border-stone-800 bg-black py-4 px-4 sm:px-6 lg:px-8 text-xs text-stone-600 select-none">
             <div className="flex items-center justify-between">
               <span>Explore Salon ERP</span>
               <span>Built by Thrivex Labs</span>

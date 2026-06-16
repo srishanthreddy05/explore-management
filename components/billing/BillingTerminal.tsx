@@ -13,6 +13,7 @@ import * as customerService from "@/services/customers";
 import * as productsService from "@/services/products";
 import * as invoicesService from "@/services/invoices";
 import { useAppData } from "@/context/AppDataContext";
+import { toLocalDateString } from "@/lib/utils/date";
 
 import type { Customer } from "@/types/customer";
 import type { Service } from "@/types/service";
@@ -46,7 +47,7 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
 
   const [invoiceNumberDisplay, setInvoiceNumberDisplay] = useState("Auto-assigned on save");
 
-  const [dateString, setDateString] = useState(new Date().toISOString().split("T")[0]);
+  const [dateString, setDateString] = useState(toLocalDateString(new Date()));
 
   const [services, setServices] = useState<ServiceRow[]>([]);
   const [products, setProducts] = useState<ProductRow[]>([]);
@@ -58,9 +59,11 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
 
   // Offer selection
   const [selectedOfferId, setSelectedOfferId] = useState<string>("");
+  const [manuallyDeselected, setManuallyDeselected] = useState(false);
 
   // Customer lookup by phone
   useEffect(() => {
+    setManuallyDeselected(false);
     let active = true;
     if (customerMobile.trim().length >= 10) {
       const check = async () => {
@@ -102,6 +105,12 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
       // Validity dates: compare against the invoice date
       if (offer.startDate && dateString < offer.startDate) return false;
       if (offer.endDate && dateString > offer.endDate) return false;
+
+      // Customer type check
+      if (offer.customerType && offer.customerType !== "all") {
+        const currentType = clientStatus || "regular";
+        if (currentType !== offer.customerType) return false;
+      }
 
       // Minimum bill amount check: if the offer is scoped, check against the subtotal of applicable items.
       // Otherwise, check against the entire subtotal.
@@ -146,6 +155,18 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
       setSelectedOfferId("");
     }
   }, [eligibleOffers, selectedOfferId]);
+
+  // Auto-apply offer
+  useEffect(() => {
+    if (manuallyDeselected) return;
+    if (eligibleOffers.length > 0) {
+      if (!selectedOfferId) {
+        setSelectedOfferId(eligibleOffers[0].id || "");
+      }
+    } else {
+      setSelectedOfferId("");
+    }
+  }, [eligibleOffers, selectedOfferId, manuallyDeselected]);
 
   const selectedOffer = eligibleOffers.find((o) => o.id === selectedOfferId) || null;
 
@@ -210,8 +231,8 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
 
   useEffect(() => {
     if (!isSplitEdited && totals.grandTotal > 0) {
-      setCashAmount(totals.grandTotal);
-      setUpiAmount("");
+      setUpiAmount(totals.grandTotal);
+      setCashAmount("");
       setCardAmount("");
     }
   }, [totals.grandTotal, isSplitEdited]);
@@ -251,6 +272,8 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
     setMessage(null);
 
     try {
+      const isOnline = typeof navigator !== "undefined" ? navigator.onLine : true;
+
       // Step 1: Resolve or create customer
       let customerId = foundCustomerId;
       let resolvedCustomerType: "regular" | "membership" | "new" = clientStatus ?? "new";
@@ -265,13 +288,46 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
       }
 
       // Step 2: Get a collision-safe invoice number via Firestore transaction
-      const invoiceNumber = await invoicesService.getNextInvoiceNumber();
+      let invoiceNumber = "Auto";
+      if (!isOnline) {
+        const now = new Date();
+        const yy = String(now.getFullYear()).slice(-2);
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        const dd = String(now.getDate()).padStart(2, '0');
+        const dateStr = `${yy}${mm}${dd}`;
+        const rand = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+        invoiceNumber = `EXP-${dateStr}-OFF-${rand}`;
+      } else {
+        try {
+          invoiceNumber = await invoicesService.getNextInvoiceNumber();
+        } catch (txErr: any) {
+          console.warn("Failed to get invoice number via transaction, falling back to offline code:", txErr);
+          const now = new Date();
+          const yy = String(now.getFullYear()).slice(-2);
+          const mm = String(now.getMonth() + 1).padStart(2, '0');
+          const dd = String(now.getDate()).padStart(2, '0');
+          const dateStr = `${yy}${mm}${dd}`;
+          const rand = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+          invoiceNumber = `EXP-${dateStr}-OFF-${rand}`;
+        }
+      }
       setInvoiceNumberDisplay(invoiceNumber);
 
       // Step 3: Build correctly-shaped service and product rows
       const enrichedServices = services.map((row) => {
         const matchedService = servicesList.find((s) => s.name === row.service);
         const matchedStaff = staffList.find((s) => s.name === row.staff);
+        let usedProductCost = 0;
+        if (row.usedProductId) {
+          const matchedProduct = productsList.find((p) => p.id === row.usedProductId);
+          if (matchedProduct && typeof matchedProduct.costPerServing === "number") {
+            usedProductCost = matchedProduct.costPerServing;
+          }
+        }
+        const serviceAmount = Math.max(row.price - (row.discount || 0), 0);
+        const staffRole = matchedStaff?.role || "Stylist";
+        const stylistShare = staffRole === "Owner" ? 0 : 0.5 * serviceAmount - usedProductCost;
+        const ownerShare = staffRole === "Owner" ? serviceAmount : 0.5 * serviceAmount + usedProductCost;
         return {
           serviceId: matchedService?.id ?? "",
           serviceName: row.service,
@@ -279,7 +335,13 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
           staffName: row.staff,
           price: row.price,
           discount: row.discount || 0,
-          amount: Math.max(row.price - (row.discount || 0), 0),
+          amount: serviceAmount,
+          usedProductId: row.usedProductId ?? null,
+          usedProductName: row.usedProductName ?? null,
+          usedProductCost,
+          staffRole,
+          stylistShare,
+          ownerShare,
         };
       });
 
@@ -331,36 +393,40 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
           upi: upiVal,
           card: cardVal,
         },
+        paymentMethod: cashVal === totals.grandTotal ? "Cash" : upiVal === totals.grandTotal ? "UPI" : cardVal === totals.grandTotal ? "Card" : "Split",
         paymentStatus: "paid",
       });
 
-      // Step 5: Deduct product stock by productId
-      for (const row of enrichedProducts) {
-        if (!row.productId) {
-          console.warn(`Skipping stock deduction for product "${row.productName}" because productId is missing.`);
-          continue;
-        }
-        const current = productsList.find((p) => p.id === row.productId);
-        if (current) {
-          await productsService.update(row.productId, {
-            quantity: Math.max(0, current.quantity - row.quantity),
-          });
-        }
-      }
-
       await refreshProducts();
 
-      setMessage({ type: "success", text: `Invoice ${invoiceNumber} saved successfully!` });
+      if (isOnline) {
+        setMessage({ type: "success", text: `Invoice ${invoiceNumber} saved successfully!` });
+      } else {
+        setMessage({ type: "success", text: `Invoice ${invoiceNumber} saved locally — will sync when online!` });
+      }
       setSaved(true);
 
-      // Call onSuccess if provided (closes modal in dashboard overlay)
       if (onSuccess) {
-        // We trigger success callback immediately or after a slight delay
-        onSuccess();
+        setTimeout(() => {
+          onSuccess();
+        }, isOnline ? 0 : 2000);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to save bill:", error);
-      setMessage({ type: "error", text: "Failed to submit invoice. Please try again." });
+      const isOnline = typeof navigator !== "undefined" ? navigator.onLine : true;
+      if (error?.code === "unavailable" || error?.message?.includes("unavailable") || !isOnline) {
+        // Local persistent cache handles offline writes, let cashier proceed
+        setMessage({ type: "success", text: `Saved locally — will sync when online!` });
+        setSaved(true);
+        await refreshProducts();
+        if (onSuccess) {
+          setTimeout(() => {
+            onSuccess();
+          }, 2000);
+        }
+      } else {
+        setMessage({ type: "error", text: error?.message || "Failed to submit invoice. Please try again." });
+      }
     } finally {
       setSaving(false);
     }
@@ -456,11 +522,23 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
     category: s.category || "General",
   }));
 
-  const mappedProductsList = productsList.map((p) => ({
-    id: p.id,
-    name: p.name,
-    price: p.price,
-  }));
+  const mappedProductsList = productsList
+    .filter((p) => !p.type || p.type === "retail")
+    .map((p) => ({
+      id: p.id,
+      name: p.name,
+      price: p.price,
+    }));
+
+  const serviceProductOptions = useMemo(() => {
+    return productsList
+      .filter((p) => p.type === "service")
+      .map((p) => ({
+        id: p.id || "",
+        name: p.name,
+        noOfServings: p.noOfServings || 0,
+      }));
+  }, [productsList]);
 
   const staffOptions = staffList.map((s) => s.name);
 
@@ -468,7 +546,7 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
     <>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-stone-900">
+          <h1 className="text-3xl font-bold tracking-tight text-black">
             New Billing
           </h1>
         </div>
@@ -569,6 +647,7 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
             onRowsChange={setServices}
             serviceOptions={mappedServicesList}
             staffOptions={staffOptions}
+            serviceProductOptions={serviceProductOptions}
             disabled={saved}
           />
 
@@ -594,7 +673,15 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
                   <select
                     value={selectedOfferId}
                     disabled={saved}
-                    onChange={(e) => setSelectedOfferId(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setSelectedOfferId(val);
+                      if (val === "") {
+                        setManuallyDeselected(true);
+                      } else {
+                        setManuallyDeselected(false);
+                      }
+                    }}
                     className="h-11 w-full rounded-xl border border-stone-200 bg-stone-50 px-3 text-sm text-stone-900 outline-none transition focus:border-black disabled:bg-stone-100 disabled:text-stone-500"
                   >
                     <option value="">No offer applied</option>
@@ -641,7 +728,7 @@ export function BillingTerminal({ onClose, onSuccess }: BillingTerminalProps) {
                   onClick={() => setIsSplitEdited(false)}
                   className="text-xs font-semibold text-stone-500 hover:text-black transition underline cursor-pointer disabled:opacity-50 disabled:no-underline"
                 >
-                  Reset to Full Cash
+                  Reset to Full UPI
                 </button>
               )}
             </div>

@@ -13,6 +13,7 @@ import {
   setDoc,
   increment,
   runTransaction,
+  writeBatch,
 } from "firebase/firestore";
 import type { Customer } from "@/types/customer";
 import { toTitleCase } from "@/lib/utils/text";
@@ -43,20 +44,26 @@ export async function create(customer: Omit<Customer, "id">): Promise<string> {
     const isMembership = customer.customerType === "membership";
     const counterField = isMembership ? "membershipCount" : "regularCount";
 
-    await runTransaction(db, async (transaction) => {
-      // Set customer document inside the transaction
-      transaction.set(newDocRef, {
-        name: toTitleCase(customer.name),
-        phone: customer.phone,
-        customerType: customer.customerType,
-        createdAt: customer.createdAt || new Date().toISOString(),
-      });
-
-      // Increment stats counter inside the same transaction
-      transaction.set(STATS_DOC, {
-        [counterField]: increment(1)
-      }, { merge: true });
+    const batch = writeBatch(db);
+    batch.set(newDocRef, {
+      name: toTitleCase(customer.name),
+      phone: customer.phone,
+      customerType: customer.customerType,
+      createdAt: customer.createdAt || new Date().toISOString(),
+      ...(customer.customerType === "membership" ? {
+        membershipAmount: customer.membershipAmount ?? null,
+        membershipDuration: customer.membershipDuration ?? null,
+        membershipStart: customer.membershipStart ?? null,
+        membershipEnd: customer.membershipEnd ?? null,
+      } : {})
     });
+
+    // Increment stats counter in the same batch
+    batch.set(STATS_DOC, {
+      [counterField]: increment(1)
+    }, { merge: true });
+
+    await batch.commit();
 
     return newDocRef.id;
   } catch (error) {
@@ -161,25 +168,149 @@ async function deleteCustomer(id: string): Promise<void> {
   try {
     const docRef = doc(db, COLLECTION_NAME, id);
 
-    await runTransaction(db, async (transaction) => {
-      // 1. Transaction read
-      const docSnap = await transaction.get(docRef);
-      if (docSnap.exists()) {
-        const customer = docSnap.data();
-        const isMembership = customer.customerType === "membership";
-        const counterField = isMembership ? "membershipCount" : "regularCount";
+    // 1. Fresh getDoc to verify doc existence
+    const docSnap = await getDoc(docRef);
+    if (!docSnap.exists()) {
+      // If customer doesn't exist, we consider it a failed-precondition (already deleted)
+      const error = new Error("This customer was already removed");
+      (error as any).code = "failed-precondition";
+      throw error;
+    }
 
-        // 2. Transaction writes
-        transaction.set(STATS_DOC, {
-          [counterField]: increment(-1)
-        }, { merge: true });
-      }
+    const customer = docSnap.data();
+    const isMembership = customer.customerType === "membership";
+    const counterField = isMembership ? "membershipCount" : "regularCount";
 
-      transaction.delete(docRef);
-    });
-  } catch (error) {
+    // 2. Verify stats counter won't go negative
+    const statsSnap = await getDoc(STATS_DOC);
+    let currentCount = 0;
+    if (statsSnap.exists()) {
+      currentCount = statsSnap.data()[counterField] || 0;
+    }
+
+    // 3. Perform batch delete
+    const batch = writeBatch(db);
+    batch.delete(docRef);
+
+    if (currentCount > 0) {
+      batch.set(STATS_DOC, {
+        [counterField]: increment(-1)
+      }, { merge: true });
+    }
+
+    await batch.commit();
+  } catch (error: any) {
     console.error(`Error deleting customer (${id}) from Firestore:`, error);
     throw error;
+  }
+}
+
+export async function getMemberships(): Promise<Customer[]> {
+  try {
+    const q = query(
+      collection(db, COLLECTION_NAME),
+      where("customerType", "==", "membership")
+    );
+    const snap = await getDocs(q);
+    const list: Customer[] = [];
+    snap.forEach((doc) => {
+      list.push({
+        id: doc.id,
+        ...doc.data(),
+      } as Customer);
+    });
+    return list;
+  } catch (error) {
+    console.error("Error getting membership customers:", error);
+    throw error;
+  }
+}
+
+export async function checkAndExpireMemberships(): Promise<Customer[]> {
+  try {
+    if (typeof window !== "undefined") {
+      const todayStr = new Date().toISOString().split("T")[0];
+      const lastCheck = localStorage.getItem("lastMembershipExpiryCheck");
+      if (lastCheck === todayStr) {
+        return [];
+      }
+    }
+
+    const nowStr = new Date().toISOString();
+    const q = query(
+      collection(db, COLLECTION_NAME),
+      where("customerType", "==", "membership"),
+      where("membershipEnd", "<", nowStr)
+    );
+    const snap = await getDocs(q);
+    const expiredCustomers: Customer[] = [];
+    
+    if (!snap.empty) {
+      const batch = writeBatch(db);
+      let expiredCount = 0;
+
+      for (const docSnap of snap.docs) {
+        const id = docSnap.id;
+        const data = docSnap.data() as Customer;
+        
+        // 1. Queue customer update in batch
+        const docRef = doc(db, COLLECTION_NAME, id);
+        batch.update(docRef, {
+          customerType: "regular",
+          membershipAmount: null,
+          membershipDuration: null,
+          membershipStart: null,
+          membershipEnd: null,
+        });
+        
+        // 2. Queue notification in batch
+        const notifRef = doc(collection(db, "notifications"));
+        batch.set(notifRef, {
+          title: "Membership Expired",
+          message: `Membership for ${data.name} (${data.phone}) has expired and has been reverted to Regular.`,
+          type: "alert",
+          read: false,
+          createdAt: new Date().toISOString(),
+        });
+        
+        expiredCustomers.push({
+          id,
+          ...data,
+          customerType: "regular",
+        });
+        expiredCount++;
+      }
+
+      // 3. Update stats counters in batch to ensure consistency
+      const statsSnap = await getDoc(STATS_DOC);
+      let currentRegularCount = 0;
+      let currentMembershipCount = 0;
+      if (statsSnap.exists()) {
+        const statsData = statsSnap.data();
+        currentRegularCount = statsData.regularCount || 0;
+        currentMembershipCount = statsData.membershipCount || 0;
+      }
+
+      const regularDelta = expiredCount;
+      const membershipDelta = -expiredCount;
+
+      batch.set(STATS_DOC, {
+        regularCount: increment(regularDelta),
+        membershipCount: increment(membershipDelta)
+      }, { merge: true });
+
+      await batch.commit();
+    }
+    
+    if (typeof window !== "undefined") {
+      const todayStr = new Date().toISOString().split("T")[0];
+      localStorage.setItem("lastMembershipExpiryCheck", todayStr);
+    }
+    
+    return expiredCustomers;
+  } catch (error) {
+    console.error("Error checking and expiring memberships:", error);
+    return [];
   }
 }
 

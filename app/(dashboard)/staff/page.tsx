@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import * as staffService from "@/services/staff";
 import type { Staff } from "@/types/staff";
 import { Plus, Search, Edit2, Trash2, X, Users } from "lucide-react";
 import { db } from "@/lib/firebase";
-import { collection, query, where, getDocs, Timestamp } from "firebase/firestore";
+import { collection, query, where, getDocs, Timestamp, doc, getDoc } from "firebase/firestore";
 import { useAppData } from "@/context/AppDataContext";
 
 export default function StaffPage() {
@@ -32,41 +32,29 @@ export default function StaffPage() {
 
   const loadStaffProgress = async () => {
     try {
-      // Fetch current month's invoices to compute stylist target progress
       const now = new Date();
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-      startOfMonth.setHours(0, 0, 0, 0);
-      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      endOfMonth.setHours(23, 59, 59, 999);
-
-      const q = query(
-        collection(db, "invoices"),
-        where("date", ">=", Timestamp.fromDate(startOfMonth)),
-        where("date", "<=", Timestamp.fromDate(endOfMonth))
-      );
-      const querySnapshot = await getDocs(q);
+      const yyyy = now.getFullYear();
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const monthKey = `${yyyy}-${mm}`;
 
       const revMap: Record<string, number> = {};
       const memMap: Record<string, number> = {};
 
-      querySnapshot.forEach((docSnap) => {
-        const inv = docSnap.data();
-
-        // 1. Group services amount by staffId
-        (inv.services || []).forEach((s: any) => {
-          if (s.staffId) {
-            const amount = s.amount ?? Math.max((s.price || 0) - (s.discount || 0), 0);
-            revMap[s.staffId] = (revMap[s.staffId] || 0) + amount;
+      await Promise.all(
+        staff.map(async (member) => {
+          if (!member.id) return;
+          const ref = doc(db, "stats", `staff_${member.id}_${monthKey}`);
+          const snap = await getDoc(ref);
+          if (snap.exists()) {
+            const data = snap.data();
+            revMap[member.id] = data.revenue ?? 0;
+            memMap[member.id] = data.servicesCount ?? 0;
+          } else {
+            revMap[member.id] = 0;
+            memMap[member.id] = 0;
           }
-        });
-
-        // 2. Group total servings counts by staffId
-        (inv.services || []).forEach((s: any) => {
-          if (s.staffId) {
-            memMap[s.staffId] = (memMap[s.staffId] || 0) + 1;
-          }
-        });
-      });
+        })
+      );
 
       setStaffRevenueMap(revMap);
       setStaffMemberMap(memMap);
@@ -77,8 +65,10 @@ export default function StaffPage() {
   };
 
   useEffect(() => {
-    loadStaffProgress();
-  }, []);
+    if (staff && staff.length > 0) {
+      loadStaffProgress();
+    }
+  }, [staff]);
 
   const handleOpenAdd = () => {
     setEditingStaff(null);
@@ -156,6 +146,16 @@ export default function StaffPage() {
       s.role.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const sortedStaff = useMemo(() => {
+    return [...filteredStaff].sort((a, b) => {
+      const aIsOwner = a.role === "Owner";
+      const bIsOwner = b.role === "Owner";
+      if (aIsOwner && !bIsOwner) return -1;
+      if (!aIsOwner && bIsOwner) return 1;
+      return a.name.localeCompare(b.name);
+    });
+  }, [filteredStaff]);
+
   return (
     <div className="w-full text-stone-900">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
@@ -170,7 +170,7 @@ export default function StaffPage() {
         {!loading && staff.length > 0 && (
           <button
             onClick={handleOpenAdd}
-            className="inline-flex h-12 items-center gap-2 rounded-2xl bg-black px-6 text-sm font-semibold text-white shadow-md transition hover:-translate-y-0.5 hover:bg-stone-800"
+            className="inline-flex h-12 items-center gap-2 rounded-2xl border border-stone-200 bg-white px-6 text-sm font-semibold text-black shadow-sm transition hover:-translate-y-0.5 hover:bg-stone-50"
           >
             <Plus size={18} />
             Add Staff
@@ -194,7 +194,7 @@ export default function StaffPage() {
           </p>
           <button
             onClick={handleOpenAdd}
-            className="mt-6 inline-flex h-12 items-center gap-2 rounded-2xl bg-black px-6 text-sm font-semibold text-white shadow-md transition hover:-translate-y-0.5 hover:bg-stone-800"
+            className="mt-6 inline-flex h-12 items-center gap-2 rounded-2xl border border-stone-200 bg-white px-6 text-sm font-semibold text-black shadow-sm transition hover:-translate-y-0.5 hover:bg-stone-50"
           >
             <Plus size={18} />
             Add Staff
@@ -214,119 +214,111 @@ export default function StaffPage() {
             />
           </div>
 
-          {/* Staff table */}
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[600px] border-collapse text-left text-sm text-stone-600">
-              <thead className="bg-stone-50 text-xs uppercase tracking-[0.2em] text-stone-500 border-b border-stone-200">
-                <tr>
-                  <th className="px-6 py-4 font-bold">Name</th>
-                  <th className="px-6 py-4 font-bold">Phone</th>
-                  <th className="px-6 py-4 font-bold">Target</th>
-                  <th className="px-6 py-4 text-right"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-stone-200">
-                {filteredStaff.map((stf) => (
-                  <tr
-                    key={stf.id}
-                    className="hover:bg-stone-50 transition bg-white text-stone-900"
-                  >
-                    <td className="px-6 py-4 font-semibold text-stone-900">
-                      {stf.name}
-                    </td>
-                    <td className="px-6 py-4 text-stone-600">
-                      {stf.phone || (
-                        <span className="italic text-stone-400">—</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4">
-                      {(() => {
-                        const revenueAchieved = stf.id ? (staffRevenueMap[stf.id] ?? 0) : 0;
-                        const revenueMonthly = stf.targets?.revenueMonthly ?? 0;
-                        const revenuePercent = revenueMonthly > 0
-                          ? Math.min((revenueAchieved / revenueMonthly) * 100, 100)
-                          : 0;
+          {/* Staff Cards */}
+          <div className="flex flex-col gap-4">
+            {sortedStaff.map((stf) => {
+              const revenueAchieved = stf.id ? (staffRevenueMap[stf.id] ?? 0) : 0;
+              const revenueMonthly = stf.targets?.revenueMonthly ?? 0;
+              const revenuePercent = revenueMonthly > 0
+                ? Math.min((revenueAchieved / revenueMonthly) * 100, 100)
+                : 0;
 
-                        const memberAchieved = stf.id ? (staffMemberMap[stf.id] ?? 0) : 0;
-                        const memberCountMonthly = stf.targets?.memberCountMonthly ?? 0;
-                        const memberPercent = memberCountMonthly > 0
-                          ? Math.min((memberAchieved / memberCountMonthly) * 100, 100)
-                          : 0;
+              const memberAchieved = stf.id ? (staffMemberMap[stf.id] ?? 0) : 0;
+              const memberCountMonthly = stf.targets?.memberCountMonthly ?? 0;
+              const memberPercent = memberCountMonthly > 0
+                ? Math.min((memberAchieved / memberCountMonthly) * 100, 100)
+                : 0;
 
-                        const hasRevenueTarget = revenueMonthly > 0;
-                        const hasMemberTarget = memberCountMonthly > 0;
+              const hasRevenueTarget = revenueMonthly > 0;
+              const hasMemberTarget = memberCountMonthly > 0;
 
-                        if (!hasRevenueTarget && !hasMemberTarget) {
-                          return <span className="text-xs text-stone-400 italic">No targets set</span>;
-                        }
-
-                        return (
-                          <div className="min-w-[160px] space-y-3">
-                            {hasRevenueTarget && (
-                              <div className="space-y-1">
-                                <div className="flex justify-between text-[10px] text-stone-500">
-                                  <span>
-                                    ₹{revenueAchieved.toLocaleString()} / ₹{revenueMonthly.toLocaleString()}
-                                  </span>
-                                  <span className="font-bold text-stone-700">
-                                    {Math.round(revenuePercent)}%
-                                  </span>
-                                </div>
-                                <div className="w-full h-1.5 rounded-full bg-stone-100 overflow-hidden">
-                                  <div
-                                    className="h-full rounded-full bg-emerald-500"
-                                    style={{ width: `${revenuePercent}%` }}
-                                  />
-                                </div>
-                              </div>
-                            )}
-
-                            {hasMemberTarget && (
-                              <div className="space-y-1">
-                                <div className="flex justify-between text-[10px] text-stone-500">
-                                  <span>
-                                    {memberAchieved} / {memberCountMonthly} servings
-                                  </span>
-                                  <span className="font-bold text-stone-700">
-                                    {Math.round(memberPercent)}%
-                                  </span>
-                                </div>
-                                <div className="w-full h-1.5 rounded-full bg-stone-100 overflow-hidden">
-                                  <div
-                                    className="h-full rounded-full bg-blue-500"
-                                    style={{ width: `${memberPercent}%` }}
-                                  />
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })()}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex justify-end gap-2">
-                        <button
-                          onClick={() => handleOpenEdit(stf)}
-                          className="grid size-10 place-items-center rounded-xl border border-stone-200 text-stone-400 hover:text-black hover:border-black transition"
-                          title="Edit"
-                        >
-                          <Edit2 size={16} />
-                        </button>
-                        <button
-                          onClick={() =>
-                            stf.id && handleDeleteTrigger(stf.id)
-                          }
-                          className="grid size-10 place-items-center rounded-xl border border-stone-200 text-stone-400 hover:text-red-650 hover:border-red-500 hover:bg-red-50 transition"
-                          title="Delete"
-                        >
-                          <Trash2 size={16} />
-                        </button>
+              return (
+                <div
+                  key={stf.id}
+                  className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm hover:shadow-md transition flex flex-col md:flex-row md:items-center justify-between gap-6 text-stone-900"
+                >
+                  {/* Left: Info */}
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-4 md:gap-6 min-w-[220px]">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-extrabold text-stone-900 text-lg leading-tight">
+                          {stf.name}
+                        </h3>
+                        <span className={`inline-block rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase ${
+                          stf.role === "Owner"
+                            ? "bg-purple-100 text-purple-800 border border-purple-200"
+                            : "bg-blue-100 text-blue-800 border border-blue-200"
+                        }`}>
+                          {stf.role}
+                        </span>
                       </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      
+                      <div className="text-xs text-stone-500 flex items-center gap-1.5">
+                        <span className="font-semibold text-[10px] text-stone-400 uppercase tracking-wider">Phone:</span>
+                        <span className="text-stone-700">{stf.phone || <span className="italic text-stone-300">No phone number</span>}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Middle: Targets */}
+                  <div className="flex-1 min-w-[280px] pt-4 md:pt-0 border-t md:border-t-0 border-stone-100">
+                    <span className="font-semibold block text-[10px] text-stone-400 uppercase tracking-wider mb-2">Monthly Targets</span>
+                    {!hasRevenueTarget && !hasMemberTarget ? (
+                      <p className="text-xs text-stone-400 italic">No targets set</p>
+                    ) : (
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        {hasRevenueTarget && (
+                          <div className="space-y-1">
+                            <div className="flex justify-between text-[10px] text-stone-500">
+                              <span>Revenue: ₹{revenueAchieved.toLocaleString()} / ₹{revenueMonthly.toLocaleString()}</span>
+                              <span className="font-bold text-stone-700">{Math.round(revenuePercent)}%</span>
+                            </div>
+                            <div className="w-full h-1.5 rounded-full bg-stone-100 overflow-hidden">
+                              <div
+                                className="h-full rounded-full bg-emerald-500"
+                                style={{ width: `${revenuePercent}%` }}
+                              />
+                            </div>
+                          </div>
+                        )}
+                        {hasMemberTarget && (
+                          <div className="space-y-1">
+                            <div className="flex justify-between text-[10px] text-stone-500">
+                              <span>Servings: {memberAchieved} / {memberCountMonthly}</span>
+                              <span className="font-bold text-stone-700">{Math.round(memberPercent)}%</span>
+                            </div>
+                            <div className="w-full h-1.5 rounded-full bg-stone-100 overflow-hidden">
+                              <div
+                                className="h-full rounded-full bg-blue-500"
+                                style={{ width: `${memberPercent}%` }}
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Right: Actions */}
+                  <div className="flex items-center gap-2 pt-4 md:pt-0 border-t md:border-t-0 border-stone-100 self-end md:self-auto min-w-[90px]">
+                    <button
+                      onClick={() => handleOpenEdit(stf)}
+                      className="grid size-9 place-items-center rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 transition"
+                      title="Edit"
+                    >
+                      <Edit2 size={15} />
+                    </button>
+                    <button
+                      onClick={() => stf.id && handleDeleteTrigger(stf.id)}
+                      className="grid size-9 place-items-center rounded-xl bg-red-50 border border-red-200 text-red-700 hover:bg-red-100 transition"
+                      title="Delete"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </>
       )}
@@ -395,12 +387,8 @@ export default function StaffPage() {
                   }
                   className="mt-2 h-11 w-full rounded-xl border border-stone-200 bg-stone-50 px-4 text-sm text-stone-900 outline-none transition focus:border-black"
                 >
-                  <option value="Stylist">Hair Stylist</option>
-                  <option value="Aesthetician">Aesthetician (Skin)</option>
-                  <option value="Manicurist">Manicurist (Nails)</option>
-                  <option value="Therapist">Massage Therapist</option>
-                  <option value="Receptionist">Receptionist</option>
-                  <option value="Manager">Salon Manager</option>
+                  <option value="Stylist">Stylist</option>
+                  <option value="Owner">Owner</option>
                 </select>
               </label>
 

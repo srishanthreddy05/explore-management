@@ -5,13 +5,16 @@ import * as invoicesService from "@/services/invoices";
 import { formatCurrency } from "@/components/salon-dashboard/types";
 import { Search, WalletCards, DollarSign, X } from "lucide-react";
 import { db } from "@/lib/firebase";
-import { collection, query, where, orderBy, getDocs } from "firebase/firestore";
+import { collection, query, where, orderBy, getDocs, limit, startAfter } from "firebase/firestore";
 import type { Invoice } from "@/types/invoice";
 
 export default function PaymentsPage() {
   const [invoices, setInvoices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [lastDoc, setLastDoc] = useState<any>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   // Collect Payment Modal states
   const [modalOpen, setModalOpen] = useState(false);
@@ -26,18 +29,51 @@ export default function PaymentsPage() {
       const q = query(
         collection(db, "invoices"),
         where("balanceDue", ">", 0),
-        orderBy("balanceDue", "desc")
+        orderBy("balanceDue", "desc"),
+        limit(10)
       );
       const querySnapshot = await getDocs(q);
-      const dues: Invoice[] = [];
+      const dues: any[] = [];
       querySnapshot.forEach((doc) => {
-        dues.push({ id: doc.id, ...doc.data() } as Invoice);
+        dues.push({ id: doc.id, ...doc.data() });
       });
       setInvoices(dues);
+
+      const last = querySnapshot.docs[querySnapshot.docs.length - 1];
+      setLastDoc(last || null);
+      setHasMore(querySnapshot.docs.length === 10);
     } catch (error) {
       console.error("Failed to load dues:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadMoreDues = async () => {
+    if (!lastDoc || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const q = query(
+        collection(db, "invoices"),
+        where("balanceDue", ">", 0),
+        orderBy("balanceDue", "desc"),
+        startAfter(lastDoc),
+        limit(10)
+      );
+      const querySnapshot = await getDocs(q);
+      const dues: any[] = [];
+      querySnapshot.forEach((doc) => {
+        dues.push({ id: doc.id, ...doc.data() });
+      });
+      setInvoices((prev) => [...prev, ...dues]);
+
+      const last = querySnapshot.docs[querySnapshot.docs.length - 1];
+      setLastDoc(last || null);
+      setHasMore(querySnapshot.docs.length === 10);
+    } catch (error) {
+      console.error("Failed to load more dues:", error);
+    } finally {
+      setLoadingMore(false);
     }
   };
 
@@ -146,45 +182,63 @@ export default function PaymentsPage() {
           </p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-2xl border border-stone-200 bg-white shadow-md">
-          <table className="w-full min-w-[600px] border-collapse text-left text-sm text-stone-600">
-            <thead className="bg-stone-55 text-xs uppercase tracking-[0.2em] text-stone-550 border-b border-stone-200">
-              <tr>
-                <th className="px-6 py-4 font-bold">Customer</th>
-                <th className="px-6 py-4 font-bold">Phone</th>
-                <th className="px-6 py-4 font-bold">Invoice No</th>
-                <th className="px-6 py-4 font-bold">Bill Amount</th>
-                <th className="px-6 py-4 font-bold">Received</th>
-                <th className="px-6 py-4 font-bold">Balance</th>
-                <th className="px-6 py-4 font-bold text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-stone-200">
-              {filteredInvoices.map((inv) => (
-                <tr key={inv.id} className="hover:bg-stone-50 transition bg-white text-stone-900">
-                  <td className="px-6 py-4 font-semibold text-stone-900">{inv.customerName}</td>
-                  <td className="px-6 py-4 font-medium">{inv.customerPhone || inv.customerMobile}</td>
-                  <td className="px-6 py-4 font-bold">{inv.invoiceNo || inv.invoiceNumber}</td>
-                  <td className="px-6 py-4 font-semibold">{formatCurrency(inv.grandTotal || 0)}</td>
-                  <td className="px-6 py-4 font-semibold text-emerald-650">
-                    {formatCurrency(inv.receivedAmount ?? inv.grandTotal)}
-                  </td>
-                  <td className="px-6 py-4 font-bold text-amber-600">
-                    {formatCurrency(inv.balanceDue ?? 0)}
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <button
-                      onClick={() => handleOpenCollect(inv)}
-                      className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl bg-black px-4 text-xs font-semibold text-white hover:bg-stone-850 transition shadow-sm"
-                    >
-                      <DollarSign size={14} />
-                      Collect Payment
-                    </button>
-                  </td>
+        <div className="space-y-4">
+          <div className="overflow-x-auto rounded-2xl border border-stone-200 bg-white shadow-md">
+            <table className="w-full min-w-[600px] border-collapse text-left text-sm text-stone-600">
+              <thead className="bg-stone-55 text-xs uppercase tracking-[0.2em] text-stone-550 border-b border-stone-200">
+                <tr>
+                  <th className="px-6 py-4 font-bold">Customer</th>
+                  <th className="px-6 py-4 font-bold">Phone</th>
+                  <th className="px-6 py-4 font-bold">Invoice No</th>
+                  <th className="px-6 py-4 font-bold">Bill Amount</th>
+                  <th className="px-6 py-4 font-bold">Received</th>
+                  <th className="px-6 py-4 font-bold">Balance</th>
+                  <th className="px-6 py-4 font-bold text-right">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-stone-200">
+                {filteredInvoices.map((inv) => (
+                  <tr key={inv.id} className="hover:bg-stone-50 transition bg-white text-stone-900">
+                    <td className="px-6 py-4 font-semibold text-stone-900">{inv.customerName}</td>
+                    <td className="px-6 py-4 font-medium">{inv.customerPhone || inv.customerMobile}</td>
+                    <td className={`px-6 py-4 font-bold ${
+                      inv.customerType === "membership" ? "text-amber-600" : "text-stone-900"
+                    }`}>
+                      {inv.invoiceNo || inv.invoiceNumber}
+                    </td>
+                    <td className="px-6 py-4 font-semibold">{formatCurrency(inv.grandTotal || 0)}</td>
+                    <td className="px-6 py-4 font-semibold text-emerald-650">
+                      {formatCurrency(inv.receivedAmount ?? inv.grandTotal)}
+                    </td>
+                    <td className="px-6 py-4 font-bold text-amber-600">
+                      {formatCurrency(inv.balanceDue ?? 0)}
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <button
+                        onClick={() => handleOpenCollect(inv)}
+                        className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl bg-black px-4 text-xs font-semibold text-white hover:bg-stone-850 transition shadow-sm"
+                      >
+                        <DollarSign size={14} />
+                        Collect Payment
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {hasMore && (
+            <div className="flex justify-center mt-4">
+              <button
+                type="button"
+                onClick={loadMoreDues}
+                disabled={loadingMore}
+                className="inline-flex h-11 items-center justify-center rounded-xl border border-stone-200 bg-white px-6 text-sm font-semibold text-stone-700 hover:bg-stone-50 hover:-translate-y-0.5 transition shadow-xs cursor-pointer disabled:opacity-50"
+              >
+                {loadingMore ? "Loading More..." : "Load More"}
+              </button>
+            </div>
+          )}
         </div>
       )}
 

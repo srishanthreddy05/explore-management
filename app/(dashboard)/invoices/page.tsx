@@ -3,8 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import * as invoicesService from "@/services/invoices";
 import { formatCurrency } from "@/components/salon-dashboard/types";
-import { Search, Eye } from "lucide-react";
+import { Search, Eye, Calendar } from "lucide-react";
 import Link from "next/link";
+import { toLocalDateString } from "@/lib/utils/date";
 import { db } from "@/lib/firebase";
 import {
   collection,
@@ -27,8 +28,8 @@ export default function InvoicesPage() {
 
   // Date range filters
   const now = new Date();
-  const firstDayStr = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
-  const todayStr = now.toISOString().split("T")[0];
+  const firstDayStr = toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1));
+  const todayStr = toLocalDateString(now);
 
   const [dateFrom, setDateFrom] = useState(firstDayStr);
   const [dateTo, setDateTo] = useState(todayStr);
@@ -44,13 +45,12 @@ export default function InvoicesPage() {
       start.setHours(0, 0, 0, 0);
       const end = new Date(dateTo);
       end.setHours(23, 59, 59, 999);
-
       let q = query(
         collection(db, "invoices"),
         where("date", ">=", Timestamp.fromDate(start)),
         where("date", "<=", Timestamp.fromDate(end)),
         orderBy("date", "desc"),
-        limit(20)
+        limit(10)
       );
 
       if (isLoadMore && lastDoc) {
@@ -60,7 +60,7 @@ export default function InvoicesPage() {
           where("date", "<=", Timestamp.fromDate(end)),
           orderBy("date", "desc"),
           startAfter(lastDoc),
-          limit(20)
+          limit(10)
         );
       }
 
@@ -93,7 +93,8 @@ export default function InvoicesPage() {
       } else if (!isLoadMore) {
         setLastDoc(null);
       }
-      setHasMore(snap.docs.length === 20);
+      setHasMore(snap.docs.length === 10);
+
     } catch (error) {
       console.error("Failed to load invoices:", error);
     } finally {
@@ -147,26 +148,22 @@ export default function InvoicesPage() {
           />
         </div>
 
-        {/* Date Selectors */}
-        <div className="flex items-center gap-4 flex-wrap">
-          <div className="flex items-center gap-2 rounded-2xl border border-stone-200 bg-white px-3 h-12 shadow-sm">
-            <span className="text-xs font-bold text-stone-500 uppercase tracking-wider">From</span>
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              className="bg-transparent text-sm font-semibold text-stone-850 outline-none cursor-pointer"
-            />
-          </div>
-          <div className="flex items-center gap-2 rounded-2xl border border-stone-200 bg-white px-3 h-12 shadow-sm">
-            <span className="text-xs font-bold text-stone-500 uppercase tracking-wider">To</span>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              className="bg-transparent text-sm font-semibold text-stone-850 outline-none cursor-pointer"
-            />
-          </div>
+        {/* Date Selector */}
+        <div className="flex items-center gap-2 flex-wrap bg-white p-2 rounded-2xl border border-stone-200 shadow-sm">
+          <Calendar size={16} className="text-stone-400 ml-1" />
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="h-9 rounded-xl border border-stone-200 bg-white px-3 text-sm font-medium text-stone-800 shadow-sm outline-none focus:border-black transition"
+          />
+          <span className="text-xs text-stone-400 font-semibold px-1">to</span>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="h-9 rounded-xl border border-stone-200 bg-white px-3 text-sm font-medium text-stone-800 shadow-sm outline-none focus:border-black transition"
+          />
         </div>
       </div>
 
@@ -214,7 +211,9 @@ export default function InvoicesPage() {
 
                   return (
                     <tr key={inv.id} className="hover:bg-stone-50 transition bg-white text-stone-900">
-                      <td className="px-6 py-4 font-bold text-stone-900">
+                      <td className={`px-6 py-4 font-bold ${
+                        inv.customerType === "membership" ? "text-amber-600" : "text-stone-900"
+                      }`}>
                         {inv.invoiceNo || inv.invoiceNumber}
                       </td>
                       <td className="px-6 py-4 font-semibold text-stone-900">
