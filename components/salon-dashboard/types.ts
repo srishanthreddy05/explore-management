@@ -8,6 +8,7 @@ export type ServiceRow = {
   usedProductId?: string;
   usedProductName?: string;
   usedProductCost?: number;
+  isCreditSettle?: boolean;
 };
 
 export type ProductRow = {
@@ -17,6 +18,7 @@ export type ProductRow = {
   price: number;
   quantity: number;
   discount: number;
+  isCreditSettle?: boolean;
 };
 
 export type BillTotals = {

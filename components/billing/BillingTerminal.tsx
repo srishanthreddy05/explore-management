@@ -7,12 +7,14 @@ import { ProductTable } from "@/components/salon-dashboard/product-table";
 import { SummaryCard } from "@/components/salon-dashboard/summary-card";
 import type { ProductRow, ServiceRow } from "@/components/salon-dashboard/types";
 import { formatCurrency } from "@/components/salon-dashboard/types";
-import { X, UserX } from "lucide-react";
+import { X, UserX, AlertCircle, Wallet } from "lucide-react";
 import { Timestamp } from "firebase/firestore";
 
 import * as customerService from "@/services/customers";
 import * as productsService from "@/services/products";
 import * as invoicesService from "@/services/invoices";
+import * as creditBalancesService from "@/services/creditBalances";
+import type { CreditBalance } from "@/types/creditBalance";
 import { useAppData } from "@/context/AppDataContext";
 import { toLocalDateString } from "@/lib/utils/date";
 
@@ -62,6 +64,12 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
   const [upiAmount, setUpiAmount] = useState<number | "">("");
   const [cardAmount, setCardAmount] = useState<number | "">("");
   const [isSplitEdited, setIsSplitEdited] = useState(false);
+
+  // Credit customer tracking fields
+  const [markAsCredit, setMarkAsCredit] = useState(false);
+  const [allCustomerPendingCredits, setAllCustomerPendingCredits] = useState<CreditBalance[]>([]);
+  const [collectedCredits, setCollectedCredits] = useState<string[]>([]);
+  const [loadingCredits, setLoadingCredits] = useState(false);
 
   // Offer selection
   const [selectedOfferId, setSelectedOfferId] = useState<string>("");
@@ -159,6 +167,109 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
     }
     return () => { active = false; };
   }, [customerMobile]);
+
+  // Fetch pending credit balances when customer is selected
+  useEffect(() => {
+    let active = true;
+    if (foundCustomerId) {
+      setLoadingCredits(true);
+      const fetchCredits = async () => {
+        try {
+          const credits = await creditBalancesService.getPendingByCustomerId(foundCustomerId);
+          if (active) {
+            setAllCustomerPendingCredits(credits);
+            setCollectedCredits([]); // Reset collected credits for new customer lookup
+          }
+        } catch (err) {
+          console.error("Failed to fetch pending credits:", err);
+        } finally {
+          if (active) setLoadingCredits(false);
+        }
+      };
+      fetchCredits();
+    } else {
+      setAllCustomerPendingCredits([]);
+      setCollectedCredits([]);
+    }
+    return () => { active = false; };
+  }, [foundCustomerId]);
+
+  const pendingCreditsToShow = useMemo(() => {
+    return allCustomerPendingCredits.filter((c) => !collectedCredits.includes(c.id || ""));
+  }, [allCustomerPendingCredits, collectedCredits]);
+
+  // Keep collectedCredits synced if the cashier deletes the Credit Settle row from either table
+  useEffect(() => {
+    const activeServiceInvoiceNumbers = services
+      .filter((s) => s.service.startsWith("Credit Settle (Inv #"))
+      .map((s) => {
+        const match = s.service.match(/Credit Settle \(Inv #([^)]+)\)/);
+        return match ? match[1] : "";
+      })
+      .filter(Boolean);
+
+    const activeProductInvoiceNumbers = products
+      .filter((p) => p.product.startsWith("Credit Settle (Inv #"))
+      .map((p) => {
+        const match = p.product.match(/Credit Settle \(Inv #([^)]+)\)/);
+        return match ? match[1] : "";
+      })
+      .filter(Boolean);
+
+    const activeInvoiceNumbers = new Set([...activeServiceInvoiceNumbers, ...activeProductInvoiceNumbers]);
+    
+    const newCollectedCredits = allCustomerPendingCredits
+      .filter((c) => activeInvoiceNumbers.has(c.invoiceNumber))
+      .map((c) => c.id || "")
+      .filter(Boolean);
+      
+    if (JSON.stringify(newCollectedCredits) !== JSON.stringify(collectedCredits)) {
+      setCollectedCredits(newCollectedCredits);
+    }
+  }, [services, products, allCustomerPendingCredits, collectedCredits]);
+
+  const handleCollectCredit = (credit: CreditBalance) => {
+    if (credit.type === "product") {
+      setProducts((prev) => {
+        const isAlreadyAdded = prev.some((p) => p.product === `Credit Settle (Inv #${credit.invoiceNumber})`);
+        if (isAlreadyAdded) return prev;
+
+        const nextId = Math.max(0, ...prev.map((row) => row.id)) + 1;
+        const newProductRow: ProductRow = {
+          id: nextId,
+          productId: "",
+          product: `Credit Settle (Inv #${credit.invoiceNumber})`,
+          price: credit.amount,
+          quantity: 1,
+          discount: 0,
+          isCreditSettle: true,
+        };
+        return [...prev, newProductRow];
+      });
+    } else {
+      setServices((prev) => {
+        const isAlreadyAdded = prev.some((s) => s.service === `Credit Settle (Inv #${credit.invoiceNumber})`);
+        if (isAlreadyAdded) return prev;
+
+        const nextId = Math.max(0, ...prev.map((row) => row.id)) + 1;
+        const newServiceRow: ServiceRow = {
+          id: nextId,
+          service: `Credit Settle (Inv #${credit.invoiceNumber})`,
+          staff: "System",
+          price: credit.amount,
+          quantity: 1,
+          discount: 0,
+          isCreditSettle: true,
+        };
+        return [...prev, newServiceRow];
+      });
+    }
+
+    setCollectedCredits((prev) => {
+      if (prev.includes(credit.id!)) return prev;
+      return [...prev, credit.id!];
+    });
+  };
 
   // Bill subtotal (services + products) before any offer discount
   const baseSubtotal = useMemo(() => {
@@ -312,7 +423,11 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
   const cardVal = cardAmount === "" ? 0 : Number(cardAmount);
   const totalPaid = cashVal + upiVal + cardVal;
   const paymentDiff = totals.grandTotal - totalPaid;
-  const isPaymentValid = totals.grandTotal > 0 && Math.abs(paymentDiff) < 0.01;
+  const isPaymentValid = totals.grandTotal > 0 && (
+    markAsCredit
+      ? (totalPaid <= totals.grandTotal)
+      : Math.abs(paymentDiff) < 0.01
+  );
 
   // ESC Key Listener
   useEffect(() => {
@@ -423,7 +538,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
           }
         }
         const serviceAmount = Math.max(row.price - (row.discount || 0), 0);
-        const staffRole = matchedStaff?.role || "Stylist";
+        const staffRole = row.staff === "System" ? "Owner" : (matchedStaff?.role || "Stylist");
         const stylistShare = staffRole === "Owner" ? 0 : 0.5 * serviceAmount - usedProductCost;
         const ownerShare = staffRole === "Owner" ? serviceAmount : 0.5 * serviceAmount + usedProductCost;
         return {
@@ -455,6 +570,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
       });
 
       // Step 4: Save or Update invoice
+      let savedInvoiceId = "";
       if (editInvoiceId) {
         const now = new Date();
         const selectedDate = new Date(dateString);
@@ -466,6 +582,10 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
         const mmStr = String(selectedDate.getMonth() + 1).padStart(2, '0');
         const ddStr = String(selectedDate.getDate()).padStart(2, '0');
         const dateKey = `${yyyy}-${mmStr}-${ddStr}`;
+
+        const invoicePaymentStatus = markAsCredit
+          ? (totalPaid === 0 ? "unpaid" : "partial")
+          : "paid";
 
         await invoicesService.update(editInvoiceId, {
           customerId,
@@ -502,9 +622,14 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
             card: cardVal,
           },
           paymentMethod: cashVal === totals.grandTotal ? "Cash" : upiVal === totals.grandTotal ? "UPI" : cardVal === totals.grandTotal ? "Card" : "Split",
+          paymentStatus: invoicePaymentStatus,
         });
       } else {
-        await invoicesService.create({
+        const invoicePaymentStatus = markAsCredit
+          ? (totalPaid === 0 ? "unpaid" : "partial")
+          : "paid";
+
+        savedInvoiceId = await invoicesService.create({
           invoiceNumber,
           dateString,
 
@@ -541,8 +666,60 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
             card: cardVal,
           },
           paymentMethod: cashVal === totals.grandTotal ? "Cash" : upiVal === totals.grandTotal ? "UPI" : cardVal === totals.grandTotal ? "Card" : "Split",
-          paymentStatus: "paid",
+          paymentStatus: invoicePaymentStatus,
         });
+      }
+
+      // Step 5: Save or update credit balance in DB (split proportionally by services vs products)
+      if (markAsCredit) {
+        const creditAmount = totals.grandTotal - totalPaid;
+        if (creditAmount > 0) {
+          const serviceTotalVal = totals.serviceTotal;
+          const productTotalVal = totals.productTotal;
+          const subtotalVal = serviceTotalVal + productTotalVal;
+          
+          if (subtotalVal > 0) {
+            const serviceRatio = serviceTotalVal / subtotalVal;
+            const productRatio = productTotalVal / subtotalVal;
+            
+            const serviceCredit = Math.round(creditAmount * serviceRatio * 100) / 100;
+            const productCredit = Math.round(creditAmount * productRatio * 100) / 100;
+            
+            const invNum = invoiceNumberDisplay === "Auto-assigned on save" ? invoiceNumber : invoiceNumberDisplay;
+            
+            if (serviceCredit > 0) {
+              await creditBalancesService.create({
+                customerId: customerId,
+                customerName: customerName.trim(),
+                customerPhone: customerMobile.trim(),
+                invoiceId: savedInvoiceId || editInvoiceId || "",
+                invoiceNumber: invNum,
+                amount: serviceCredit,
+                type: "service",
+                notes: `Outstanding service credit deferred during bill save.`,
+              });
+            }
+            if (productCredit > 0) {
+              await creditBalancesService.create({
+                customerId: customerId,
+                customerName: customerName.trim(),
+                customerPhone: customerMobile.trim(),
+                invoiceId: savedInvoiceId || editInvoiceId || "",
+                invoiceNumber: invNum,
+                amount: productCredit,
+                type: "product",
+                notes: `Outstanding product credit deferred during bill save.`,
+              });
+            }
+          }
+        }
+      }
+
+      // Settle any previously collected outstanding credits
+      if (collectedCredits.length > 0) {
+        for (const creditId of collectedCredits) {
+          await creditBalancesService.settle(creditId);
+        }
       }
 
       await refreshProducts();
@@ -582,6 +759,9 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
   };
 
   const handleClose = () => {
+    setMarkAsCredit(false);
+    setAllCustomerPendingCredits([]);
+    setCollectedCredits([]);
     setServices([]);
     setProducts([]);
     setCustomerName("");
@@ -815,6 +995,66 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
             </div>
           </div>
 
+          {/* Outstanding Credit Warning Banner */}
+          {!loadingCredits && pendingCreditsToShow.length > 0 && (
+            <div className="mt-4 rounded-2xl border border-amber-900/40 bg-amber-950/20 p-4 text-sm text-[#D4A935] space-y-2">
+              <div className="flex items-center gap-2 font-bold text-amber-500">
+                <AlertCircle size={16} />
+                <span>Outstanding Credit Warning</span>
+              </div>
+              <div className="space-y-1.5 pl-6">
+                {pendingCreditsToShow.length === 1 ? (
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <span>
+                      Customer has outstanding credit of <b>{formatCurrency(pendingCreditsToShow[0].amount)}</b> since{" "}
+                      <b>{new Date(pendingCreditsToShow[0].createdAt).toLocaleDateString()}</b> — Invoice #{pendingCreditsToShow[0].invoiceNumber}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleCollectCredit(pendingCreditsToShow[0])}
+                      className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#B8962E] px-3 text-xs font-bold text-[#0E0D0B] hover:bg-[#D4A935] transition cursor-pointer shadow-sm"
+                    >
+                      <Wallet size={12} />
+                      Collect Now
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="flex items-center justify-between flex-wrap gap-2 font-semibold">
+                      <span>
+                        Total Outstanding Credit: <b>{formatCurrency(pendingCreditsToShow.reduce((sum, c) => sum + c.amount, 0))}</b> ({pendingCreditsToShow.length} invoices)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => pendingCreditsToShow.forEach(handleCollectCredit)}
+                        className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#B8962E] px-3 text-xs font-bold text-[#0E0D0B] hover:bg-[#D4A935] transition cursor-pointer shadow-sm animate-pulse"
+                      >
+                        <Wallet size={12} />
+                        Collect All ({formatCurrency(pendingCreditsToShow.reduce((sum, c) => sum + c.amount, 0))})
+                      </button>
+                    </div>
+                    <ul className="mt-2 space-y-1.5 border-t border-amber-900/20 pt-2 text-xs text-stone-400">
+                      {pendingCreditsToShow.map((credit) => (
+                        <li key={credit.id} className="flex items-center justify-between">
+                          <span>
+                            • {formatCurrency(credit.amount)} since {new Date(credit.createdAt).toLocaleDateString()} — {credit.invoiceNumber}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleCollectCredit(credit)}
+                            className="text-[10px] font-bold text-[#B8962E] hover:text-[#D4A935] underline cursor-pointer"
+                          >
+                            Collect
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           <BillingTable
             rows={services}
             onRowsChange={setServices}
@@ -939,6 +1179,33 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
                 })}
               </div>
 
+              {/* Mark as Credit Checkbox */}
+              {foundCustomerId && customerMobile !== GUEST_PHONE && (
+                <div className="border-t border-[#2E2B24] pt-3">
+                  <label className="flex items-center gap-2 cursor-pointer select-none text-xs font-semibold text-[#A89F8C] hover:text-[#F5F0E8] transition">
+                    <input
+                      type="checkbox"
+                      checked={markAsCredit}
+                      disabled={saved}
+                      onChange={(e) => {
+                        const isChecked = e.target.checked;
+                        setMarkAsCredit(isChecked);
+                        if (isChecked) {
+                          setCashAmount("");
+                          setUpiAmount("");
+                          setCardAmount("");
+                          setIsSplitEdited(true);
+                        } else {
+                          setIsSplitEdited(false);
+                        }
+                      }}
+                      className="size-4 rounded border-[#2E2B24] bg-[#0E0D0B] text-[#B8962E] focus:ring-0 cursor-pointer accent-[#B8962E]"
+                    />
+                    <span>Mark as Credit (Customer will pay later)</span>
+                  </label>
+                </div>
+              )}
+
               <div className="border-t border-[#2E2B24] pt-3 space-y-2.5">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-semibold text-[#A89F8C]">Total Paid</span>
@@ -954,7 +1221,9 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
                 {totals.grandTotal > 0 && (
                   <div className="text-xs font-semibold text-right">
                     {isPaymentValid ? (
-                      <span className="text-[#B8962E]">Payment matches bill total</span>
+                      <span className="text-[#B8962E]">
+                        {markAsCredit && paymentDiff > 0 ? `Credit Balance: ${formatCurrency(paymentDiff)}` : "Payment matches bill total"}
+                      </span>
                     ) : paymentDiff > 0 ? (
                       <span className="text-[#B8962E]">Remaining {formatCurrency(paymentDiff)}</span>
                     ) : (

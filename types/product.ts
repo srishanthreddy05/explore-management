@@ -9,4 +9,7 @@ export interface Product {
   noOfServings?: number | null;
   costPerServing?: number | null;
   isActive?: boolean;
+  brand?: string;
+  category?: string;
 }
+

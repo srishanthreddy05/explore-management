@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { db } from "@/lib/firebase";
 import {
   collection,
@@ -16,7 +16,22 @@ import * as staffService from "@/services/staff";
 import { formatCurrency } from "@/components/salon-dashboard/types";
 import type { Staff } from "@/types/staff";
 import { useAppData } from "@/context/AppDataContext";
-import { CalendarDays, CreditCard, TrendingUp, ShieldCheck, Users, Receipt, BarChart2, UsersRound, UserPlus, PiggyBank } from "lucide-react";
+import {
+  CalendarDays,
+  CreditCard,
+  TrendingUp,
+  ShieldCheck,
+  Users,
+  Receipt,
+  BarChart2,
+  UsersRound,
+  UserPlus,
+  PiggyBank,
+  Clock,
+  X,
+  Store,
+  Sparkles,
+} from "lucide-react";
 import { format } from "date-fns";
 import Link from "next/link";
 import { BillingTerminal } from "@/components/billing/BillingTerminal";
@@ -26,68 +41,123 @@ import * as customerService from "@/services/customers";
 import * as expensesService from "@/services/expenses";
 import { toLocalDateString } from "@/lib/utils/date";
 
+// ── Types ──────────────────────────────────────────────────────────────────
+interface Invoice {
+  id: string;
+  invoiceNumber: string;
+  customerName: string;
+  customerPhone?: string;
+  customerId?: string;
+  customerType?: "membership" | "regular" | "new";
+  date: Date | Timestamp;
+  dateKey?: string;
+  grandTotal: number;
+  subtotal: number;
+  paymentMethod?: string;
+  paymentSplit?: { cash?: number; upi?: number; card?: number };
+  payments?: { cash?: number; upi?: number; card?: number };
+  services?: ServiceItem[];
+  products?: ProductItem[];
+  createdAt?: Timestamp;
+  invoiceDate?: Timestamp;
+}
 
-// ── D: Active time helper ──────────────────────────────────────────────────
+interface ServiceItem {
+  staffId?: string;
+  staffName?: string;
+  staff?: string;
+  serviceId?: string;
+  price?: number;
+  amount?: number;
+  discount?: number;
+  usedProductCost?: number;
+}
+
+interface ProductItem {
+  price?: number;
+  quantity?: number;
+  discount?: number;
+  amount?: number;
+}
+
+interface StaffDetail {
+  staffId: string;
+  name: string;
+  role: string;
+  serviceRevenue: number;
+  productCost: number;
+  staffShare: number;
+  ownerShareContribution: number;
+}
+
+interface TodaySettlement {
+  totalServiceRevenue: number;
+  totalMembershipAmount: number;
+  totalProductCost: number;
+  totalStaffShare: number;
+  totalOwnerShare: number;
+  ownerDirectRevenue: number;
+  staffRevenueContribution: number;
+  staffProductReimbursement: number;
+  retailProductsRevenue: number;
+  staffDetails: Record<string, StaffDetail>;
+}
+
+// ── Utilities ──────────────────────────────────────────────────────────────
+function parseTimestamp(ts: any): Date | null {
+  if (!ts) return null;
+  if (typeof ts.toDate === "function") return ts.toDate();
+  if (typeof ts.seconds === "number") return new Date(ts.seconds * 1000);
+  if (ts instanceof Date) return ts;
+  return new Date(ts);
+}
+
+function formatTime(ts: any): string {
+  const date = parseTimestamp(ts);
+  if (!date || isNaN(date.getTime())) return "—";
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function getLocalDateKey(d: Date): string {
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
+// ── Active Time Computation ────────────────────────────────────────────────
 function computeTodayActiveTime(clockLogs: any[] = []): string {
-  if (!clockLogs || clockLogs.length === 0) return "0 mins";
-
-  const getLocalDateKey = (d: Date) => {
-    return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-  };
+  if (!clockLogs?.length) return "0 mins";
 
   const today = new Date();
   const todayKey = getLocalDateKey(today);
 
-  // 1. Parse and sort all logs by time ascending
   const parsedLogs = clockLogs
     .map((log) => {
-      let dateObj: Date;
-      if (log.timestamp && typeof log.timestamp.toDate === "function") {
-        dateObj = log.timestamp.toDate();
-      } else if (log.timestamp && typeof log.timestamp.seconds === "number") {
-        dateObj = new Date(log.timestamp.seconds * 1000);
-      } else {
-        dateObj = new Date(log.timestamp || 0);
-      }
+      const date = parseTimestamp(log.timestamp);
+      if (!date) return null;
       return {
         event: log.event as "clockIn" | "clockOut",
-        date: dateObj,
-        time: dateObj.getTime(),
+        date,
+        time: date.getTime(),
       };
     })
+    .filter((log): log is NonNullable<typeof log> => log !== null)
     .sort((a, b) => a.time - b.time);
 
-  // 2. Build sessions from logs
-  interface Session {
-    clockIn: typeof parsedLogs[0];
-    clockOut: typeof parsedLogs[0] | null;
-  }
-  const sessions: Session[] = [];
-  let currentSessionStart: typeof parsedLogs[0] | null = null;
+  const sessions: { clockIn: (typeof parsedLogs)[0]; clockOut: (typeof parsedLogs)[0] | null }[] = [];
+  let currentSessionStart: (typeof parsedLogs)[0] | null = null;
 
   for (const log of parsedLogs) {
     if (log.event === "clockIn") {
-      if (currentSessionStart) {
-        sessions.push({ clockIn: currentSessionStart, clockOut: null });
-      }
+      if (currentSessionStart) sessions.push({ clockIn: currentSessionStart, clockOut: null });
       currentSessionStart = log;
-    } else if (log.event === "clockOut") {
-      if (currentSessionStart) {
-        sessions.push({ clockIn: currentSessionStart, clockOut: log });
-        currentSessionStart = null;
-      }
+    } else if (log.event === "clockOut" && currentSessionStart) {
+      sessions.push({ clockIn: currentSessionStart, clockOut: log });
+      currentSessionStart = null;
     }
   }
-  if (currentSessionStart) {
-    sessions.push({ clockIn: currentSessionStart, clockOut: null });
-  }
+  if (currentSessionStart) sessions.push({ clockIn: currentSessionStart, clockOut: null });
 
-  // 3. Filter sessions where clockIn occurs on today's calendar date
-  const todaySessions = sessions.filter((session) => {
-    return getLocalDateKey(session.clockIn.date) === todayKey;
-  });
+  const todaySessions = sessions.filter((s) => getLocalDateKey(s.clockIn.date) === todayKey);
 
-  // 4. Calculate total duration
   let totalMs = 0;
   for (const session of todaySessions) {
     if (session.clockOut) {
@@ -100,22 +170,377 @@ function computeTodayActiveTime(clockLogs: any[] = []): string {
   const mins = Math.floor(totalMs / 60000);
   const h = Math.floor(mins / 60);
   const m = mins % 60;
-  return h > 0 ? `${h} hrs ${m} mins` : `${mins} mins`;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
+
+// ── Sub-Components ─────────────────────────────────────────────────────────
+
+function StatCard({
+  title,
+  value,
+  subtitle,
+  icon: Icon,
+  accent = "gold",
+  children,
+  className = "",
+}: {
+  title: string;
+  value: string | number;
+  subtitle?: string;
+  icon: React.ElementType;
+  accent?: "gold" | "green" | "blue" | "purple";
+  children?: React.ReactNode;
+  className?: string;
+}) {
+  const accentColors = {
+    gold: "text-[#B8962E] border-[#B8962E]/20 bg-[#B8962E]/5",
+    green: "text-[#4ADE80] border-[#4ADE80]/20 bg-[#4ADE80]/5",
+    blue: "text-[#60A5FA] border-[#60A5FA]/20 bg-[#60A5FA]/5",
+    purple: "text-[#A78BFA] border-[#A78BFA]/20 bg-[#A78BFA]/5",
+  };
+
+  return (
+    <div
+      className={`group relative overflow-hidden rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-5 shadow-sm transition-all duration-300 hover:border-[#4A4535] hover:shadow-[0_8px_30px_rgba(184,150,46,0.06)] hover:-translate-y-0.5 ${className}`}
+    >
+      <div className="flex items-start justify-between">
+        <div className="space-y-1">
+          <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#6B6358]">
+            {title}
+          </span>
+          <p className="text-[1.75rem] font-extrabold tracking-[-0.03em] text-[#F5F0E8]">
+            {value}
+          </p>
+        </div>
+        <div className={`rounded-xl p-2.5 ${accentColors[accent]}`}>
+          <Icon size={20} strokeWidth={2} />
+        </div>
+      </div>
+      {subtitle && (
+        <p className="mt-3 text-[11px] font-medium text-[#6B6358]">{subtitle}</p>
+      )}
+      {children && <div className="mt-4">{children}</div>}
+    </div>
+  );
+}
+
+function PaymentBreakdown({
+  cash,
+  upi,
+  card,
+}: {
+  cash: number;
+  upi: number;
+  card: number;
+}) {
+  const total = cash + upi + card || 1;
+  const items = [
+    { label: "Cash", value: cash, color: "bg-[#4ADE80]" },
+    { label: "UPI", value: upi, color: "bg-[#60A5FA]" },
+    { label: "Card", value: card, color: "bg-[#A78BFA]" },
+  ];
+
+  return (
+    <div className="mt-4 space-y-3">
+      <div className="flex h-1.5 overflow-hidden rounded-full bg-[#131210]">
+        {items.map((item) => (
+          <div
+            key={item.label}
+            className={`${item.color} transition-all duration-500`}
+            style={{ width: `${(item.value / total) * 100}%` }}
+          />
+        ))}
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        {items.map((item) => (
+          <div key={item.label} className="text-center">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-[#6B6358]">
+              {item.label}
+            </p>
+            <p className="mt-0.5 text-xs font-bold text-[#F5F0E8]">
+              {formatCurrency(item.value)}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function StaffCard({
+  member,
+  activeTime,
+  onToggle,
+}: {
+  member: Staff & { activeTime: string };
+  activeTime: string;
+  onToggle: (member: Staff) => void;
+}) {
+  const isOnDuty = member.dutyStatus === "onDuty";
+
+  return (
+    <div
+      className={`group relative overflow-hidden rounded-2xl border bg-[#131210] p-4 transition-all duration-300 hover:-translate-y-0.5 ${
+        isOnDuty
+          ? "border-[#B8962E]/30 shadow-[0_4px_20px_rgba(184,150,46,0.08)]"
+          : "border-[#2E2B24] hover:border-[#4A4535]"
+      }`}
+    >
+      <div className="flex items-start justify-between">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <h3 className="truncate text-sm font-bold text-[#F5F0E8]">
+              {member.name}
+            </h3>
+            <span
+              className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold tracking-[0.1em] uppercase border ${
+                isOnDuty
+                  ? "border-[#4A3A10] bg-[#2A2310] text-[#D4A935]"
+                  : "border-[#2E2B24] bg-[#1C1A16] text-[#6B6358]"
+              }`}
+            >
+              {isOnDuty ? "On Duty" : "Off Duty"}
+            </span>
+          </div>
+          <p className="mt-0.5 text-[10px] font-semibold tracking-[0.12em] uppercase text-[#6B6358]">
+            {member.role}
+          </p>
+        </div>
+        <div
+          className={`size-2 rounded-full shrink-0 mt-1.5 ${
+            isOnDuty ? "bg-[#4ADE80] shadow-[0_0_8px_rgba(74,222,128,0.4)]" : "bg-[#6B6358]"
+          }`}
+        />
+      </div>
+
+      <div className="mt-3 flex items-center justify-between border-t border-[#2E2B24] pt-3">
+        <div className="flex items-center gap-1.5 text-[#6B6358]">
+          <Clock size={12} strokeWidth={2.5} />
+          <span className="text-[11px] font-medium">Active today</span>
+        </div>
+        <span className="text-xs font-bold text-[#F5F0E8]">{activeTime}</span>
+      </div>
+
+      <button
+        onClick={() => onToggle(member)}
+        className={`mt-3 h-9 w-full rounded-xl text-[11px] font-bold tracking-wide transition-all duration-200 ${
+          isOnDuty
+            ? "border border-[#2E2B24] bg-transparent text-[#A89F8C] hover:border-[#B8962E] hover:text-[#B8962E]"
+            : "bg-[#B8962E] text-[#0E0D0B] hover:bg-[#D4A935] shadow-[0_2px_12px_rgba(184,150,46,0.2)]"
+        }`}
+      >
+        {isOnDuty ? "Clock Out" : "Clock In"}
+      </button>
+    </div>
+  );
+}
+
+function InvoiceRow({ invoice }: { invoice: Invoice }) {
+  const staffListStr = Array.from(
+    new Set(
+      (invoice.services || [])
+        .map((s: any) => s.staffName || s.staff)
+        .filter(Boolean)
+    )
+  ).join(", ");
+
+  const time = formatTime(invoice.createdAt || invoice.date);
+  const customerType = invoice.customerType || "regular";
+
+  const typeConfig = {
+    membership: {
+      label: "Membership",
+      class: "bg-[#2A2310] text-[#D4A935] border-[#4A3A10]",
+    },
+    regular: {
+      label: "Regular",
+      class: "bg-[#1C1A16] text-[#A89F8C] border-[#2E2B24]",
+    },
+    new: {
+      label: "New",
+      class: "bg-[#1A1C2A] text-[#818CF8] border-[#2E3154]",
+    },
+  };
+
+  const config = typeConfig[customerType as keyof typeof typeConfig] || typeConfig.regular;
+
+  return (
+    <tr className="group transition-colors hover:bg-[#1F1A0F]/50">
+      <td className="px-4 py-3.5">
+        <span className="font-mono text-xs font-bold text-[#F5F0E8]">
+          #{invoice.invoiceNumber}
+        </span>
+      </td>
+      <td className="px-4 py-3.5">
+        <div className="flex flex-col">
+          <span className="text-sm font-semibold text-[#F5F0E8]">
+            {invoice.customerName}
+          </span>
+          {invoice.customerPhone && invoice.customerPhone !== "0000000000" && (
+            <span className="text-[10px] text-[#6B6358]">{invoice.customerPhone}</span>
+          )}
+        </div>
+      </td>
+      <td className="px-4 py-3.5">
+        <span
+          className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wide uppercase border ${config.class}`}
+        >
+          {config.label}
+        </span>
+      </td>
+      <td className="px-4 py-3.5 text-sm text-[#A89F8C]">
+        {staffListStr || <span className="italic text-[#6B6358]">Unassigned</span>}
+      </td>
+      <td className="px-4 py-3.5 text-xs font-medium text-[#6B6358]">{time}</td>
+      <td className="px-4 py-3.5 text-right">
+        <span className="text-sm font-bold text-[#F5F0E8]">
+          {formatCurrency(invoice.grandTotal)}
+        </span>
+      </td>
+      <td className="px-4 py-3.5 text-right">
+        <div className="flex justify-end gap-2 opacity-0 transition-opacity group-hover:opacity-100">
+          <Link
+            href={`/invoices/${invoice.id}`}
+            className="inline-flex h-8 items-center justify-center rounded-lg border border-[#2E2B24] bg-[#131210] px-3 text-xs font-semibold text-[#A89F8C] transition hover:border-[#B8962E] hover:text-[#B8962E]"
+          >
+            View
+          </Link>
+          <Link
+            href={`/billing?edit=${invoice.id}`}
+            className="inline-flex h-8 items-center justify-center rounded-lg border border-[#B8962E]/30 bg-[#B8962E]/10 px-3 text-xs font-semibold text-[#B8962E] transition hover:bg-[#B8962E]/20"
+          >
+            Edit
+          </Link>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function ModalOverlay({
+  isOpen,
+  onClose,
+  children,
+  maxWidth = "max-w-4xl",
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  children: React.ReactNode;
+  maxWidth?: string;
+}) {
+  if (!isOpen) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+      onClick={onClose}
+    >
+      <div
+        className={`relative w-full ${maxWidth} max-h-[90vh] overflow-y-auto rounded-3xl border border-[#2E2B24] bg-[#1C1A16] shadow-2xl animate-in zoom-in-95 duration-200`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function SettlementCard({
+  title,
+  value,
+  icon: Icon,
+  items,
+  isOwner = false,
+}: {
+  title: string;
+  value: number;
+  icon: React.ElementType;
+  items: { label: string; value: number; negative?: boolean }[];
+  isOwner?: boolean;
+}) {
+  return (
+    <div
+      className={`rounded-2xl border p-5 space-y-4 ${
+        isOwner
+          ? "border-[#4A3A10]/50 bg-[#1A1500]/80"
+          : "border-[#2E2B24] bg-[#131210]"
+      }`}
+    >
+      <div className="flex items-start justify-between">
+        <div className="flex items-center gap-2">
+          <Icon
+            size={16}
+            className={isOwner ? "text-[#D4A935]" : "text-[#B8962E]"}
+          />
+          <h4
+            className={`font-extrabold text-sm ${
+              isOwner ? "text-[#D4A935]" : "text-[#F5F0E8]"
+            }`}
+          >
+            {title}
+          </h4>
+        </div>
+        <div className="text-right">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-[#6B6358]">
+            Net Share
+          </span>
+          <p
+            className={`font-black text-xl mt-0.5 ${
+              isOwner ? "text-[#D4A935]" : "text-[#F5F0E8]"
+            }`}
+          >
+            {formatCurrency(value)}
+          </p>
+        </div>
+      </div>
+
+      <div className="space-y-2 border-t border-[#2E2B24] pt-3">
+        {items.map((item, i) => (
+          <div key={i} className="flex justify-between text-xs">
+            <span className="text-[#A89F8C] font-medium">{item.label}</span>
+            <span
+              className={`font-bold ${
+                item.negative ? "text-[#E57373]" : "text-[#F5F0E8]"
+              }`}
+            >
+              {item.negative ? "-" : "+"}
+              {formatCurrency(Math.abs(item.value))}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Main Dashboard ─────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
   const { staff, loadingAppData } = useAppData();
-  const [invoices, setInvoices] = useState<any[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [invoicesLoaded, setInvoicesLoaded] = useState(false);
   const staffLoaded = !loadingAppData;
   const [tick, setTick] = useState(0);
-  const [isBillingOpen, setIsBillingOpen] = useState(false);
-  const [isCustomerOpen, setIsCustomerOpen] = useState(false);
-  const [isExpenseOpen, setIsExpenseOpen] = useState(false);
-  const [isSettlementsOpen, setIsSettlementsOpen] = useState(false);
-  const [todayExpenses, setTodayExpenses] = useState<any[]>([]);
 
-  const loadTodayExpenses = async () => {
+  const [modals, setModals] = useState({
+    billing: false,
+    customer: false,
+    expense: false,
+    settlements: false,
+  });
+
+  const [todayExpenses, setTodayExpenses] = useState<any[]>([]);
+  const [monthlyStats, setMonthlyStats] = useState<{
+    totalRevenue: number;
+    totalVisits: number;
+  } | null>(null);
+  const [staffMonthlyStats, setStaffMonthlyStats] = useState<
+    Record<string, { revenue: number; productCost: number }>
+  >({});
+
+  // ── Data Fetching ────────────────────────────────────────────────────────
+
+  const loadTodayExpenses = useCallback(async () => {
     try {
       const todayStr = toLocalDateString(new Date());
       const start = new Date();
@@ -127,61 +552,23 @@ export default function DashboardPage() {
     } catch (err) {
       console.error("Failed to load today's expenses:", err);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadTodayExpenses();
-  }, []);
+  }, [loadTodayExpenses]);
 
-  const todayExpensesTotal = useMemo(() => {
-    return todayExpenses.reduce((sum, exp) => sum + exp.amount, 0);
-  }, [todayExpenses]);
+  const todayExpensesTotal = useMemo(
+    () => todayExpenses.reduce((sum, exp) => sum + exp.amount, 0),
+    [todayExpenses]
+  );
 
-  useEffect(() => {
-    const anyOpen = isBillingOpen || isCustomerOpen || isExpenseOpen || isSettlementsOpen;
-    document.body.style.overflow = anyOpen ? "hidden" : "";
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, [isBillingOpen, isCustomerOpen, isExpenseOpen, isSettlementsOpen]);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setTick((t) => t + 1);
-    }, 60000);
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    // Revert expired memberships and record alerts in DB on mount
-    customerService.checkAndExpireMemberships();
-  }, []);
-
-  const staffWithActiveTimes = useMemo(() => {
-    const mapped = staff.map((member) => ({
-      ...member,
-      activeTime: computeTodayActiveTime(member.clockLogs),
-    }));
-    return mapped.sort((a, b) => {
-      const aIsOwner = a.role === "Owner";
-      const bIsOwner = b.role === "Owner";
-      if (aIsOwner && !bIsOwner) return -1;
-      if (!aIsOwner && bIsOwner) return 1;
-      return a.name.localeCompare(b.name);
-    });
-  }, [staff, tick]);
-
-  const [monthlyStats, setMonthlyStats] = useState<{ totalRevenue: number; totalVisits: number } | null>(null);
-  const [staffMonthlyStats, setStaffMonthlyStats] = useState<Record<string, { revenue: number; productCost: number }>>({});
-
-  const fetchMonthlyStats = async (force = false) => {
+  const fetchMonthlyStats = useCallback(async (force = false) => {
     try {
       const now = new Date();
-      const yyyy = now.getFullYear();
-      const mm = String(now.getMonth() + 1).padStart(2, '0');
-      const monthKey = `${yyyy}-${mm}`;
-
+      const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
       const cacheKey = `monthlyStats_${monthKey}`;
+
       if (!force) {
         const cached = localStorage.getItem(cacheKey);
         if (cached) {
@@ -195,72 +582,70 @@ export default function DashboardPage() {
 
       const docRef = doc(db, "stats", `revenue_${monthKey}`);
       const snap = await getDoc(docRef);
-      let data = { totalRevenue: 0, totalVisits: 0 };
-      if (snap.exists()) {
-        const d = snap.data();
-        data = {
-          totalRevenue: d.totalRevenue ?? 0,
-          totalVisits: d.totalVisits ?? 0,
-        };
-      }
+      const data = snap.exists()
+        ? {
+            totalRevenue: snap.data().totalRevenue ?? 0,
+            totalVisits: snap.data().totalVisits ?? 0,
+          }
+        : { totalRevenue: 0, totalVisits: 0 };
+
       setMonthlyStats(data);
-      localStorage.setItem(cacheKey, JSON.stringify({
-        data,
-        expiry: Date.now() + 60000,
-      }));
+      localStorage.setItem(
+        cacheKey,
+        JSON.stringify({ data, expiry: Date.now() + 60000 })
+      );
     } catch (err) {
       console.error("Failed to fetch monthly stats:", err);
     }
-  };
+  }, []);
 
-  const fetchStaffMonthlyStats = async (force = false) => {
-    try {
-      const now = new Date();
-      const yyyy = now.getFullYear();
-      const mm = String(now.getMonth() + 1).padStart(2, '0');
-      const monthKey = `${yyyy}-${mm}`;
+  const fetchStaffMonthlyStats = useCallback(
+    async (force = false) => {
+      try {
+        const now = new Date();
+        const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+        const cacheKey = `staffMonthlyStats_${monthKey}`;
 
-      const cacheKey = `staffMonthlyStats_${monthKey}`;
-      if (!force) {
-        const cached = localStorage.getItem(cacheKey);
-        if (cached) {
-          const { data, expiry } = JSON.parse(cached);
-          if (Date.now() < expiry) {
-            setStaffMonthlyStats(data);
-            return;
+        if (!force) {
+          const cached = localStorage.getItem(cacheKey);
+          if (cached) {
+            const { data, expiry } = JSON.parse(cached);
+            if (Date.now() < expiry) {
+              setStaffMonthlyStats(data);
+              return;
+            }
           }
         }
-      }
 
-      const map: Record<string, { revenue: number; productCost: number }> = {};
-      await Promise.all(
-        staff.map(async (member) => {
-          if (!member.id) return;
-          const ref = doc(db, "stats", `staff_${member.id}_${monthKey}`);
-          const snap = await getDoc(ref);
-          if (snap.exists()) {
-            const d = snap.data();
-            map[member.id] = {
-              revenue: d.revenue ?? 0,
-              productCost: d.productCost ?? 0,
-            };
-          } else {
-            map[member.id] = { revenue: 0, productCost: 0 };
-          }
-        })
-      );
-      setStaffMonthlyStats(map);
-      localStorage.setItem(cacheKey, JSON.stringify({
-        data: map,
-        expiry: Date.now() + 60000,
-      }));
-    } catch (err) {
-      console.error("Failed to fetch staff monthly stats:", err);
-    }
-  };
+        const map: Record<string, { revenue: number; productCost: number }> = {};
+        await Promise.all(
+          staff.map(async (member) => {
+            if (!member.id) return;
+            const ref = doc(db, "stats", `staff_${member.id}_${monthKey}`);
+            const snap = await getDoc(ref);
+            map[member.id] = snap.exists()
+              ? {
+                  revenue: snap.data().revenue ?? 0,
+                  productCost: snap.data().productCost ?? 0,
+                }
+              : { revenue: 0, productCost: 0 };
+          })
+        );
+        setStaffMonthlyStats(map);
+        localStorage.setItem(
+          cacheKey,
+          JSON.stringify({ data: map, expiry: Date.now() + 60000 })
+        );
+      } catch (err) {
+        console.error("Failed to fetch staff monthly stats:", err);
+      }
+    },
+    [staff]
+  );
+
+  // ── Real-time Listeners ────────────────────────────────────────────────
 
   useEffect(() => {
-    // ── A: Scope query to today's invoices only ──────────────────────────────
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
 
@@ -269,60 +654,59 @@ export default function DashboardPage() {
       where("date", ">=", Timestamp.fromDate(startOfToday))
     );
 
-    const unsubInvoices = onSnapshot(
+    const unsub = onSnapshot(
       qInvoices,
       (snapshot) => {
-        const list: any[] = [];
-        snapshot.forEach((d) => list.push({ id: d.id, ...d.data() }));
+        const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }) as Invoice);
         setInvoices(list);
         setInvoicesLoaded(true);
       },
       (err) => console.error("Invoices listener error:", err)
     );
 
-    return () => {
-      unsubInvoices();
-    };
+    return () => unsub();
   }, []);
 
-  // Fetch monthly stats on mount (using cache)
   useEffect(() => {
     if (invoicesLoaded && staffLoaded) {
       fetchMonthlyStats();
       fetchStaffMonthlyStats();
     }
-  }, [invoicesLoaded, staffLoaded]);
+  }, [invoicesLoaded, staffLoaded, fetchMonthlyStats, fetchStaffMonthlyStats]);
 
-  // ── C: Clock log on duty toggle ─────────────────────────────────────────
-  const toggleDutyStatus = async (member: Staff) => {
-    if (!member.id) return;
-    const current = member.dutyStatus || "offDuty";
-    const next = current === "onDuty" ? "offDuty" : "onDuty";
-    const logEvent = next === "onDuty" ? "clockIn" : "clockOut";
-    try {
-      await staffService.update(member.id, {
-        dutyStatus: next,
-        clockLogs: arrayUnion({
-          event: logEvent,
-          timestamp: Timestamp.now(),
-        }) as any,
-      });
+  useEffect(() => {
+    const interval = setInterval(() => setTick((t) => t + 1), 60000);
+    return () => clearInterval(interval);
+  }, []);
 
-      // Explicitly invalidate cache and fetch fresh stats on duty status change
-      const now = new Date();
-      const yyyy = now.getFullYear();
-      const mm = String(now.getMonth() + 1).padStart(2, '0');
-      const monthKey = `${yyyy}-${mm}`;
-      localStorage.removeItem(`staffMonthlyStats_${monthKey}`);
-      await fetchStaffMonthlyStats(true);
-    } catch (err) {
-      console.error("Failed to update duty status:", err);
-    }
-  };
+  useEffect(() => {
+    customerService.checkAndExpireMemberships();
+  }, []);
+
+  useEffect(() => {
+    const anyOpen = Object.values(modals).some(Boolean);
+    document.body.style.overflow = anyOpen ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [modals]);
+
+  // ── Derived State ────────────────────────────────────────────────────────
+
+  const staffWithActiveTimes = useMemo(() => {
+    const mapped = staff.map((member) => ({
+      ...member,
+      activeTime: computeTodayActiveTime(member.clockLogs),
+    }));
+    return mapped.sort((a, b) => {
+      if (a.role === "Owner" && b.role !== "Owner") return -1;
+      if (a.role !== "Owner" && b.role === "Owner") return 1;
+      return a.name.localeCompare(b.name);
+    });
+  }, [staff, tick]);
 
   const stats = useMemo(() => {
     const todayStr = toLocalDateString(new Date());
-
     let todayRevenue = 0;
     let cashToday = 0;
     let upiToday = 0;
@@ -348,17 +732,12 @@ export default function DashboardPage() {
       if (invDateStr === todayStr) {
         todayRevenue += cash + upi + card;
 
-        const isGuest = inv.customerPhone === "0000000000" || inv.customerName === "Guest";
-        if (isGuest) {
-          uniqueCustomerIds.add(inv.id || inv.invoiceNumber || Math.random().toString());
-        } else {
-          const customerIdentifier = inv.customerId || inv.customerPhone || inv.customerName;
-          if (customerIdentifier) {
-            uniqueCustomerIds.add(customerIdentifier);
-          } else {
-            uniqueCustomerIds.add(inv.id || Math.random().toString());
-          }
-        }
+        const isGuest =
+          inv.customerPhone === "0000000000" || inv.customerName === "Guest";
+        const identifier = isGuest
+          ? inv.id || inv.invoiceNumber || Math.random().toString()
+          : inv.customerId || inv.customerPhone || inv.customerName || inv.id || Math.random().toString();
+        uniqueCustomerIds.add(identifier);
 
         cashToday += cash;
         upiToday += upi;
@@ -377,28 +756,27 @@ export default function DashboardPage() {
     };
   }, [invoices, staff, monthlyStats]);
 
-  // ── B: Today's invoices sorted newest first by creation time ────────────
   const todayStr = toLocalDateString(new Date());
-  const todayInvoices = invoices
-    .filter((inv) => {
-      const d = inv.dateKey || toLocalDateString(inv.date);
-      return d === todayStr;
-    })
-    .sort((a, b) => {
-      const dateA = a.invoiceDate || a.date;
-      const dateB = b.invoiceDate || b.date;
-      const timeA = dateA && typeof dateA.toMillis === "function" ? dateA.toMillis() : (dateA instanceof Date ? dateA.getTime() : 0);
-      const timeB = dateB && typeof dateB.toMillis === "function" ? dateB.toMillis() : (dateB instanceof Date ? dateB.getTime() : 0);
-      if (timeB !== timeA) return timeB - timeA;
+  const todayInvoices = useMemo(() => {
+    return invoices
+      .filter((inv) => {
+        const d = inv.dateKey || toLocalDateString(inv.date);
+        return d === todayStr;
+      })
+      .sort((a, b) => {
+        const getTime = (x: any) => {
+          if (x?.toMillis) return x.toMillis();
+          if (x instanceof Date) return x.getTime();
+          return 0;
+        };
+        const primaryDiff = getTime(b.invoiceDate || b.date) - getTime(a.invoiceDate || a.date);
+        if (primaryDiff !== 0) return primaryDiff;
+        return getTime(b.createdAt) - getTime(a.createdAt);
+      });
+  }, [invoices, todayStr]);
 
-      const createdA = a.createdAt && typeof a.createdAt.toMillis === "function" ? a.createdAt.toMillis() : 0;
-      const createdB = b.createdAt && typeof b.createdAt.toMillis === "function" ? b.createdAt.toMillis() : 0;
-      return createdB - createdA;
-    });
-
-  // Calculate today's settlements split details for the overlay
-  const todaySettlement = useMemo(() => {
-    const dayObj = {
+  const todaySettlement = useMemo<TodaySettlement>(() => {
+    const dayObj: TodaySettlement = {
       totalServiceRevenue: 0,
       totalMembershipAmount: 0,
       totalProductCost: 0,
@@ -408,95 +786,67 @@ export default function DashboardPage() {
       staffRevenueContribution: 0,
       staffProductReimbursement: 0,
       retailProductsRevenue: 0,
-      staffDetails: {} as Record<
-        string,
-        {
-          staffId: string;
-          name: string;
-          role: string;
-          serviceRevenue: number;
-          productCost: number;
-          staffShare: number;
-          ownerShareContribution: number;
-        }
-      >,
+      staffDetails: {},
     };
 
     todayInvoices.forEach((inv) => {
-      const discountFactor = inv.subtotal > 0 ? (inv.grandTotal / inv.subtotal) : 1;
+      const discountFactor = inv.subtotal > 0 ? inv.grandTotal / inv.subtotal : 1;
 
       (inv.products || []).forEach((p: any) => {
-        const productBaseAmount = p.amount ?? Math.max((p.price || 0) * (p.quantity || 1) - (p.discount || 0), 0);
-        const amount = productBaseAmount * discountFactor;
+        const base = p.amount ?? Math.max((p.price || 0) * (p.quantity || 1) - (p.discount || 0), 0);
+        const amount = base * discountFactor;
         dayObj.retailProductsRevenue += amount;
         dayObj.totalOwnerShare += amount;
       });
 
       (inv.services || []).forEach((s: any) => {
-        const serviceBaseAmount = s.amount ?? Math.max((s.price || 0) - (s.discount || 0), 0);
-        const amount = serviceBaseAmount * discountFactor;
+        const base = s.amount ?? Math.max((s.price || 0) - (s.discount || 0), 0);
+        const amount = base * discountFactor;
         const cost = s.usedProductCost || 0;
         const staffId = s.staffId || "unassigned";
         const staffName = s.staffName || "Unassigned";
 
-        const staffMember = staff.find((st) => st.id === staffId || st.name === staffName);
+        const staffMember = staff.find(
+          (st) => st.id === staffId || st.name === staffName
+        );
         const role = staffMember?.role || "Stylist";
 
-        // Check if this is a membership invoice
         if (s.serviceId === "membership_fee" || staffId === "system" || staffName === "System") {
           dayObj.totalMembershipAmount += amount;
           dayObj.totalOwnerShare += amount;
           return;
         }
 
-        // Regular service: Owner vs Stylist
+        const key = staffId !== "unassigned" ? staffId : staffName;
+        if (!dayObj.staffDetails[key]) {
+          dayObj.staffDetails[key] = {
+            staffId,
+            name: staffName,
+            role,
+            serviceRevenue: 0,
+            productCost: 0,
+            staffShare: 0,
+            ownerShareContribution: 0,
+          };
+        }
+        const sd = dayObj.staffDetails[key];
+
         if (role === "Owner") {
           dayObj.ownerDirectRevenue += amount;
           dayObj.totalServiceRevenue += amount;
           dayObj.totalOwnerShare += amount;
-
-          const staffKey = staffId !== "unassigned" ? staffId : staffName;
-          if (!dayObj.staffDetails[staffKey]) {
-            dayObj.staffDetails[staffKey] = {
-              staffId,
-              name: staffName,
-              role,
-              serviceRevenue: 0,
-              productCost: 0,
-              staffShare: 0,
-              ownerShareContribution: 0,
-            };
-          }
-          const sd = dayObj.staffDetails[staffKey];
           sd.serviceRevenue += amount;
           sd.productCost += cost;
           sd.ownerShareContribution += amount;
         } else {
-          // Regular stylist
           const staffShare = 0.5 * amount - cost;
           const ownerShare = 0.5 * amount + cost;
-
           dayObj.totalServiceRevenue += amount;
           dayObj.totalProductCost += cost;
           dayObj.totalStaffShare += staffShare;
           dayObj.totalOwnerShare += ownerShare;
-
           dayObj.staffRevenueContribution += 0.5 * amount;
           dayObj.staffProductReimbursement += cost;
-
-          const staffKey = staffId !== "unassigned" ? staffId : staffName;
-          if (!dayObj.staffDetails[staffKey]) {
-            dayObj.staffDetails[staffKey] = {
-              staffId,
-              name: staffName,
-              role,
-              serviceRevenue: 0,
-              productCost: 0,
-              staffShare: 0,
-              ownerShareContribution: 0,
-            };
-          }
-          const sd = dayObj.staffDetails[staffKey];
           sd.serviceRevenue += amount;
           sd.productCost += cost;
           sd.staffShare += staffShare;
@@ -508,42 +858,32 @@ export default function DashboardPage() {
     return dayObj;
   }, [todayInvoices, staff]);
 
-  // Calculate individual staff daily & monthly splits
   const staffSplits = useMemo(() => {
-    const todayStr = toLocalDateString(new Date());
-
     const stylistStaff = staff.filter(
       (st) => st.role !== "Owner" && st.id !== "system" && st.name !== "System"
     );
 
     return stylistStaff.map((member) => {
       let todayShare = 0;
-
       invoices.forEach((inv) => {
         const dateKeyStr = inv.dateKey || toLocalDateString(inv.date);
         const isToday = dateKeyStr === todayStr;
-        const discountFactor = inv.subtotal > 0 ? (inv.grandTotal / inv.subtotal) : 1;
+        const discountFactor = inv.subtotal > 0 ? inv.grandTotal / inv.subtotal : 1;
 
         (inv.services || []).forEach((s: any) => {
           if (s.staffId === member.id || s.staffName === member.name) {
             if (s.serviceId !== "membership_fee") {
-              const serviceBaseAmount = s.amount ?? Math.max((s.price || 0) - (s.discount || 0), 0);
-              const amount = serviceBaseAmount * discountFactor;
+              const base = s.amount ?? Math.max((s.price || 0) - (s.discount || 0), 0);
+              const amount = base * discountFactor;
               const cost = s.usedProductCost || 0;
-              const share = 0.5 * amount - cost;
-
-              if (isToday) {
-                todayShare += share;
-              }
+              if (isToday) todayShare += 0.5 * amount - cost;
             }
           }
         });
       });
 
       const stStats = member.id ? staffMonthlyStats[member.id] : null;
-      const mRev = stStats?.revenue ?? 0;
-      const mCost = stStats?.productCost ?? 0;
-      const monthlyShare = 0.5 * mRev - mCost;
+      const monthlyShare = 0.5 * (stStats?.revenue ?? 0) - (stStats?.productCost ?? 0);
 
       return {
         id: member.id,
@@ -552,496 +892,407 @@ export default function DashboardPage() {
         monthlyShare,
       };
     });
-  }, [invoices, staff, staffMonthlyStats]);
+  }, [invoices, staff, staffMonthlyStats, todayStr]);
+
+  // ── Handlers ───────────────────────────────────────────────────────────
+
+  const toggleDutyStatus = useCallback(
+    async (member: Staff) => {
+      if (!member.id) return;
+      const current = member.dutyStatus || "offDuty";
+      const next = current === "onDuty" ? "offDuty" : "onDuty";
+      const logEvent = next === "onDuty" ? "clockIn" : "clockOut";
+
+      try {
+        await staffService.update(member.id, {
+          dutyStatus: next,
+          clockLogs: arrayUnion({
+            event: logEvent,
+            timestamp: Timestamp.now(),
+          }) as any,
+        });
+
+        const now = new Date();
+        const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+        localStorage.removeItem(`staffMonthlyStats_${monthKey}`);
+        await fetchStaffMonthlyStats(true);
+      } catch (err) {
+        console.error("Failed to update duty status:", err);
+      }
+    },
+    [fetchStaffMonthlyStats]
+  );
+
+  const openModal = useCallback((key: keyof typeof modals) => {
+    setModals((prev) => ({ ...prev, [key]: true }));
+  }, []);
+
+  const closeModal = useCallback((key: keyof typeof modals) => {
+    setModals((prev) => ({ ...prev, [key]: false }));
+  }, []);
+
+  const handleBillingSuccess = useCallback(async () => {
+    const now = new Date();
+    const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    localStorage.removeItem(`monthlyStats_${monthKey}`);
+    localStorage.removeItem(`staffMonthlyStats_${monthKey}`);
+    await Promise.all([fetchMonthlyStats(true), fetchStaffMonthlyStats(true)]);
+  }, [fetchMonthlyStats, fetchStaffMonthlyStats]);
+
+  // ── Render ───────────────────────────────────────────────────────────────
 
   if (!(invoicesLoaded && staffLoaded)) {
     return (
-      <div className="flex h-[40vh] items-center justify-center">
-        <div className="size-10 animate-spin rounded-full border-4 border-[#B8962E] border-t-transparent" />
+      <div className="flex h-[50vh] items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="size-10 animate-spin rounded-full border-4 border-[#B8962E] border-t-transparent" />
+          <span className="text-xs font-medium text-[#6B6358] animate-pulse">
+            Loading dashboard...
+          </span>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="dashboard-root space-y-6 text-[#A89F8C]">
-      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+    <div className="min-h-screen space-y-8 pb-8 text-[#A89F8C]">
+      {/* Header */}
+      <header className="flex flex-wrap items-end justify-between gap-4 border-b border-[#2E2B24] pb-6">
         <div>
-          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#A89F8C]">
-            Analytics
-          </p>
-          <h1 className="mt-2 text-[1.85rem] font-extrabold tracking-[-0.03em] text-[#F5F0E8]">
+          <div className="flex items-center gap-2 mb-1">
+            <Sparkles size={14} className="text-[#B8962E]" />
+            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#B8962E]">
+              Analytics
+            </span>
+          </div>
+          <h1 className="text-[2rem] font-extrabold tracking-[-0.03em] text-[#F5F0E8]">
             Dashboard Overview
           </h1>
+          <p className="mt-1 text-sm text-[#6B6358]">
+            {format(new Date(), "EEEE, dd MMMM yyyy")}
+          </p>
         </div>
-      </div>
+        <div className="flex items-center gap-2 rounded-xl border border-[#2E2B24] bg-[#131210] px-4 py-2">
+          <Store size={14} className="text-[#B8962E]" />
+          <span className="text-xs font-bold text-[#A89F8C]">
+            {stats.onDutyCount} Staff On Duty
+          </span>
+        </div>
+      </header>
 
-
-
-      <div className="grid gap-6 lg:grid-cols-[1.8fr_1.2fr]">
-        {/* Left — stats + quick actions */}
-        <div className="space-y-6">
+      <div className="grid gap-8 lg:grid-cols-[1.6fr_1fr]">
+        {/* Left Column */}
+        <div className="space-y-8">
+          {/* Stats Grid */}
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {/* Today's Collection */}
-            <div className="rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-5 shadow-sm hover:border-[#4A4535] hover:shadow-[0_4px_20px_rgba(184,150,46,0.08)] transition">
-              <div className="flex items-center justify-between text-[#B8962E]">
-                <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#A89F8C]">Today's Collection</span>
-                <TrendingUp size={20} className="text-[#B8962E]" />
-              </div>
-              <p className="mt-3 text-[2rem] font-extrabold tracking-[-0.04em] text-[#F5F0E8]">
-                {formatCurrency(stats.todayRevenue)}
-              </p>
-              <div className="mt-4 grid grid-cols-3 gap-2 border-t border-[#2E2B24] pt-3 text-center">
-                <div>
-                  <p className="text-[10px] font-semibold text-[#6B6358] uppercase tracking-wider">Cash</p>
-                  <p className="text-xs font-bold text-[#F5F0E8]">{formatCurrency(stats.cashToday)}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] font-semibold text-[#6B6358] uppercase tracking-wider">UPI</p>
-                  <p className="text-xs font-bold text-[#F5F0E8]">{formatCurrency(stats.upiToday)}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] font-semibold text-[#6B6358] uppercase tracking-wider">Card</p>
-                  <p className="text-xs font-bold text-[#F5F0E8]">{formatCurrency(stats.cardToday)}</p>
-                </div>
-              </div>
-            </div>
+            <StatCard
+              title="Today's Collection"
+              value={formatCurrency(stats.todayRevenue)}
+              icon={TrendingUp}
+              accent="gold"
+            >
+              <PaymentBreakdown
+                cash={stats.cashToday}
+                upi={stats.upiToday}
+                card={stats.cardToday}
+              />
+            </StatCard>
 
-            {/* Monthly Revenue */}
-            <div className="rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-5 shadow-sm flex flex-col justify-between hover:border-[#4A4535] hover:shadow-[0_4px_20px_rgba(184,150,46,0.08)] transition">
-              <div>
-                <div className="flex items-center justify-between text-[#B8962E]">
-                  <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#A89F8C]">Monthly Revenue</span>
-                  <CreditCard size={20} className="text-[#B8962E]" />
-                </div>
-                <p className="mt-3 text-[2rem] font-extrabold tracking-[-0.04em] text-[#F5F0E8]">
-                  {formatCurrency(stats.monthlyRevenue)}
-                </p>
-              </div>
-              <p className="mt-2 text-[11px] text-[#6B6358]">Sales in current month</p>
-            </div>
+            <StatCard
+              title="Monthly Revenue"
+              value={formatCurrency(stats.monthlyRevenue)}
+              subtitle="Total sales in current month"
+              icon={CreditCard}
+              accent="green"
+            />
 
-            {/* Today's Visits */}
-            <div className="rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-5 shadow-sm flex flex-col justify-between hover:border-[#4A4535] hover:shadow-[0_4px_20px_rgba(184,150,46,0.08)] transition">
-              <div>
-                <div className="flex items-center justify-between text-[#B8962E]">
-                  <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#A89F8C]">Today's Visits</span>
-                  <CalendarDays size={20} className="text-[#B8962E]" />
-                </div>
-                <p className="mt-3 text-[2rem] font-extrabold tracking-[-0.04em] text-[#F5F0E8]">
-                  {stats.todayVisits}
-                </p>
-              </div>
-              <p className="mt-2 text-[11px] text-[#6B6358]">Customers served today</p>
-            </div>
+            <StatCard
+              title="Today's Visits"
+              value={stats.todayVisits}
+              subtitle="Unique customers served today"
+              icon={CalendarDays}
+              accent="blue"
+            />
           </div>
 
           {/* Quick Actions */}
-          <section className="rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-5 shadow-sm">
-            <h2 className="text-[0.95rem] font-bold tracking-[-0.015em] text-[#F5F0E8] mb-4">Quick Actions</h2>
-            <div className="grid grid-cols-3 divide-x divide-[#2E2B24] gap-0">
+          <section className="rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-6 shadow-sm">
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-base font-bold tracking-[-0.01em] text-[#F5F0E8]">
+                Quick Actions
+              </h2>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[#6B6358]">
+                Shortcuts
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <button
+                onClick={() => openModal("billing")}
+                className="group flex flex-col items-center justify-center gap-2 rounded-xl bg-[#B8962E] p-4 text-[13px] font-extrabold tracking-wide uppercase text-[#0E0D0B] transition-all hover:bg-[#D4A935] hover:shadow-[0_8px_24px_rgba(184,150,46,0.25)] active:scale-[0.98]"
+              >
+                <Receipt size={24} strokeWidth={2} />
+                <span>Open Billing</span>
+              </button>
 
-              {/* Col 1 — Billing */}
-              <div className="flex flex-col px-4">
-                <button
-                  type="button"
-                  onClick={() => setIsBillingOpen(true)}
-                  className="w-full flex-1 min-h-[100px] flex flex-col items-center justify-center rounded-xl bg-[#B8962E] text-[14px] font-extrabold tracking-[0.08em] uppercase text-[#0E0D0B] hover:bg-[#D4A935] shadow-[0_4px_16px_rgba(184,150,46,0.25)] transition cursor-pointer p-3"
-                >
-                  <Receipt size={28} className="mb-2" />
-                  <span>Open Billing</span>
-                  <span>Terminal</span>
-                </button>
+              <button
+                onClick={() => openModal("settlements")}
+                className="group flex flex-col items-center justify-center gap-2 rounded-xl border border-[#2E2B24] bg-[#131210] p-4 text-[12px] font-semibold tracking-wide text-[#A89F8C] transition-all hover:border-[#B8962E] hover:text-[#B8962E] hover:bg-[#1F1A0F] active:scale-[0.98]"
+              >
+                <BarChart2 size={22} strokeWidth={2} />
+                <span>Settlements</span>
+              </button>
+
+              <button
+                onClick={() => openModal("customer")}
+                className="group flex flex-col items-center justify-center gap-2 rounded-xl border border-[#2E2B24] bg-[#131210] p-4 text-[12px] font-semibold tracking-wide text-[#A89F8C] transition-all hover:border-[#B8962E] hover:text-[#B8962E] hover:bg-[#1F1A0F] active:scale-[0.98]"
+              >
+                <UserPlus size={22} strokeWidth={2} />
+                <span>Add Customer</span>
+              </button>
+
+              <button
+                onClick={() => openModal("expense")}
+                className="group flex flex-col items-center justify-center gap-2 rounded-xl border border-[#2E2B24] bg-[#131210] p-4 text-[12px] font-semibold tracking-wide text-[#A89F8C] transition-all hover:border-[#B8962E] hover:text-[#B8962E] hover:bg-[#1F1A0F] active:scale-[0.98]"
+              >
+                <PiggyBank size={22} strokeWidth={2} />
+                <span>Add Expense</span>
+              </button>
+            </div>
+
+            <div className="mt-3 flex gap-3">
+              <Link
+                href="/staff"
+                className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-[#2E2B24] bg-[#131210] py-2.5 text-xs font-semibold text-[#A89F8C] transition hover:border-[#B8962E] hover:text-[#B8962E]"
+              >
+                <UsersRound size={14} />
+                Manage Staff
+              </Link>
+              <Link
+                href="/invoices"
+                className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-[#2E2B24] bg-[#131210] py-2.5 text-xs font-semibold text-[#A89F8C] transition hover:border-[#B8962E] hover:text-[#B8962E]"
+              >
+                <Receipt size={14} />
+                All Invoices
+              </Link>
+            </div>
+          </section>
+
+          {/* Today's Invoices */}
+          <section className="rounded-2xl border border-[#2E2B24] bg-[#1C1A16] shadow-sm overflow-hidden">
+            <div className="flex items-center justify-between border-b border-[#2E2B24] px-6 py-4">
+              <div>
+                <h2 className="text-base font-bold tracking-[-0.01em] text-[#F5F0E8]">
+                  Today's Invoices
+                </h2>
+                <p className="mt-0.5 text-xs text-[#6B6358]">
+                  {todayInvoices.length} transactions recorded
+                </p>
               </div>
-
-              {/* Col 2 — Settlements + Staff */}
-              <div className="flex flex-col items-center justify-center gap-3 px-4">
-                <button
-                  type="button"
-                  onClick={() => setIsSettlementsOpen(true)}
-                  className="w-full h-11 flex items-center justify-center gap-2 rounded-xl border border-[#2E2B24] bg-[#131210] text-[12px] font-semibold tracking-[0.01em] text-[#A89F8C] hover:border-[#B8962E] hover:text-[#B8962E] hover:bg-[#1F1A0F] transition cursor-pointer"
-                >
-                  <BarChart2 size={15} />
-                  View Settlements
-                </button>
-                <Link
-                  href="/staff"
-                  className="w-full h-11 flex items-center justify-center gap-2 rounded-xl border border-[#2E2B24] bg-[#131210] text-[12px] font-semibold tracking-[0.01em] text-[#A89F8C] hover:border-[#B8962E] hover:text-[#B8962E] hover:bg-[#1F1A0F] transition"
-                >
-                  <UsersRound size={15} />
-                  Manage Staff
-                </Link>
+              <div className="rounded-lg bg-[#131210] px-3 py-1.5 text-xs font-bold text-[#B8962E] border border-[#2E2B24]">
+                {todayStr}
               </div>
-
-              {/* Col 3 — Customer + Expense */}
-              <div className="flex flex-col items-center justify-center gap-3 px-4">
-                <button
-                  type="button"
-                  onClick={() => setIsCustomerOpen(true)}
-                  className="w-full h-11 flex items-center justify-center gap-2 rounded-xl border border-[#2E2B24] bg-[#131210] text-[12px] font-semibold tracking-[0.01em] text-[#A89F8C] hover:border-[#B8962E] hover:text-[#B8962E] hover:bg-[#1F1A0F] transition cursor-pointer"
-                >
-                  <UserPlus size={15} />
-                  Add Customer
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsExpenseOpen(true)}
-                  className="w-full h-11 flex items-center justify-center gap-2 rounded-xl border border-[#2E2B24] bg-[#131210] text-[12px] font-semibold tracking-[0.01em] text-[#A89F8C] hover:border-[#B8962E] hover:text-[#B8962E] hover:bg-[#1F1A0F] transition cursor-pointer"
-                >
-                  <PiggyBank size={15} />
-                  Add Expense
-                </button>
-              </div>
-
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[600px] text-left">
+                <thead>
+                  <tr className="border-b border-[#2E2B24] bg-[#131210]/50">
+                    <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-[0.2em] text-[#6B6358]">
+                      Invoice
+                    </th>
+                    <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-[0.2em] text-[#6B6358]">
+                      Customer
+                    </th>
+                    <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-[0.2em] text-[#6B6358]">
+                      Type
+                    </th>
+                    <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-[0.2em] text-[#6B6358]">
+                      Staff
+                    </th>
+                    <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-[0.2em] text-[#6B6358]">
+                      Time
+                    </th>
+                    <th className="px-4 py-3 text-right text-[10px] font-bold uppercase tracking-[0.2em] text-[#6B6358]">
+                      Amount
+                    </th>
+                    <th className="px-4 py-3 text-right text-[10px] font-bold uppercase tracking-[0.2em] text-[#6B6358]">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#242118]">
+                  {todayInvoices.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={7}
+                        className="px-4 py-12 text-center text-sm text-[#6B6358]"
+                      >
+                        <div className="flex flex-col items-center gap-2">
+                          <Receipt size={32} className="text-[#2E2B24]" />
+                          <span className="italic">No bills recorded today</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    todayInvoices.map((inv) => (
+                      <InvoiceRow key={inv.id} invoice={inv} />
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
           </section>
         </div>
 
-        {/* ── E: Right — horizontal staff cards ─────────────────────────── */}
-        <section className="rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-5 shadow-sm">
-          <div className="mb-4">
-            <h2 className="text-[0.95rem] font-bold tracking-[-0.015em] text-[#F5F0E8]">Stylists Floor Board</h2>
-            <p className="text-xs text-[#6B6358]">Real-time status and floor hours today</p>
+        {/* Right Column — Staff */}
+        <section className="rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-6 shadow-sm">
+          <div className="mb-5 flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-bold tracking-[-0.01em] text-[#F5F0E8]">
+                Stylists Floor Board
+              </h2>
+              <p className="mt-0.5 text-xs text-[#6B6358]">
+                Real-time status and floor hours
+              </p>
+            </div>
+            <div className="flex items-center gap-1.5 rounded-lg bg-[#131210] px-2.5 py-1.5 border border-[#2E2B24]">
+              <div className="size-1.5 rounded-full bg-[#4ADE80]" />
+              <span className="text-[10px] font-bold text-[#6B6358]">
+                {staff.filter((s) => s.dutyStatus === "onDuty").length} Active
+              </span>
+            </div>
           </div>
+
           {staff.length === 0 ? (
-            <p className="text-xs text-[#6B6358] italic">No registered staff found.</p>
+            <div className="flex flex-col items-center gap-3 py-12 text-center">
+              <Users size={32} className="text-[#2E2B24]" />
+              <p className="text-sm text-[#6B6358] italic">
+                No registered staff found
+              </p>
+              <Link
+                href="/staff"
+                className="text-xs font-bold text-[#B8962E] hover:underline"
+              >
+                Add staff members
+              </Link>
+            </div>
           ) : (
-            <div className="grid gap-3 sm:grid-cols-2">
-              {staffWithActiveTimes.map((member) => {
-                const isOnDuty = member.dutyStatus === "onDuty";
-                const activeTime = member.activeTime;
-                return (
-                  <div
-                    key={member.id}
-                    className="rounded-2xl border border-[#2E2B24] bg-[#131210] p-4 flex flex-col justify-between hover:border-[#B8962E] hover:shadow-[0_2px_12px_rgba(184,150,46,0.12)] transition"
-                  >
-                    <div>
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-[#F5F0E8] text-sm">
-                          {member.name}
-                        </span>
-                        <span
-                          className={`inline-block rounded-full px-2.5 py-0.5 text-[10px] font-bold border tracking-[0.1em] uppercase ${isOnDuty
-                            ? "bg-[#2A2310] text-[#D4A935] border-[#4A3A10]"
-                            : "bg-[#1C1A16] text-[#6B6358] border-[#2E2B24]"
-                            }`}
-                        >
-                          {isOnDuty ? "On Duty" : "Off Duty"}
-                        </span>
-                      </div>
-                      <p className="text-[10px] font-semibold tracking-[0.12em] uppercase text-[#6B6358] mt-0.5">{member.role}</p>
-                      <div className="mt-2 flex items-center justify-between border-t border-[#2E2B24] pt-2 text-xs">
-                        <span className="text-[#6B6358]">Active today</span>
-                        <span className="font-bold text-[#F5F0E8]">{activeTime}</span>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => toggleDutyStatus(member)}
-                      className={`mt-3 h-8 w-full rounded-xl text-[11px] font-bold tracking-wide transition ${isOnDuty
-                        ? "bg-[#1C1A16] border border-[#2E2B24] text-[#A89F8C] hover:border-[#B8962E] hover:text-[#B8962E] hover:bg-[#1F1A0F]"
-                        : "bg-[#B8962E] text-[#0E0D0B] hover:bg-[#D4A935]"
-                        }`}
-                    >
-                      {isOnDuty ? "Go Off Duty" : "Go On Duty"}
-                    </button>
-                  </div>
-                );
-              })}
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+              {staffWithActiveTimes.map((member) => (
+                <StaffCard
+                  key={member.id}
+                  member={member}
+                  activeTime={member.activeTime}
+                  onToggle={toggleDutyStatus}
+                />
+              ))}
             </div>
           )}
         </section>
       </div>
 
-      {/* ── B: Today's invoices list ──────────────────────────────────────── */}
-      <section className="rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-5 shadow-sm">
-        <div className="mb-4">
-          <h2 className="text-[0.95rem] font-bold tracking-[-0.015em] text-[#F5F0E8]">Today's Invoices</h2>
+      {/* Modals */}
+      <ModalOverlay
+        isOpen={modals.billing}
+        onClose={() => closeModal("billing")}
+        maxWidth="max-w-7xl"
+      >
+        <div className="p-6 md:p-8">
+          <BillingTerminal
+            onClose={() => closeModal("billing")}
+            onSuccess={handleBillingSuccess}
+          />
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[560px] border-collapse text-left text-sm text-[#A89F8C]">
-            <thead className="bg-[#131210] border-b border-[#2E2B24]">
-              <tr>
-                <th className="px-4 py-3 text-[10px] uppercase tracking-[0.2em] text-[#6B6358] font-bold">Invoice #</th>
-                <th className="px-4 py-3 text-[10px] uppercase tracking-[0.2em] text-[#6B6358] font-bold">Customer</th>
-                <th className="px-4 py-3 text-[10px] uppercase tracking-[0.2em] text-[#6B6358] font-bold">Cust Type</th>
-                <th className="px-4 py-3 text-[10px] uppercase tracking-[0.2em] text-[#6B6358] font-bold">Staff</th>
-                <th className="px-4 py-3 text-[10px] uppercase tracking-[0.2em] text-[#6B6358] font-bold">Time</th>
-                <th className="px-4 py-3 text-[10px] uppercase tracking-[0.2em] text-[#6B6358] font-bold text-right">Amount</th>
-                <th className="px-4 py-3 text-right"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#242118]">
-              {todayInvoices.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-[#6B6358] italic">
-                    No bills recorded today.
-                  </td>
-                </tr>
-              ) : (
-                todayInvoices.map((inv) => {
-                  const staffListStr = Array.from(
-                    new Set(
-                      (inv.services || [])
-                        .map((s: any) => s.staffName || s.staff)
-                        .filter(Boolean)
-                    )
-                  ).join(", ");
+      </ModalOverlay>
 
-                  const timeSource =
-                    inv.createdAt && typeof inv.createdAt.toDate === "function"
-                      ? inv.createdAt
-                      : inv.date;
-                  const time =
-                    timeSource && typeof timeSource.toDate === "function"
-                      ? timeSource
-                        .toDate()
-                        .toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-                      : "—";
-                  const customerType = inv.customerType || "regular";
-
-                  return (
-                    <tr key={inv.id} className="bg-transparent hover:bg-[#1F1A0F] transition">
-                      <td className="px-4 py-3 font-bold text-[#F5F0E8]">
-                        {inv.invoiceNumber}
-                      </td>
-                      <td className="px-4 py-3 font-medium text-[#F5F0E8]">
-                        {inv.customerName}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`inline-block rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wide uppercase border ${customerType === "membership"
-                            ? "bg-[#2A2310] text-[#D4A935] border-[#4A3A10]"
-                            : customerType === "regular"
-                              ? "bg-[#1C1A16] text-[#A89F8C] border-[#2E2B24]"
-                              : "bg-[#1A1C2A] text-[#818CF8] border-[#2E3154]"
-                            }`}
-                        >
-                          {customerType === "membership"
-                            ? "Membership"
-                            : customerType === "new"
-                              ? "New"
-                              : "Regular"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-[#A89F8C]">
-                        {staffListStr || (
-                          <span className="italic text-[#6B6358]">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-[#6B6358]">{time}</td>
-                      <td className="px-4 py-3 font-bold text-[#F5F0E8] text-right">
-                        {formatCurrency(inv.grandTotal)}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex justify-end gap-2">
-                          <Link
-                            href={`/invoices/${inv.id}`}
-                            className="inline-flex h-8 items-center justify-center rounded-lg border border-[#2E2B24] bg-[#131210] px-3 text-xs font-semibold text-[#A89F8C] hover:border-[#B8962E] hover:text-[#B8962E] hover:bg-[#1F1A0F] transition"
-                          >
-                            View
-                          </Link>
-                          <Link
-                            href={`/billing?edit=${inv.id}`}
-                            className="inline-flex h-8 items-center justify-center rounded-lg border border-[#2E2B24] bg-[#131210] px-3 text-xs font-semibold text-[#B8962E] hover:border-[#B8962E] hover:bg-[#1F1A0F] transition"
-                          >
-                            Edit
-                          </Link>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      {isBillingOpen && (
-        <div
-          className="fixed inset-0 z-[60] flex items-start justify-center bg-black/70 backdrop-blur-sm p-4 sm:p-6 md:p-10 overflow-y-auto animate-in fade-in duration-200"
-          onClick={() => setIsBillingOpen(false)}
-        >
-          <div
-            className="relative w-full max-w-7xl bg-[#1C1A16] rounded-3xl border border-[#2E2B24] shadow-2xl p-4 sm:p-6 md:p-8 my-auto animate-in zoom-in-95 duration-200"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <BillingTerminal
-              onClose={() => setIsBillingOpen(false)}
-              onSuccess={async () => {
-                // Invalidate caching on success
-                const now = new Date();
-                const yyyy = now.getFullYear();
-                const mm = String(now.getMonth() + 1).padStart(2, '0');
-                const monthKey = `${yyyy}-${mm}`;
-                localStorage.removeItem(`monthlyStats_${monthKey}`);
-                localStorage.removeItem(`staffMonthlyStats_${monthKey}`);
-                // Trigger refetches
-                await Promise.all([
-                  fetchMonthlyStats(true),
-                  fetchStaffMonthlyStats(true),
-                ]);
-              }}
-            />
-          </div>
-        </div>
-      )}
-
-      {isCustomerOpen && (
+      {modals.customer && (
         <AddCustomerModal
-          onClose={() => setIsCustomerOpen(false)}
-          onSuccess={() => setIsCustomerOpen(false)}
+          onClose={() => closeModal("customer")}
+          onSuccess={() => closeModal("customer")}
         />
       )}
 
-      {isExpenseOpen && (
+      {modals.expense && (
         <AddExpenseModal
-          onClose={() => setIsExpenseOpen(false)}
+          onClose={() => closeModal("expense")}
           onSuccess={() => {
-            setIsExpenseOpen(false);
+            closeModal("expense");
             loadTodayExpenses();
           }}
         />
       )}
 
-      {isSettlementsOpen && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 sm:p-6 md:p-10 overflow-y-auto animate-in fade-in duration-200"
-          onClick={() => setIsSettlementsOpen(false)}
-        >
-          <div
-            className="relative w-full max-w-4xl bg-[#1C1A16] rounded-3xl border border-[#2E2B24] shadow-2xl p-6 md:p-8 max-h-[90vh] overflow-y-auto my-auto animate-in zoom-in-95 duration-200"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Modal Header */}
-            <div className="flex items-center justify-between pb-4 border-b border-[#2E2B24]">
-              <div>
-                <h3 className="text-xl font-bold text-[#F5F0E8]">Today's Settlements Breakdown</h3>
-                <p className="text-xs text-[#6B6358] font-medium mt-1">
-                  Showing detailed splits for {format(new Date(), "dd MMM yyyy")}
+      <ModalOverlay
+        isOpen={modals.settlements}
+        onClose={() => closeModal("settlements")}
+      >
+        <div className="p-6 md:p-8">
+          {/* Settlements Header */}
+          <div className="flex items-center justify-between pb-5 border-b border-[#2E2B24]">
+            <div>
+              <h3 className="text-xl font-bold text-[#F5F0E8]">
+                Today's Settlements
+              </h3>
+              <p className="mt-1 text-xs font-medium text-[#6B6358]">
+                Detailed revenue splits for {format(new Date(), "dd MMM yyyy")}
+              </p>
+            </div>
+            <button
+              onClick={() => closeModal("settlements")}
+              className="grid size-10 place-items-center rounded-xl border border-[#2E2B24] bg-[#131210] text-[#A89F8C] transition hover:border-[#B8962E] hover:text-[#B8962E]"
+            >
+              <X size={16} strokeWidth={2.5} />
+            </button>
+          </div>
+
+          {/* Settlements Content */}
+          <div className="mt-6">
+            {todayInvoices.length === 0 ? (
+              <div className="flex flex-col items-center gap-3 py-16 border border-dashed border-[#2E2B24] rounded-2xl bg-[#131210]">
+                <BarChart2 size={40} className="text-[#2E2B24]" />
+                <p className="text-sm font-semibold text-[#6B6358]">
+                  No sales or settlements recorded today
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setIsSettlementsOpen(false)}
-                className="grid size-10 place-items-center rounded-xl border border-[#2E2B24] hover:border-[#B8962E] transition text-[#A89F8C] hover:text-[#B8962E] cursor-pointer font-bold bg-[#131210] shadow-xs"
-              >
-                ✕
-              </button>
-            </div>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {/* Owner Card */}
+                <SettlementCard
+                  title="Owner Settlement"
+                  value={todaySettlement.totalOwnerShare - todayExpensesTotal}
+                  icon={ShieldCheck}
+                  isOwner
+                  items={[
+                    { label: "Owner Direct Services", value: todaySettlement.ownerDirectRevenue },
+                    { label: "Stylists 50% Share", value: todaySettlement.staffRevenueContribution },
+                    { label: "Stylists Product Costs", value: todaySettlement.staffProductReimbursement },
+                    { label: "Membership Invoices", value: todaySettlement.totalMembershipAmount },
+                    { label: "Retail Product Sales", value: todaySettlement.retailProductsRevenue },
+                    { label: "Gross Share", value: todaySettlement.totalOwnerShare },
+                    { label: "Today's Expenses", value: todayExpensesTotal, negative: true },
+                  ]}
+                />
 
-            {/* Modal Content */}
-            <div className="mt-6">
-              {/* Details Cards */}
-              {todayInvoices.length === 0 ? (
-                <div className="text-center py-12 border border-dashed border-[#2E2B24] rounded-2xl bg-[#131210] shadow-xs">
-                  <p className="text-sm font-semibold text-[#6B6358] italic">No sales or settlements recorded today.</p>
-                </div>
-              ) : (
-                <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
-                  {/* Owner Net Card */}
-                  <div className="rounded-2xl border border-[#4A3A10] bg-[#1A1500] p-5 shadow-xs space-y-4">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h4 className="font-extrabold text-[#D4A935] flex items-center gap-1.5">
-                          <ShieldCheck size={16} className="text-[#D4A935]" />
-                          Owner Settlement
-                        </h4>
-                        <span className="inline-block rounded-full bg-[#2A2310] text-[#D4A935] border border-[#4A3A10] px-2 py-0.5 text-[10px] font-bold tracking-wide mt-1 uppercase">
-                          Today Summary
-                        </span>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-[10px] text-[#D4A935] font-bold uppercase tracking-wider">
-                          Net Share
-                        </span>
-                        <p className="font-black text-[#D4A935] text-xl mt-0.5">
-                          {formatCurrency(todaySettlement.totalOwnerShare - todayExpensesTotal)}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="border-t border-[#2E2B24] pt-3 space-y-2 text-xs text-[#A89F8C]">
-                      <div className="flex justify-between">
-                        <span className="text-[#A89F8C] font-medium">Owner Direct Services:</span>
-                        <span className="font-bold text-[#F5F0E8]">{formatCurrency(todaySettlement.ownerDirectRevenue)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-[#A89F8C] font-medium">Stylists 50% Share:</span>
-                        <span className="font-bold text-[#F5F0E8]">+{formatCurrency(todaySettlement.staffRevenueContribution)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-[#A89F8C] font-medium">Stylists Product Costs:</span>
-                        <span className="font-bold text-[#F5F0E8]">+{formatCurrency(todaySettlement.staffProductReimbursement)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-[#A89F8C] font-medium">Membership Invoices:</span>
-                        <span className="font-bold text-[#F5F0E8]">+{formatCurrency(todaySettlement.totalMembershipAmount)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-[#A89F8C] font-medium">Retail Product Sales:</span>
-                        <span className="font-bold text-[#F5F0E8]">+{formatCurrency(todaySettlement.retailProductsRevenue)}</span>
-                      </div>
-                      <div className="flex justify-between border-t border-[#2E2B24] pt-2 mt-2 font-semibold text-[#A89F8C]">
-                        <span>Gross Share:</span>
-                        <span>{formatCurrency(todaySettlement.totalOwnerShare)}</span>
-                      </div>
-                      <div className="flex justify-between text-[#E57373] font-semibold">
-                        <span>Today's Expenses:</span>
-                        <span>-{formatCurrency(todayExpensesTotal)}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Stylist Cards */}
-                  {Object.values(todaySettlement.staffDetails)
-                    .filter((sd) => sd.role !== "Owner")
-                    .map((sd) => (
-                      <div
-                        key={sd.staffId}
-                        className="rounded-2xl border border-[#2E2B24] bg-[#131210] p-5 shadow-xs space-y-4"
-                      >
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <h4 className="font-extrabold text-[#F5F0E8] flex items-center gap-1.5">
-                              <Users size={16} className="text-[#B8962E]" />
-                              {sd.name}
-                            </h4>
-                            <span className="inline-block rounded-full bg-[#1C1A16] text-[#A89F8C] border border-[#2E2B24] px-2 py-0.5 text-[10px] font-bold tracking-wide mt-1 uppercase">
-                              Stylist Split
-                            </span>
-                          </div>
-                          <div className="text-right">
-                            <span className="text-[10px] text-[#6B6358] font-bold uppercase tracking-wider">
-                              Net Share
-                            </span>
-                            <p className="font-black text-[#F5F0E8] text-xl mt-0.5">
-                              {formatCurrency(sd.staffShare)}
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="border-t border-[#2E2B24] pt-3 space-y-2 text-xs">
-                          <div className="flex justify-between text-[#6B6358]">
-                            <span>Service Revenue:</span>
-                            <span className="font-semibold text-[#F5F0E8]">{formatCurrency(sd.serviceRevenue)}</span>
-                          </div>
-                          <div className="flex justify-between text-[#6B6358]">
-                            <span>50% Base Share:</span>
-                            <span className="font-semibold text-[#F5F0E8]">{formatCurrency(0.5 * sd.serviceRevenue)}</span>
-                          </div>
-                          <div className="flex justify-between text-[#6B6358]">
-                            <span>Product Cost Used:</span>
-                            <span className="font-bold text-[#E57373]">-{formatCurrency(sd.productCost)}</span>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              )}
-            </div>
+                {/* Stylist Cards */}
+                {Object.values(todaySettlement.staffDetails)
+                  .filter((sd) => sd.role !== "Owner")
+                  .map((sd) => (
+                    <SettlementCard
+                      key={sd.staffId}
+                      title={sd.name}
+                      value={sd.staffShare}
+                      icon={Users}
+                      items={[
+                        { label: "Service Revenue", value: sd.serviceRevenue },
+                        { label: "50% Base Share", value: 0.5 * sd.serviceRevenue },
+                        { label: "Product Cost Used", value: sd.productCost, negative: true },
+                      ]}
+                    />
+                  ))}
+              </div>
+            )}
           </div>
         </div>
-      )}
+      </ModalOverlay>
     </div>
   );
 }

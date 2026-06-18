@@ -21,6 +21,8 @@ export default function ProductsPage() {
     type: "retail" as "retail" | "service",
     amount: 0,
     noOfServings: 0,
+    brand: "",
+    category: "",
   });
 
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -35,6 +37,8 @@ export default function ProductsPage() {
       type,
       amount: 0,
       noOfServings: 0,
+      brand: "",
+      category: "",
     });
     setModalOpen(true);
   };
@@ -48,6 +52,8 @@ export default function ProductsPage() {
       type: product.type || "retail",
       amount: product.amount || 0,
       noOfServings: product.noOfServings || 0,
+      brand: product.brand || "",
+      category: product.category || "",
     });
     setModalOpen(true);
   };
@@ -76,6 +82,8 @@ export default function ProductsPage() {
       const payload = {
         name: formData.name,
         type: formData.type,
+        brand: formData.brand.trim() || undefined,
+        category: formData.category.trim() || undefined,
         ...(formData.type === "retail" ? {
           price: formData.price,
           quantity: formData.quantity,
@@ -104,7 +112,9 @@ export default function ProductsPage() {
   };
 
   const filteredProducts = products.filter((p) =>
-    p.name.toLowerCase().includes(searchQuery.toLowerCase())
+    p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (p.brand && p.brand.toLowerCase().includes(searchQuery.toLowerCase())) ||
+    (p.category && p.category.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   const retailProducts = filteredProducts.filter((p) => !p.type || p.type === "retail");
@@ -176,7 +186,16 @@ export default function ProductsPage() {
                   ) : (
                     retailProducts.map((product) => (
                       <tr key={product.id} className="hover:bg-[#1C1A16] transition bg-transparent text-[#A89F8C]">
-                        <td className="px-6 py-4 font-semibold text-[#F5F0E8]">{product.name}</td>
+                        <td className="px-6 py-4 font-semibold text-[#F5F0E8]">
+                          <div>{product.name}</div>
+                          {(product.brand || product.category) && (
+                            <div className="text-[10px] text-stone-500 font-medium mt-0.5 space-x-1.5">
+                              {product.brand && <span>Brand: {product.brand}</span>}
+                              {product.brand && product.category && <span>•</span>}
+                              {product.category && <span>Category: {product.category}</span>}
+                            </div>
+                          )}
+                        </td>
                         <td className="px-6 py-4 text-[#F5F0E8] font-semibold">{formatCurrency(product.price)}</td>
                         <td className="px-6 py-4">{(product.quantity ?? 0)} items</td>
                         <td className="px-6 py-4">
@@ -253,7 +272,16 @@ export default function ProductsPage() {
                   ) : (
                     serviceProducts.map((product) => (
                       <tr key={product.id} className="hover:bg-[#1C1A16] transition bg-transparent text-[#A89F8C]">
-                        <td className="px-6 py-4 font-semibold text-[#F5F0E8]">{product.name}</td>
+                        <td className="px-6 py-4 font-semibold text-[#F5F0E8]">
+                          <div>{product.name}</div>
+                          {(product.brand || product.category) && (
+                            <div className="text-[10px] text-stone-500 font-medium mt-0.5 space-x-1.5">
+                              {product.brand && <span>Brand: {product.brand}</span>}
+                              {product.brand && product.category && <span>•</span>}
+                              {product.category && <span>Category: {product.category}</span>}
+                            </div>
+                          )}
+                        </td>
                         <td className="px-6 py-4 text-[#F5F0E8] font-semibold">{formatCurrency(product.amount || 0)}</td>
                         <td className="px-6 py-4 text-[#F5F0E8] font-semibold text-stone-600">
                           {formatCurrency(product.costPerServing || 0)}
@@ -325,6 +353,28 @@ export default function ProductsPage() {
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   className="mt-2 h-11 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-4 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E] focus:ring-1 focus:ring-[#B8962E] placeholder-[#6B6358]"
                   placeholder={formData.type === "retail" ? "e.g. Keratin Repair Serum" : "e.g. Hair Color Tube / Shampoo"}
+                />
+              </label>
+
+              <label className="block">
+                <span className="text-sm font-semibold text-[#A89F8C]">Brand</span>
+                <input
+                  type="text"
+                  value={formData.brand}
+                  onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
+                  className="mt-2 h-11 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-4 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E] focus:ring-1 focus:ring-[#B8962E] placeholder-[#6B6358]"
+                  placeholder="e.g. L'Oreal, Wella"
+                />
+              </label>
+
+              <label className="block">
+                <span className="text-sm font-semibold text-[#A89F8C]">Category</span>
+                <input
+                  type="text"
+                  value={formData.category}
+                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                  className="mt-2 h-11 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-4 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E] focus:ring-1 focus:ring-[#B8962E] placeholder-[#6B6358]"
+                  placeholder="e.g. Shampoo, Hair Color"
                 />
               </label>
 

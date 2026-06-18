@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import * as invoicesService from "@/services/invoices";
 import * as expensesService from "@/services/expenses";
 import { useAppData } from "@/context/AppDataContext";
@@ -11,26 +11,121 @@ import {
   Calendar,
   ChevronDown,
   ChevronUp,
-  Coins,
-  Users,
   ShieldCheck,
   Package,
   PiggyBank,
   TrendingUp,
+  Users,
+  RefreshCw,
+  Receipt,
+  Wallet,
+  ArrowUpRight,
+  ArrowDownRight,
+  Clock,
+  AlertCircle,
+  Sparkles,
+  BarChart3,
+  Scissors,
 } from "lucide-react";
-import { collection, query, where, getDocs, getDoc, doc, writeBatch } from "firebase/firestore";
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  getDoc,
+  doc,
+  writeBatch,
+} from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
-function getInvoiceDateKeys(invoice: any) {
+// ── Types ──────────────────────────────────────────────────────────────────
+interface Invoice {
+  id?: string;
+  dateKey?: string;
+  date: any;
+  grandTotal: number;
+  subtotal: number;
+  paymentMethod?: string;
+  paymentSplit?: { cash?: number; upi?: number; card?: number };
+  payments?: { cash?: number; upi?: number; card?: number };
+  services?: ServiceItem[];
+  products?: ProductItem[];
+}
+
+interface ServiceItem {
+  staffId?: string;
+  staffName?: string;
+  staffRole?: string;
+  serviceId?: string;
+  price?: number;
+  amount?: number;
+  discount?: number;
+  usedProductCost?: number;
+}
+
+interface ProductItem {
+  price?: number;
+  quantity?: number;
+  discount?: number;
+  amount?: number;
+}
+
+interface DailyStat {
+  dateKey: string;
+  serviceRevenue?: number;
+  productCost?: number;
+  stylistShare?: number;
+  ownerShare?: number;
+  totalMembershipAmount?: number;
+  retailProductsRevenue?: number;
+}
+
+interface StaffDetail {
+  staffId: string;
+  name: string;
+  role: string;
+  serviceRevenue: number;
+  productCost: number;
+  staffShare: number;
+  ownerShareContribution: number;
+}
+
+interface DayDetails {
+  ownerDirectRevenue: number;
+  staffRevenueContribution: number;
+  staffProductReimbursement: number;
+  totalMembershipAmount: number;
+  retailProductsRevenue: number;
+  staffDetails: StaffDetail[];
+}
+
+interface StaffSplit {
+  id?: string;
+  name: string;
+  todayShare: number;
+  monthlyShare: number;
+}
+
+interface Expense {
+  date: string;
+  type: string;
+  amount: number;
+}
+
+// ── Utilities ──────────────────────────────────────────────────────────────
+function getInvoiceDateKeys(invoice: Invoice) {
   let dateKey = invoice.dateKey;
   if (!dateKey) {
     let d = new Date();
     if (invoice.date) {
-      d = typeof invoice.date.toDate === "function" ? invoice.date.toDate() : new Date(invoice.date);
+      d =
+        typeof invoice.date.toDate === "function"
+          ? invoice.date.toDate()
+          : new Date(invoice.date);
     }
     const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
     dateKey = `${yyyy}-${mm}-${dd}`;
   }
   return {
@@ -39,7 +134,7 @@ function getInvoiceDateKeys(invoice: any) {
   };
 }
 
-function getInvoicePayments(inv: any) {
+function getInvoicePayments(inv: Invoice) {
   return {
     cash:
       inv.paymentSplit?.cash ??
@@ -56,15 +151,21 @@ function getInvoicePayments(inv: any) {
   };
 }
 
-function getServiceCommission(s: any, inv: any) {
-  const discountFactor = inv && inv.subtotal > 0 ? (inv.grandTotal / inv.subtotal) : 1;
-  const serviceBaseAmount = s.amount ?? Math.max((s.price || 0) - (s.discount || 0), 0);
+function getServiceCommission(s: ServiceItem, inv: Invoice) {
+  const discountFactor =
+    inv && inv.subtotal > 0 ? inv.grandTotal / inv.subtotal : 1;
+  const serviceBaseAmount =
+    s.amount ?? Math.max((s.price || 0) - (s.discount || 0), 0);
   const amount = serviceBaseAmount * discountFactor;
   const cost = s.usedProductCost || 0;
-  
+
   let role = s.staffRole;
   if (!role) {
-    if (s.serviceId === "membership_fee" || s.staffId === "system" || s.staffName === "System") {
+    if (
+      s.serviceId === "membership_fee" ||
+      s.staffId === "system" ||
+      s.staffName === "System"
+    ) {
       role = "Owner";
     } else {
       role = "Stylist";
@@ -90,11 +191,317 @@ function getServiceCommission(s: any, inv: any) {
   };
 }
 
+// ── Sub-Components ─────────────────────────────────────────────────────────
+
+function MetricCard({
+  title,
+  today,
+  monthly,
+  icon: Icon,
+  variant = "default",
+}: {
+  title: string;
+  today: number;
+  monthly: number;
+  icon: React.ElementType;
+  variant?: "default" | "danger" | "owner";
+}) {
+  const variants = {
+    default: {
+      border: "border-[#2E2B24] hover:border-[#B8962E]/30",
+      iconBg: "bg-[#B8962E]/10 text-[#B8962E]",
+      todayColor: "text-[#F5F0E8]",
+      monthlyColor: "text-[#F5F0E8]",
+    },
+    danger: {
+      border: "border-[#2E2B24] hover:border-[#E57373]/30",
+      iconBg: "bg-[#E57373]/10 text-[#E57373]",
+      todayColor: "text-[#E57373]",
+      monthlyColor: "text-[#E57373]",
+    },
+    owner: {
+      border: "border-[#4A3A10]/50 hover:border-[#B8962E]/40",
+      iconBg: "bg-[#B8962E]/10 text-[#B8962E]",
+      todayColor: "text-[#D4A935]",
+      monthlyColor: "text-[#D4A935]",
+    },
+  };
+
+  const v = variants[variant];
+
+  return (
+    <div
+      className={`group rounded-2xl border ${v.border} bg-[#1C1A16] p-5 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_8px_30px_rgba(184,150,46,0.06)]`}
+    >
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2.5">
+          <div className={`rounded-lg p-2 ${v.iconBg}`}>
+            <Icon size={16} strokeWidth={2.5} />
+          </div>
+          <h4 className="text-sm font-bold text-[#F5F0E8]">{title}</h4>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#6B6358]">
+            Today
+          </span>
+          <p className={`mt-1 text-lg font-black ${v.todayColor}`}>
+            {formatCurrency(today)}
+          </p>
+        </div>
+        <div>
+          <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#6B6358]">
+            This Month
+          </span>
+          <p className={`mt-1 text-lg font-black ${v.monthlyColor}`}>
+            {formatCurrency(monthly)}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StaffSplitCard({ member }: { member: StaffSplit }) {
+  return (
+    <div className="group rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-5 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-[#B8962E]/30 hover:shadow-[0_8px_30px_rgba(184,150,46,0.06)]">
+      <div className="flex items-center gap-2.5 mb-4">
+        <div className="rounded-lg bg-[#60A5FA]/10 p-2 text-[#60A5FA]">
+          <Scissors size={16} strokeWidth={2.5} />
+        </div>
+        <h4 className="text-sm font-bold text-[#F5F0E8]">{member.name}</h4>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#6B6358]">
+            Today
+          </span>
+          <p className="mt-1 text-lg font-black text-[#60A5FA]">
+            {formatCurrency(member.todayShare)}
+          </p>
+        </div>
+        <div>
+          <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#6B6358]">
+            This Month
+          </span>
+          <p className="mt-1 text-lg font-black text-[#60A5FA]">
+            {formatCurrency(member.monthlyShare)}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DayHeader({
+  day,
+  isToday,
+  isExpanded,
+  hasTransactions,
+  onToggle,
+}: {
+  day: {
+    date: string;
+    totalServiceRevenue: number;
+    totalMembershipAmount: number;
+    totalRetailProductsRevenue: number;
+    totalProductCost: number;
+    totalStaffShare: number;
+    totalOwnerShare: number;
+  };
+  isToday: boolean;
+  isExpanded: boolean;
+  hasTransactions: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <div
+      onClick={() => hasTransactions && onToggle()}
+      className={`flex items-center justify-between p-5 select-none transition-colors ${
+        hasTransactions
+          ? "cursor-pointer hover:bg-[#1F1A0F]/30"
+          : "opacity-50"
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        {hasTransactions ? (
+          <div
+            className={`grid size-8 place-items-center rounded-lg border border-[#2E2B24] bg-[#131210] transition-all ${
+              isExpanded ? "border-[#B8962E]/30 text-[#B8962E]" : "text-[#6B6358]"
+            }`}
+          >
+            {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          </div>
+        ) : (
+          <div className="size-8" />
+        )}
+        <div>
+          <div className="flex items-center gap-2.5">
+            <span className="text-sm font-bold text-[#F5F0E8]">
+              {format(new Date(day.date + "T00:00:00"), "dd MMM yyyy")}
+            </span>
+            <span className="text-xs text-[#6B6358] font-medium">
+              {format(new Date(day.date + "T00:00:00"), "EEEE")}
+            </span>
+            {isToday && (
+              <span className="rounded-full bg-[#B8962E] px-2.5 py-0.5 text-[10px] font-extrabold text-[#0E0D0B] uppercase tracking-wider">
+                Today
+              </span>
+            )}
+          </div>
+          {!hasTransactions && (
+            <p className="text-[11px] text-[#6B6358] font-medium mt-0.5">
+              No operations recorded
+            </p>
+          )}
+        </div>
+      </div>
+
+      {hasTransactions && (
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="hidden md:flex items-center gap-4 text-[11px]">
+            <div className="flex items-center gap-1.5">
+              <Receipt size={12} className="text-[#6B6358]" />
+              <span className="text-[#6B6358]">Service</span>
+              <span className="font-bold text-[#F5F0E8]">
+                {formatCurrency(day.totalServiceRevenue)}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <PiggyBank size={12} className="text-[#6B6358]" />
+              <span className="text-[#6B6358]">Membership</span>
+              <span className="font-bold text-[#F5F0E8]">
+                {formatCurrency(day.totalMembershipAmount)}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Package size={12} className="text-[#6B6358]" />
+              <span className="text-[#6B6358]">Retail</span>
+              <span className="font-bold text-[#F5F0E8]">
+                {formatCurrency(day.totalRetailProductsRevenue)}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <div className="rounded-xl bg-[#132A3A]/60 border border-[#2B5270]/40 px-3 py-1.5">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[#60A5FA]">
+                Staff{" "}
+                <span className="text-[#60A5FA] font-extrabold ml-1">
+                  {formatCurrency(day.totalStaffShare)}
+                </span>
+              </span>
+            </div>
+            <div className="rounded-xl bg-[#2E1A47]/60 border border-[#5E3E8C]/40 px-3 py-1.5">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[#C084FC]">
+                Owner{" "}
+                <span className="text-[#C084FC] font-extrabold ml-1">
+                  {formatCurrency(day.totalOwnerShare)}
+                </span>
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SettlementDetailCard({
+  title,
+  value,
+  icon: Icon,
+  items,
+  variant = "default",
+}: {
+  title: string;
+  value: number;
+  icon: React.ElementType;
+  items: { label: string; value: number; negative?: boolean }[];
+  variant?: "default" | "owner";
+}) {
+  const isOwner = variant === "owner";
+
+  return (
+    <div
+      className={`rounded-2xl border p-5 space-y-4 transition-all hover:-translate-y-0.5 ${
+        isOwner
+          ? "border-[#4A3A10]/40 bg-[#1A1500]/60 hover:border-[#B8962E]/40"
+          : "border-[#2E2B24] bg-[#131210] hover:border-[#B8962E]/30"
+      }`}
+    >
+      <div className="flex items-start justify-between">
+        <div className="flex items-center gap-2">
+          <div
+            className={`rounded-lg p-1.5 ${
+              isOwner ? "bg-[#B8962E]/10 text-[#D4A935]" : "bg-[#60A5FA]/10 text-[#60A5FA]"
+            }`}
+          >
+            <Icon size={14} strokeWidth={2.5} />
+          </div>
+          <h4
+            className={`font-extrabold text-sm ${
+              isOwner ? "text-[#D4A935]" : "text-[#F5F0E8]"
+            }`}
+          >
+            {title}
+          </h4>
+        </div>
+        <div className="text-right">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-[#6B6358]">
+            Net Share
+          </span>
+          <p
+            className={`font-black text-xl mt-0.5 ${
+              isOwner ? "text-[#D4A935]" : "text-[#F5F0E8]"
+            }`}
+          >
+            {formatCurrency(value)}
+          </p>
+        </div>
+      </div>
+
+      <div className="space-y-2 border-t border-[#2E2B24] pt-3">
+        {items.map((item, i) => (
+          <div key={i} className="flex justify-between text-xs">
+            <span className="text-[#A89F8C] font-medium">{item.label}</span>
+            <span
+              className={`font-bold ${
+                item.negative ? "text-[#E57373]" : "text-[#F5F0E8]"
+              }`}
+            >
+              {item.negative ? "−" : "+"}
+              {formatCurrency(Math.abs(item.value))}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function EmptyState() {
+  return (
+    <div className="rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-12 text-center shadow-sm">
+      <div className="mx-auto grid size-14 place-items-center rounded-2xl bg-[#131210] border border-[#2E2B24] text-[#B8962E] mb-4">
+        <BarChart3 size={28} strokeWidth={1.5} />
+      </div>
+      <p className="text-sm font-bold text-[#F5F0E8]">No Settlement History</p>
+      <p className="text-xs text-[#6B6358] mt-1.5 max-w-xs mx-auto">
+        There are no invoices or memberships recorded in the selected date range.
+      </p>
+    </div>
+  );
+}
+
+// ── Main Component ─────────────────────────────────────────────────────────
+
 export default function SettlementsPage() {
   const { staff } = useAppData();
   const [loading, setLoading] = useState(true);
-  const [dailyStats, setDailyStats] = useState<Record<string, any>>({});
-  const [dayInvoicesMap, setDayInvoicesMap] = useState<Record<string, any[]>>({});
+  const [dailyStats, setDailyStats] = useState<Record<string, DailyStat>>({});
+  const [dayInvoicesMap, setDayInvoicesMap] = useState<Record<string, Invoice[]>>({});
   const [monthlyStaffShares, setMonthlyStaffShares] = useState<Record<string, number>>({});
   const [monthlyStatsTotals, setMonthlyStatsTotals] = useState({
     ownerShare: 0,
@@ -104,10 +511,19 @@ export default function SettlementsPage() {
   });
   const [loadingDays, setLoadingDays] = useState<Record<string, boolean>>({});
   const [syncing, setSyncing] = useState(false);
-  const [expenses, setExpenses] = useState<any[]>([]);
-  const [monthlyExpenses, setMonthlyExpenses] = useState<any[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [monthlyExpenses, setMonthlyExpenses] = useState<Expense[]>([]);
 
-  const handleSyncStats = async () => {
+  const now = new Date();
+  const [dateFrom, setDateFrom] = useState(
+    toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1))
+  );
+  const [dateTo, setDateTo] = useState(toLocalDateString(now));
+  const todayStr = useMemo(() => toLocalDateString(new Date()), []);
+
+  // ── Sync Handler ───────────────────────────────────────────────────────
+
+  const handleSyncStats = useCallback(async () => {
     setSyncing(true);
     try {
       const allInvoices = await invoicesService.getAll();
@@ -120,9 +536,14 @@ export default function SettlementsPage() {
         const payments = getInvoicePayments(inv);
         const grandTotal = inv.grandTotal || 0;
 
-        // Initialize monthly stats
         if (!monthlyStats[monthKey]) {
-          monthlyStats[monthKey] = { totalRevenue: 0, totalVisits: 0, cash: 0, upi: 0, card: 0 };
+          monthlyStats[monthKey] = {
+            totalRevenue: 0,
+            totalVisits: 0,
+            cash: 0,
+            upi: 0,
+            card: 0,
+          };
         }
         monthlyStats[monthKey].totalRevenue += grandTotal;
         monthlyStats[monthKey].totalVisits += 1;
@@ -130,7 +551,6 @@ export default function SettlementsPage() {
         monthlyStats[monthKey].upi += payments.upi;
         monthlyStats[monthKey].card += payments.card;
 
-        // Initialize daily stats
         if (!dailyStats[dateKey]) {
           dailyStats[dateKey] = {
             dateKey,
@@ -153,7 +573,8 @@ export default function SettlementsPage() {
         dailyStats[dateKey].upi += payments.upi;
         dailyStats[dateKey].card += payments.card;
 
-        const discountFactor = inv.subtotal > 0 ? (inv.grandTotal / inv.subtotal) : 1;
+        const discountFactor =
+          inv.subtotal > 0 ? inv.grandTotal / inv.subtotal : 1;
 
         (inv.services || []).forEach((s: any) => {
           const comm = getServiceCommission(s, inv);
@@ -161,27 +582,36 @@ export default function SettlementsPage() {
           dailyStats[dateKey].productCost += comm.productCost;
           dailyStats[dateKey].stylistShare += comm.stylistShare;
           dailyStats[dateKey].ownerShare += comm.ownerShare;
-          if (s.serviceId === "membership_fee" || s.staffId === "system" || s.staffName === "System") {
+          if (
+            s.serviceId === "membership_fee" ||
+            s.staffId === "system" ||
+            s.staffName === "System"
+          ) {
             dailyStats[dateKey].totalMembershipAmount += comm.serviceRevenue;
           }
         });
 
-        // Add retail product sales to owner's share
         (inv.products || []).forEach((p: any) => {
-          const productBaseAmount = p.amount ?? Math.max((p.price || 0) * (p.quantity || 1) - (p.discount || 0), 0);
+          const productBaseAmount =
+            p.amount ??
+            Math.max((p.price || 0) * (p.quantity || 1) - (p.discount || 0), 0);
           const amount = productBaseAmount * discountFactor;
           dailyStats[dateKey].ownerShare += amount;
           dailyStats[dateKey].retailProductsRevenue += amount;
         });
 
-        // Staff monthly splits
         const staffInvoiceSummary: Record<string, any> = {};
         (inv.services || []).forEach((s: any) => {
-          const staffId = s.staffId || 'unassigned';
+          const staffId = s.staffId || "unassigned";
           if (!staffInvoiceSummary[staffId]) {
-            staffInvoiceSummary[staffId] = { revenue: 0, servicesCount: 0, productCost: 0 };
+            staffInvoiceSummary[staffId] = {
+              revenue: 0,
+              servicesCount: 0,
+              productCost: 0,
+            };
           }
-          const serviceBaseAmount = s.amount ?? Math.max((s.price || 0) - (s.discount || 0), 0);
+          const serviceBaseAmount =
+            s.amount ?? Math.max((s.price || 0) - (s.discount || 0), 0);
           const amount = serviceBaseAmount * discountFactor;
           const cost = s.usedProductCost || 0;
           staffInvoiceSummary[staffId].revenue += amount;
@@ -192,7 +622,12 @@ export default function SettlementsPage() {
         Object.entries(staffInvoiceSummary).forEach(([staffId, summary]) => {
           const staffMonthKey = `${staffId}_${monthKey}`;
           if (!staffStats[staffMonthKey]) {
-            staffStats[staffMonthKey] = { revenue: 0, servicesCount: 0, visits: 0, productCost: 0 };
+            staffStats[staffMonthKey] = {
+              revenue: 0,
+              servicesCount: 0,
+              visits: 0,
+              productCost: 0,
+            };
           }
           staffStats[staffMonthKey].revenue += summary.revenue;
           staffStats[staffMonthKey].servicesCount += summary.servicesCount;
@@ -204,16 +639,19 @@ export default function SettlementsPage() {
       let currentBatch = writeBatch(db);
       let count = 0;
 
-      const ops: any[] = [];
+      const ops: { ref: any; data: any }[] = [];
       Object.entries(monthlyStats).forEach(([monthKey, stats]) => {
-        ops.push({ ref: doc(db, 'stats', `revenue_${monthKey}`), data: stats });
+        ops.push({ ref: doc(db, "stats", `revenue_${monthKey}`), data: stats });
       });
       Object.entries(dailyStats).forEach(([dateKey, stats]) => {
-        ops.push({ ref: doc(db, 'stats', `daily_${dateKey}`), data: stats });
+        ops.push({ ref: doc(db, "stats", `daily_${dateKey}`), data: stats });
       });
       Object.entries(staffStats).forEach(([staffMonthKey, stats]) => {
-        const [staffId, monthKey] = staffMonthKey.split('_');
-        ops.push({ ref: doc(db, 'stats', `staff_${staffId}_${monthKey}`), data: stats });
+        const [staffId, monthKey] = staffMonthKey.split("_");
+        ops.push({
+          ref: doc(db, "stats", `staff_${staffId}_${monthKey}`),
+          data: stats,
+        });
       });
 
       for (const op of ops) {
@@ -236,38 +674,27 @@ export default function SettlementsPage() {
     } finally {
       setSyncing(false);
     }
-  };
+  }, []);
 
-  // Date range — default to current month
-  const now = new Date();
-  const [dateFrom, setDateFrom] = useState(
-    toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1))
-  );
-  const [dateTo, setDateTo] = useState(
-    toLocalDateString(now)
-  );
-
-  const todayStr = useMemo(() => toLocalDateString(new Date()), []);
+  // ── Data Loading ───────────────────────────────────────────────────────
 
   useEffect(() => {
     async function load() {
       setLoading(true);
       try {
-        // 1. Fetch daily stats in range
         const dailyQuery = query(
           collection(db, "stats"),
           where("dateKey", ">=", dateFrom),
           where("dateKey", "<=", dateTo)
         );
         const dailySnap = await getDocs(dailyQuery);
-        const statsMap: Record<string, any> = {};
+        const statsMap: Record<string, DailyStat> = {};
         dailySnap.forEach((d) => {
-          const data = d.data();
-          statsMap[data.dateKey] = data;
+          const data = d.data() as DailyStat;
+          if (data.dateKey) statsMap[data.dateKey] = data;
         });
         setDailyStats(statsMap);
 
-        // 2. Fetch today's invoices to compute today's details & shares
         try {
           const todayInvoices = await invoicesService.getByDateKey(todayStr);
           setDayInvoicesMap((prev) => ({ ...prev, [todayStr]: todayInvoices }));
@@ -275,14 +702,14 @@ export default function SettlementsPage() {
           console.error("Failed to load today's invoices:", err);
         }
 
-        // 3. Fetch monthly staff shares from stats/staff_{staffId}_{monthKey}
         const loadNow = new Date();
         const yyyy = loadNow.getFullYear();
-        const mm = String(loadNow.getMonth() + 1).padStart(2, '0');
+        const mm = String(loadNow.getMonth() + 1).padStart(2, "0");
         const monthKey = `${yyyy}-${mm}`;
-        
+
         const stylistStaff = staff.filter(
-          (st) => st.role !== "Owner" && st.id !== "system" && st.name !== "System"
+          (st) =>
+            st.role !== "Owner" && st.id !== "system" && st.name !== "System"
         );
 
         const sharesMap: Record<string, number> = {};
@@ -290,7 +717,11 @@ export default function SettlementsPage() {
           stylistStaff.map(async (member) => {
             if (!member.id) return;
             try {
-              const staffDocRef = doc(db, "stats", `staff_${member.id}_${monthKey}`);
+              const staffDocRef = doc(
+                db,
+                "stats",
+                `staff_${member.id}_${monthKey}`
+              );
               const snap = await getDoc(staffDocRef);
               if (snap.exists()) {
                 const data = snap.data();
@@ -301,14 +732,16 @@ export default function SettlementsPage() {
                 sharesMap[member.id] = 0;
               }
             } catch (err) {
-              console.error(`Error loading monthly share for staff ${member.id}:`, err);
+              console.error(
+                `Error loading monthly share for staff ${member.id}:`,
+                err
+              );
               sharesMap[member.id] = 0;
             }
           })
         );
         setMonthlyStaffShares(sharesMap);
 
-        // Fetch monthly stats totals for current calendar month
         const monthlyDailyQuery = query(
           collection(db, "stats"),
           where("dateKey", ">=", `${monthKey}-01`),
@@ -337,7 +770,6 @@ export default function SettlementsPage() {
           productsReturned: mProductsReturned,
         });
 
-        // 4. Fetch expenses in the selected date range
         try {
           const start = new Date(dateFrom);
           start.setHours(0, 0, 0, 0);
@@ -349,11 +781,25 @@ export default function SettlementsPage() {
           console.error("Failed to load range expenses:", err);
         }
 
-        // 5. Fetch monthly expenses for current calendar month
         try {
-          const startOfMonth = new Date(loadNow.getFullYear(), loadNow.getMonth(), 1);
-          const endOfMonth = new Date(loadNow.getFullYear(), loadNow.getMonth() + 1, 0, 23, 59, 59, 999);
-          const monthlyExpensesData = await expensesService.getByDateRange(startOfMonth, endOfMonth);
+          const startOfMonth = new Date(
+            loadNow.getFullYear(),
+            loadNow.getMonth(),
+            1
+          );
+          const endOfMonth = new Date(
+            loadNow.getFullYear(),
+            loadNow.getMonth() + 1,
+            0,
+            23,
+            59,
+            59,
+            999
+          );
+          const monthlyExpensesData = await expensesService.getByDateRange(
+            startOfMonth,
+            endOfMonth
+          );
           setMonthlyExpenses(monthlyExpensesData);
         } catch (err) {
           console.error("Failed to load monthly expenses:", err);
@@ -366,6 +812,8 @@ export default function SettlementsPage() {
     }
     load();
   }, [dateFrom, dateTo, staff, todayStr]);
+
+  // ── Derived State ────────────────────────────────────────────────────────
 
   const dailyExpensesMap = useMemo(() => {
     const map: Record<string, number> = {};
@@ -390,7 +838,6 @@ export default function SettlementsPage() {
       .reduce((sum, e) => sum + e.amount, 0);
   }, [monthlyExpenses]);
 
-  // Generate date list YYYY-MM-DD
   const dateList = useMemo(() => {
     const dates: string[] = [];
     const start = new Date(dateFrom + "T00:00:00");
@@ -405,55 +852,150 @@ export default function SettlementsPage() {
     return dates.reverse();
   }, [dateFrom, dateTo]);
 
-  // Aggregate values for summary cards over the date range
-  const summaryAggregates = useMemo(() => {
-    let staffAmount = 0;
-    let ownerAmount = 0;
-    let membershipAmount = 0;
-    let productsReturned = 0;
+  const [expandedDays, setExpandedDays] = useState<Record<string, boolean>>(
+    () => ({
+      [todayStr]: true,
+    })
+  );
 
-    Object.values(dailyStats).forEach((day: any) => {
-      staffAmount += day.stylistShare || 0;
-      ownerAmount += day.ownerShare || 0;
-      membershipAmount += day.totalMembershipAmount || 0;
-      productsReturned += day.productCost || 0;
-    });
+  const toggleDayExpand = useCallback(
+    async (dateStr: string) => {
+      const isExpanded = !!expandedDays[dateStr];
 
-    return {
-      staffAmount,
-      ownerAmount,
-      membershipAmount,
-      productsReturned,
-    };
-  }, [dailyStats]);
+      setExpandedDays((prev) => ({
+        ...prev,
+        [dateStr]: !prev[dateStr],
+      }));
 
-  // Calculate individual staff daily & monthly splits based on stats & today's invoices
-  const staffSplits = useMemo(() => {
+      if (!isExpanded && !dayInvoicesMap[dateStr]) {
+        setLoadingDays((prev) => ({ ...prev, [dateStr]: true }));
+        try {
+          const dayInvoices = await invoicesService.getByDateKey(dateStr);
+          setDayInvoicesMap((prev) => ({ ...prev, [dateStr]: dayInvoices }));
+        } catch (err) {
+          console.error(`Failed to load invoices for date ${dateStr}:`, err);
+        } finally {
+          setLoadingDays((prev) => ({ ...prev, [dateStr]: false }));
+        }
+      }
+    },
+    [expandedDays, dayInvoicesMap]
+  );
+
+  const getDayDetails = useCallback(
+    (dateStr: string): DayDetails => {
+      const dayInvoices = dayInvoicesMap[dateStr] || [];
+      let ownerDirectRevenue = 0;
+      let staffRevenueContribution = 0;
+      let staffProductReimbursement = 0;
+      let totalMembershipAmount = 0;
+      let retailProductsRevenue = 0;
+      const staffDetails: Record<string, StaffDetail> = {};
+
+      dayInvoices.forEach((inv) => {
+        const discountFactor =
+          inv.subtotal > 0 ? inv.grandTotal / inv.subtotal : 1;
+
+        (inv.products || []).forEach((p: any) => {
+          const productBaseAmount =
+            p.amount ??
+            Math.max((p.price || 0) * (p.quantity || 1) - (p.discount || 0), 0);
+          const amount = productBaseAmount * discountFactor;
+          retailProductsRevenue += amount;
+        });
+
+        (inv.services || []).forEach((s: any) => {
+          const serviceBaseAmount =
+            s.amount ?? Math.max((s.price || 0) - (s.discount || 0), 0);
+          const amount = serviceBaseAmount * discountFactor;
+          const cost = s.usedProductCost || 0;
+          const staffId = s.staffId || "unassigned";
+          const staffName = s.staffName || "Unassigned";
+
+          const staffMember = staff.find(
+            (st) => st.id === staffId || st.name === staffName
+          );
+          const role = staffMember?.role || "Stylist";
+
+          if (
+            s.serviceId === "membership_fee" ||
+            staffId === "system" ||
+            staffName === "System"
+          ) {
+            totalMembershipAmount += amount;
+            return;
+          }
+
+          const key = staffId !== "unassigned" ? staffId : staffName;
+          if (!staffDetails[key]) {
+            staffDetails[key] = {
+              staffId,
+              name: staffName,
+              role,
+              serviceRevenue: 0,
+              productCost: 0,
+              staffShare: 0,
+              ownerShareContribution: 0,
+            };
+          }
+          const sd = staffDetails[key];
+
+          if (role === "Owner") {
+            ownerDirectRevenue += amount;
+            sd.serviceRevenue += amount;
+            sd.productCost += cost;
+            sd.ownerShareContribution += amount;
+          } else {
+            const staffShare = 0.5 * amount - cost;
+            const ownerShare = 0.5 * amount + cost;
+            staffRevenueContribution += 0.5 * amount;
+            staffProductReimbursement += cost;
+            sd.serviceRevenue += amount;
+            sd.productCost += cost;
+            sd.staffShare += staffShare;
+            sd.ownerShareContribution += ownerShare;
+          }
+        });
+      });
+
+      return {
+        ownerDirectRevenue,
+        staffRevenueContribution,
+        staffProductReimbursement,
+        totalMembershipAmount,
+        retailProductsRevenue,
+        staffDetails: Object.values(staffDetails),
+      };
+    },
+    [staff, dayInvoicesMap]
+  );
+
+  const staffSplits = useMemo((): StaffSplit[] => {
     const stylistStaff = staff.filter(
-      (st) => st.role !== "Owner" && st.id !== "system" && st.name !== "System"
+      (st) =>
+        st.role !== "Owner" && st.id !== "system" && st.name !== "System"
     );
-
     const todayInvoices = dayInvoicesMap[todayStr] || [];
 
     return stylistStaff.map((member) => {
       let todayShare = 0;
-
       todayInvoices.forEach((inv) => {
-        const discountFactor = inv.subtotal > 0 ? (inv.grandTotal / inv.subtotal) : 1;
+        const discountFactor =
+          inv.subtotal > 0 ? inv.grandTotal / inv.subtotal : 1;
         (inv.services || []).forEach((s: any) => {
           if (s.staffId === member.id || s.staffName === member.name) {
             if (s.serviceId !== "membership_fee") {
-              const serviceBaseAmount = s.amount ?? Math.max((s.price || 0) - (s.discount || 0), 0);
+              const serviceBaseAmount =
+                s.amount ?? Math.max((s.price || 0) - (s.discount || 0), 0);
               const amount = serviceBaseAmount * discountFactor;
               const cost = s.usedProductCost || 0;
-              const share = 0.5 * amount - cost;
-              todayShare += share;
+              todayShare += 0.5 * amount - cost;
             }
           }
         });
       });
 
-      const monthlyShare = member.id ? (monthlyStaffShares[member.id] || 0) : 0;
+      const monthlyShare = member.id ? monthlyStaffShares[member.id] || 0 : 0;
 
       return {
         id: member.id,
@@ -466,45 +1008,21 @@ export default function SettlementsPage() {
 
   const todayMetrics = useMemo(() => {
     const details = getDayDetails(todayStr);
-    const ownerShare = details.ownerDirectRevenue + details.staffRevenueContribution + details.staffProductReimbursement + details.totalMembershipAmount + details.retailProductsRevenue;
-    
+    const ownerShare =
+      details.ownerDirectRevenue +
+      details.staffRevenueContribution +
+      details.staffProductReimbursement +
+      details.totalMembershipAmount +
+      details.retailProductsRevenue;
+
     return {
       ownerShare,
       membershipAmount: details.totalMembershipAmount,
       retailProductsRevenue: details.retailProductsRevenue,
       productsReturned: details.staffProductReimbursement,
     };
-  }, [dayInvoicesMap, todayStr, staff]);
+  }, [getDayDetails, todayStr]);
 
-  // Initialize expanded state: today is expanded by default
-  const [expandedDays, setExpandedDays] = useState<Record<string, boolean>>(() => ({
-    [todayStr]: true,
-  }));
-
-  const toggleDayExpand = async (dateStr: string) => {
-    const isExpanded = !!expandedDays[dateStr];
-    
-    // Toggle state
-    setExpandedDays((prev) => ({
-      ...prev,
-      [dateStr]: !prev[dateStr],
-    }));
-
-    // If expanding and not already loaded, lazy-load invoices for that day
-    if (!isExpanded && !dayInvoicesMap[dateStr]) {
-      setLoadingDays((prev) => ({ ...prev, [dateStr]: true }));
-      try {
-        const dayInvoices = await invoicesService.getByDateKey(dateStr);
-        setDayInvoicesMap((prev) => ({ ...prev, [dateStr]: dayInvoices }));
-      } catch (err) {
-        console.error(`Failed to load invoices for date ${dateStr}:`, err);
-      } finally {
-        setLoadingDays((prev) => ({ ...prev, [dateStr]: false }));
-      }
-    }
-  };
-
-  // Filter out days with no transactions, except "Today"
   const visibleSettlements = useMemo(() => {
     return dateList
       .map((d) => {
@@ -528,299 +1046,151 @@ export default function SettlementsPage() {
       });
   }, [dailyStats, dateList, todayStr, dailyExpensesMap]);
 
-  function getDayDetails(dateStr: string) {
-    const dayInvoices = dayInvoicesMap[dateStr] || [];
-    
-    let ownerDirectRevenue = 0;
-    let staffRevenueContribution = 0;
-    let staffProductReimbursement = 0;
-    let totalMembershipAmount = 0;
-    let retailProductsRevenue = 0;
-    const staffDetails: Record<string, any> = {};
-
-    dayInvoices.forEach((inv) => {
-      const discountFactor = inv.subtotal > 0 ? (inv.grandTotal / inv.subtotal) : 1;
-      
-      (inv.products || []).forEach((p: any) => {
-        const productBaseAmount = p.amount ?? Math.max((p.price || 0) * (p.quantity || 1) - (p.discount || 0), 0);
-        const amount = productBaseAmount * discountFactor;
-        retailProductsRevenue += amount;
-      });
-
-      (inv.services || []).forEach((s: any) => {
-        const serviceBaseAmount = s.amount ?? Math.max((s.price || 0) - (s.discount || 0), 0);
-        const amount = serviceBaseAmount * discountFactor;
-        const cost = s.usedProductCost || 0;
-        const staffId = s.staffId || "unassigned";
-        const staffName = s.staffName || "Unassigned";
-
-        const staffMember = staff.find((st) => st.id === staffId || st.name === staffName);
-        const role = staffMember?.role || "Stylist";
-
-        // Check if this is a membership invoice
-        if (s.serviceId === "membership_fee" || staffId === "system" || staffName === "System") {
-          totalMembershipAmount += amount;
-          return;
-        }
-
-        // Regular service: Owner vs Stylist
-        if (role === "Owner") {
-          ownerDirectRevenue += amount;
-          const staffKey = staffId !== "unassigned" ? staffId : staffName;
-          if (!staffDetails[staffKey]) {
-            staffDetails[staffKey] = {
-              staffId,
-              name: staffName,
-              role,
-              serviceRevenue: 0,
-              productCost: 0,
-              staffShare: 0,
-              ownerShareContribution: 0,
-            };
-          }
-          const sd = staffDetails[staffKey];
-          sd.serviceRevenue += amount;
-          sd.productCost += cost;
-          sd.ownerShareContribution += amount;
-        } else {
-          // Regular stylist
-          const staffShare = 0.5 * amount - cost;
-          const ownerShare = 0.5 * amount + cost;
-
-          staffRevenueContribution += 0.5 * amount;
-          staffProductReimbursement += cost;
-
-          const staffKey = staffId !== "unassigned" ? staffId : staffName;
-          if (!staffDetails[staffKey]) {
-            staffDetails[staffKey] = {
-              staffId,
-              name: staffName,
-              role,
-              serviceRevenue: 0,
-              productCost: 0,
-              staffShare: 0,
-              ownerShareContribution: 0,
-            };
-          }
-          const sd = staffDetails[staffKey];
-          sd.serviceRevenue += amount;
-          sd.productCost += cost;
-          sd.staffShare += staffShare;
-          sd.ownerShareContribution += ownerShare;
-        }
-      });
-    });
-
-    return {
-      ownerDirectRevenue,
-      staffRevenueContribution,
-      staffProductReimbursement,
-      totalMembershipAmount,
-      retailProductsRevenue,
-      staffDetails: Object.values(staffDetails),
-    };
-  };
+  // ── Render ─────────────────────────────────────────────────────────────
 
   if (loading) {
     return (
       <div className="flex h-[50vh] items-center justify-center">
-        <div className="size-10 animate-spin rounded-full border-4 border-[#B8962E] border-t-transparent" />
+        <div className="flex flex-col items-center gap-3">
+          <div className="size-10 animate-spin rounded-full border-4 border-[#B8962E] border-t-transparent" />
+          <span className="text-xs font-medium text-[#6B6358] animate-pulse">
+            Loading settlements...
+          </span>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-8 text-[#F5F0E8] pb-12">
+    <div className="min-h-screen space-y-8 pb-12 text-[#F5F0E8]">
       {/* Header */}
-      <div className="flex flex-wrap items-end justify-between gap-4">
+      <header className="flex flex-wrap items-end justify-between gap-4 border-b border-[#2E2B24] pb-6">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#A89F8C]">
-            Daily Operations
+          <div className="flex items-center gap-2 mb-1">
+            <Sparkles size={14} className="text-[#B8962E]" />
+            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#B8962E]">
+              Daily Operations
+            </span>
+          </div>
+          <h1 className="text-[2rem] font-extrabold tracking-[-0.03em] text-[#F5F0E8]">
+            Settlements
+          </h1>
+          <p className="mt-1 text-sm text-[#6B6358]">
+            Revenue splits, commissions & daily breakdowns
           </p>
-          <div className="flex items-center gap-4 mt-2">
-            <h1 className="text-3xl font-extrabold tracking-[-0.03em] text-[#F5F0E8]">
-              Stylist & Owner Settlements
-            </h1>
-            <button
-              onClick={handleSyncStats}
-              disabled={syncing}
-              className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[#2E2B24] bg-[#131210] px-3.5 text-xs font-bold text-[#A89F8C] shadow-md transition hover:bg-[#1C1A16] hover:text-[#F5F0E8] hover:border-[#B8962E] disabled:opacity-50"
-            >
-              {syncing ? "Syncing..." : "Sync Database Stats"}
-            </button>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {/* Date Selector */}
+          <div className="flex items-center gap-2 rounded-xl border border-[#2E2B24] bg-[#131210] px-3 py-2">
+            <Calendar size={14} className="text-[#6B6358]" />
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="h-8 rounded-lg border border-[#2E2B24] bg-[#131210] px-2.5 text-xs font-semibold text-[#F5F0E8] outline-none focus:border-[#B8962E] transition"
+            />
+            <span className="text-[10px] font-bold text-[#6B6358] uppercase tracking-wider">
+              to
+            </span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="h-8 rounded-lg border border-[#2E2B24] bg-[#131210] px-2.5 text-xs font-semibold text-[#F5F0E8] outline-none focus:border-[#B8962E] transition"
+            />
           </div>
-        </div>
 
-        {/* Date Selector */}
-        <div className="flex items-center gap-2 flex-wrap bg-[#131210] p-2 rounded-2xl border border-[#2E2B24] shadow-sm">
-          <Calendar size={16} className="text-[#6B6358] ml-1" />
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            className="h-9 rounded-xl border border-[#2E2B24] bg-[#131210] px-3 text-sm font-medium text-[#F5F0E8] shadow-sm outline-none focus:border-[#B8962E] transition"
-          />
-          <span className="text-xs text-[#A89F8C] font-semibold px-1">to</span>
-          <input
-            type="date"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            className="h-9 rounded-xl border border-[#2E2B24] bg-[#131210] px-3 text-sm font-medium text-[#F5F0E8] shadow-sm outline-none focus:border-[#B8962E] transition"
-          />
-        </div>
-      </div>
-
-      {/* Splits Row: Owner & Staff Splits (All in one row) */}
-      <div className="space-y-3">
-        <h2 className="text-xs font-bold uppercase tracking-[0.18em] text-[#A89F8C]">
-          Owner & Staff Splits (Daily & Monthly)
-        </h2>
-        <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
-          {/* Owner Share Card */}
-          <div
-            className="rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-5 shadow-sm space-y-2 hover:shadow-md transition text-[#F5F0E8] hover:border-[#B8962E]/30"
+          <button
+            onClick={handleSyncStats}
+            disabled={syncing}
+            className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#2E2B24] bg-[#131210] px-4 text-xs font-bold text-[#A89F8C] transition hover:border-[#B8962E] hover:text-[#B8962E] disabled:opacity-50"
           >
-            <h4 className="font-extrabold text-[#F5F0E8] text-sm flex items-center gap-1.5">
-              <ShieldCheck size={16} className="text-[#B8962E]" />
-              Owner
-            </h4>
-            <div className="grid grid-cols-2 gap-4 pt-1">
-              <div>
-                <span className="text-[10px] text-[#A89F8C] font-bold uppercase tracking-wider">Today</span>
-                <p className="font-black text-[#F5F0E8] text-base">{formatCurrency(todayMetrics.ownerShare - todayDailyExpenses)}</p>
-              </div>
-              <div>
-                <span className="text-[10px] text-[#A89F8C] font-bold uppercase tracking-wider">This Month</span>
-                <p className="font-black text-[#F5F0E8] text-base">{formatCurrency(monthlyStatsTotals.ownerShare - monthDailyExpenses)}</p>
-              </div>
-            </div>
-          </div>
+            <RefreshCw
+              size={14}
+              className={syncing ? "animate-spin" : ""}
+            />
+            {syncing ? "Syncing..." : "Sync Stats"}
+          </button>
+        </div>
+      </header>
 
-          {/* Stylist Cards */}
+      {/* Owner & Staff Splits */}
+      <section className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Wallet size={16} className="text-[#B8962E]" />
+          <h2 className="text-xs font-bold uppercase tracking-[0.15em] text-[#A89F8C]">
+            Owner & Staff Splits
+          </h2>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <MetricCard
+            title="Owner Settlement"
+            today={todayMetrics.ownerShare - todayDailyExpenses}
+            monthly={monthlyStatsTotals.ownerShare - monthDailyExpenses}
+            icon={ShieldCheck}
+            variant="owner"
+          />
           {staffSplits.map((member) => (
-            <div
-              key={member.id}
-              className="rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-5 shadow-sm space-y-2 hover:shadow-md transition text-[#F5F0E8] hover:border-[#B8962E]/30"
-            >
-              <h4 className="font-extrabold text-[#F5F0E8] text-sm flex items-center gap-1.5">
-                <Users size={16} className="text-[#B8962E]" />
-                {member.name}
-              </h4>
-              <div className="grid grid-cols-2 gap-4 pt-1">
-                <div>
-                  <span className="text-[10px] text-[#A89F8C] font-bold uppercase tracking-wider">Today</span>
-                  <p className="font-black text-[#F5F0E8] text-base">{formatCurrency(member.todayShare)}</p>
-                </div>
-                <div>
-                  <span className="text-[10px] text-[#A89F8C] font-bold uppercase tracking-wider">This Month</span>
-                  <p className="font-black text-[#F5F0E8] text-base">{formatCurrency(member.monthlyShare)}</p>
-                </div>
-              </div>
-            </div>
+            <StaffSplitCard key={member.id} member={member} />
           ))}
         </div>
-      </div>
+      </section>
 
-      {/* Row 2: Membership, Retail Product Sales, Reimbursed Cost, Daily Category Expenses (All in one row) */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {/* Membership Card */}
-        <div
-          className="rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-5 shadow-sm space-y-2 hover:shadow-md transition text-[#F5F0E8] hover:border-[#B8962E]/30"
-        >
-          <h4 className="font-bold text-[#F5F0E8] text-sm flex items-center gap-1.5">
-            <PiggyBank size={16} className="text-[#B8962E]" />
-            Membership Revenue
-          </h4>
-          <div className="grid grid-cols-2 gap-4 pt-1">
-            <div>
-              <span className="text-[10px] text-[#A89F8C] font-bold uppercase tracking-wider">Today</span>
-              <p className="font-black text-[#F5F0E8] text-base">{formatCurrency(todayMetrics.membershipAmount)}</p>
-            </div>
-            <div>
-              <span className="text-[10px] text-[#A89F8C] font-bold uppercase tracking-wider">This Month</span>
-              <p className="font-black text-[#F5F0E8] text-base">{formatCurrency(monthlyStatsTotals.membershipAmount)}</p>
-            </div>
-          </div>
+      {/* Revenue Metrics */}
+      <section className="space-y-4">
+        <div className="flex items-center gap-2">
+          <BarChart3 size={16} className="text-[#B8962E]" />
+          <h2 className="text-xs font-bold uppercase tracking-[0.15em] text-[#A89F8C]">
+            Revenue Breakdown
+          </h2>
         </div>
-
-        {/* Retail Product Sales Card */}
-        <div
-          className="rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-5 shadow-sm space-y-2 hover:shadow-md transition text-[#F5F0E8] hover:border-[#B8962E]/30"
-        >
-          <h4 className="font-bold text-[#F5F0E8] text-sm flex items-center gap-1.5">
-            <Package size={16} className="text-[#B8962E]" />
-            Retail Product Sales
-          </h4>
-          <div className="grid grid-cols-2 gap-4 pt-1">
-            <div>
-              <span className="text-[10px] text-[#A89F8C] font-bold uppercase tracking-wider">Today</span>
-              <p className="font-black text-[#F5F0E8] text-base">{formatCurrency(todayMetrics.retailProductsRevenue)}</p>
-            </div>
-            <div>
-              <span className="text-[10px] text-[#A89F8C] font-bold uppercase tracking-wider">This Month</span>
-              <p className="font-black text-[#F5F0E8] text-base">{formatCurrency(monthlyStatsTotals.retailProductsRevenue)}</p>
-            </div>
-          </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <MetricCard
+            title="Membership Revenue"
+            today={todayMetrics.membershipAmount}
+            monthly={monthlyStatsTotals.membershipAmount}
+            icon={PiggyBank}
+          />
+          <MetricCard
+            title="Retail Product Sales"
+            today={todayMetrics.retailProductsRevenue}
+            monthly={monthlyStatsTotals.retailProductsRevenue}
+            icon={Package}
+          />
+          <MetricCard
+            title="Products Returned"
+            today={todayMetrics.productsReturned}
+            monthly={monthlyStatsTotals.productsReturned}
+            icon={Package}
+          />
+          <MetricCard
+            title="Daily Expenses"
+            today={todayDailyExpenses}
+            monthly={monthDailyExpenses}
+            icon={TrendingUp}
+            variant="danger"
+          />
         </div>
+      </section>
 
-        {/* Products Money Returned Card */}
-        <div
-          className="rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-5 shadow-sm space-y-2 hover:shadow-md transition text-[#F5F0E8] hover:border-[#B8962E]/30"
-        >
-          <h4 className="font-bold text-[#F5F0E8] text-sm flex items-center gap-1.5">
-            <Package size={16} className="text-[#B8962E]" />
-            Products Money Returned
-          </h4>
-          <div className="grid grid-cols-2 gap-4 pt-1">
-            <div>
-              <span className="text-[10px] text-[#A89F8C] font-bold uppercase tracking-wider">Today</span>
-              <p className="font-black text-[#F5F0E8] text-base">{formatCurrency(todayMetrics.productsReturned)}</p>
-            </div>
-            <div>
-              <span className="text-[10px] text-[#A89F8C] font-bold uppercase tracking-wider">This Month</span>
-              <p className="font-black text-[#F5F0E8] text-base">{formatCurrency(monthlyStatsTotals.productsReturned)}</p>
-            </div>
+      {/* Daily Breakdown */}
+      <section className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Clock size={16} className="text-[#B8962E]" />
+            <h2 className="text-xs font-bold uppercase tracking-[0.15em] text-[#A89F8C]">
+              Daily Breakdown
+            </h2>
           </div>
+          <span className="text-[10px] font-bold text-[#6B6358] uppercase tracking-wider">
+            {visibleSettlements.length} days
+          </span>
         </div>
-
-        {/* Daily Category Expenses Card */}
-        <div
-          className="rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-5 shadow-sm space-y-2 hover:shadow-md transition text-[#F5F0E8] hover:border-[#B8962E]/30"
-        >
-          <h4 className="font-bold text-[#F5F0E8] text-sm flex items-center gap-1.5">
-            <PiggyBank size={16} className="text-[#B8962E]" />
-            Daily Category Expenses
-          </h4>
-          <div className="grid grid-cols-2 gap-4 pt-1">
-            <div>
-              <span className="text-[10px] text-[#A89F8C] font-bold uppercase tracking-wider">Today</span>
-              <p className="font-black text-[#E57373] text-base">{formatCurrency(todayDailyExpenses)}</p>
-            </div>
-            <div>
-              <span className="text-[10px] text-[#A89F8C] font-bold uppercase tracking-wider">This Month</span>
-              <p className="font-black text-[#E57373] text-base">{formatCurrency(monthDailyExpenses)}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Settlements List section */}
-      <div className="space-y-4">
-        <h2 className="text-xl font-bold tracking-tight text-[#F5F0E8]">
-          Daily Breakdown
-        </h2>
 
         <div className="space-y-3">
           {visibleSettlements.length === 0 ? (
-            <div className="rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-12 text-center shadow-sm">
-              <div className="mx-auto grid size-12 place-items-center rounded-2xl bg-[#131210] text-[#B8962E] mb-3">
-                <TrendingUp size={24} />
-              </div>
-              <p className="text-sm font-semibold text-[#F5F0E8]">No Settlement History</p>
-              <p className="text-xs text-[#A89F8C] mt-1">
-                There are no client invoices or memberships logged in this date range.
-              </p>
-            </div>
+            <EmptyState />
           ) : (
             visibleSettlements.map((day) => {
               const isToday = day.date === todayStr;
@@ -831,177 +1201,99 @@ export default function SettlementsPage() {
               return (
                 <div
                   key={day.date}
-                  className="overflow-hidden rounded-2xl border border-[#2E2B24] bg-[#1C1A16] shadow-sm transition hover:border-[#B8962E]/30"
+                  className="overflow-hidden rounded-2xl border border-[#2E2B24] bg-[#1C1A16] shadow-sm transition-all hover:shadow-[0_4px_20px_rgba(0,0,0,0.2)]"
                 >
-                  {/* Row Header */}
-                  <div
-                    onClick={() => hasTransactions && toggleDayExpand(day.date)}
-                    className={`flex items-center justify-between p-5 select-none ${
-                      hasTransactions ? "cursor-pointer" : "opacity-50"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      {hasTransactions ? (
-                        isExpanded ? (
-                          <ChevronUp size={18} className="text-[#A89F8C]" />
-                        ) : (
-                          <ChevronDown size={18} className="text-[#A89F8C]" />
-                        )
-                      ) : (
-                        <div className="w-[18px]" />
-                      )}
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-[#F5F0E8]">
-                            {format(new Date(day.date + "T00:00:00"), "dd MMM yyyy")}
-                          </span>
-                          {isToday && (
-                            <span className="rounded-full bg-[#B8962E] px-2 py-0.5 text-[10px] font-bold text-[#0E0D0B] uppercase tracking-wider">
-                              Today
-                            </span>
-                          )}
-                        </div>
-                        {!hasTransactions && (
-                          <p className="text-[11px] text-[#A89F8C] font-semibold mt-0.5">
-                            No operations or bills logged yet
-                          </p>
-                        )}
-                      </div>
-                    </div>
+                  <DayHeader
+                    day={day}
+                    isToday={isToday}
+                    isExpanded={isExpanded}
+                    hasTransactions={hasTransactions}
+                    onToggle={() => toggleDayExpand(day.date)}
+                  />
 
-                    {hasTransactions && (
-                      <div className="flex items-center gap-4 text-xs font-semibold text-[#A89F8C] flex-wrap">
-                        <div className="hidden sm:block">
-                          Service: <span className="text-[#F5F0E8] font-bold">{formatCurrency(day.totalServiceRevenue)}</span>
-                        </div>
-                        <div className="hidden sm:block">
-                          Membership: <span className="text-[#F5F0E8] font-bold">{formatCurrency(day.totalMembershipAmount)}</span>
-                        </div>
-                        <div className="hidden sm:block">
-                          Retail: <span className="text-[#F5F0E8] font-bold">{formatCurrency(day.totalRetailProductsRevenue)}</span>
-                        </div>
-                        <div className="hidden sm:block">
-                          Product Returned: <span className="text-[#F5F0E8] font-bold">{formatCurrency(day.totalProductCost)}</span>
-                        </div>
-                        <div className="rounded-xl bg-[#132A3A] border border-[#2B5270] px-3 py-1.5 text-[#60A5FA]">
-                          Staff: <span className="text-[#60A5FA] font-extrabold">{formatCurrency(day.totalStaffShare)}</span>
-                        </div>
-                        <div className="rounded-xl bg-[#2E1A47] border border-[#5E3E8C] px-3 py-1.5 text-[#C084FC]">
-                          Owner: <span className="text-[#C084FC] font-extrabold">{formatCurrency(day.totalOwnerShare)}</span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Row Details */}
                   {isExpanded && hasTransactions && (
-                    <div className="border-t border-[#2E2B24] bg-[#131210]/65 p-5">
+                    <div className="border-t border-[#2E2B24] bg-[#131210]/40 p-5">
                       {loadingDays[day.date] ? (
-                        <div className="flex h-20 items-center justify-center">
-                          <div className="size-6 animate-spin rounded-full border-2 border-[#B8962E] border-t-transparent" />
+                        <div className="flex h-24 items-center justify-center">
+                          <div className="flex flex-col items-center gap-2">
+                            <div className="size-6 animate-spin rounded-full border-2 border-[#B8962E] border-t-transparent" />
+                            <span className="text-[10px] text-[#6B6358] font-medium">
+                              Loading details...
+                            </span>
+                          </div>
                         </div>
                       ) : (
                         (() => {
                           const details = getDayDetails(day.date);
                           return (
                             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                              {/* Owner Net Card */}
-                              <div className="rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-5 shadow-xs space-y-4 text-[#F5F0E8]">
-                                <div className="flex justify-between items-start">
-                                  <div>
-                                    <h4 className="font-extrabold text-[#F5F0E8] flex items-center gap-1.5">
-                                      <ShieldCheck size={16} className="text-[#B8962E]" />
-                                      Owner Settlement
-                                    </h4>
-                                    <span className="inline-block rounded-full bg-[#2E1A47] text-[#C084FC] border border-[#5E3E8C] px-2 py-0.5 text-[10px] font-bold tracking-wide mt-1 uppercase">
-                                      Daily Summary
-                                    </span>
-                                  </div>
-                                  <div className="text-right">
-                                    <span className="text-[10px] text-[#A89F8C] font-bold uppercase tracking-wider">
-                                      Net Share
-                                    </span>
-                                    <p className="font-black text-[#F5F0E8] text-xl mt-0.5">
-                                      {formatCurrency(day.totalOwnerShare)}
-                                    </p>
-                                  </div>
-                                </div>
+                              <SettlementDetailCard
+                                title="Owner Settlement"
+                                value={day.totalOwnerShare}
+                                icon={ShieldCheck}
+                                variant="owner"
+                                items={[
+                                  {
+                                    label: "Owner Direct Services",
+                                    value: details.ownerDirectRevenue,
+                                  },
+                                  {
+                                    label: "Stylists 50% Share",
+                                    value: details.staffRevenueContribution,
+                                  },
+                                  {
+                                    label: "Stylists Product Costs",
+                                    value: details.staffProductReimbursement,
+                                  },
+                                  {
+                                    label: "Membership Invoices",
+                                    value: details.totalMembershipAmount,
+                                  },
+                                  {
+                                    label: "Retail Product Sales",
+                                    value: details.retailProductsRevenue,
+                                  },
+                                  {
+                                    label: "Gross Share",
+                                    value:
+                                      details.ownerDirectRevenue +
+                                      details.staffRevenueContribution +
+                                      details.staffProductReimbursement +
+                                      details.totalMembershipAmount +
+                                      details.retailProductsRevenue,
+                                  },
+                                  {
+                                    label: "Daily Expenses",
+                                    value: dailyExpensesMap[day.date] || 0,
+                                    negative: true,
+                                  },
+                                ]}
+                              />
 
-                                <div className="border-t border-[#2E2B24] pt-3 space-y-2 text-xs">
-                                  <div className="flex justify-between text-[#A89F8C]">
-                                    <span className="font-medium">Owner Direct Services:</span>
-                                    <span className="font-bold text-[#F5F0E8]">{formatCurrency(details.ownerDirectRevenue)}</span>
-                                  </div>
-                                  <div className="flex justify-between text-[#A89F8C]">
-                                    <span className="font-medium">Stylists 50% Share:</span>
-                                    <span className="font-bold text-[#F5F0E8]">+{formatCurrency(details.staffRevenueContribution)}</span>
-                                  </div>
-                                  <div className="flex justify-between text-[#A89F8C]">
-                                    <span className="font-medium">Stylists Product Costs:</span>
-                                    <span className="font-bold text-[#F5F0E8]">+{formatCurrency(details.staffProductReimbursement)}</span>
-                                  </div>
-                                  <div className="flex justify-between text-[#A89F8C]">
-                                    <span className="font-medium">Membership Invoices:</span>
-                                    <span className="font-bold text-[#F5F0E8]">+{formatCurrency(details.totalMembershipAmount)}</span>
-                                  </div>
-                                  <div className="flex justify-between text-[#A89F8C]">
-                                    <span className="font-medium">Retail Product Sales:</span>
-                                    <span className="font-bold text-[#F5F0E8]">+{formatCurrency(details.retailProductsRevenue)}</span>
-                                  </div>
-                                  <div className="flex justify-between border-t border-[#2E2B24] pt-2 mt-2 font-semibold text-[#A89F8C]">
-                                    <span>Gross Share:</span>
-                                    <span className="text-[#F5F0E8]">{formatCurrency(details.ownerDirectRevenue + details.staffRevenueContribution + details.staffProductReimbursement + details.totalMembershipAmount + details.retailProductsRevenue)}</span>
-                                  </div>
-                                  <div className="flex justify-between text-[#E57373] font-semibold">
-                                    <span>Daily Expenses:</span>
-                                    <span>-{formatCurrency(dailyExpensesMap[day.date] || 0)}</span>
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Stylist Cards */}
                               {details.staffDetails
-                                .filter((sd: any) => sd.role !== "Owner")
-                                .map((sd: any) => (
-                                  <div
+                                .filter((sd) => sd.role !== "Owner")
+                                .map((sd) => (
+                                  <SettlementDetailCard
                                     key={sd.staffId}
-                                    className="rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-5 shadow-xs space-y-4"
-                                  >
-                                    <div className="flex justify-between items-start">
-                                      <div>
-                                        <h4 className="font-extrabold text-[#F5F0E8] flex items-center gap-1.5">
-                                          <Users size={16} className="text-[#B8962E]" />
-                                          {sd.name}
-                                        </h4>
-                                        <span className="inline-block rounded-full bg-[#132A3A] text-[#60A5FA] border border-[#2B5270] px-2 py-0.5 text-[10px] font-bold tracking-wide mt-1 uppercase">
-                                          Stylist Split
-                                        </span>
-                                      </div>
-                                      <div className="text-right">
-                                        <span className="text-[10px] text-[#A89F8C] font-bold uppercase tracking-wider">
-                                          Net Share
-                                        </span>
-                                        <p className="font-black text-[#F5F0E8] text-xl mt-0.5">
-                                          {formatCurrency(sd.staffShare)}
-                                        </p>
-                                      </div>
-                                    </div>
-
-                                    <div className="border-t border-[#2E2B24] pt-3 space-y-2 text-xs">
-                                      <div className="flex justify-between text-[#A89F8C]">
-                                        <span>Service Revenue:</span>
-                                        <span className="font-semibold text-[#F5F0E8]">{formatCurrency(sd.serviceRevenue)}</span>
-                                      </div>
-                                      <div className="flex justify-between text-[#A89F8C]">
-                                        <span>50% Base Share:</span>
-                                        <span className="font-semibold text-[#F5F0E8]">{formatCurrency(0.5 * sd.serviceRevenue)}</span>
-                                      </div>
-                                      <div className="flex justify-between text-[#A89F8C]">
-                                        <span>Product Cost Used:</span>
-                                        <span className="font-bold text-[#E57373]">-{formatCurrency(sd.productCost)}</span>
-                                      </div>
-                                    </div>
-                                  </div>
+                                    title={sd.name}
+                                    value={sd.staffShare}
+                                    icon={Users}
+                                    items={[
+                                      {
+                                        label: "Service Revenue",
+                                        value: sd.serviceRevenue,
+                                      },
+                                      {
+                                        label: "50% Base Share",
+                                        value: 0.5 * sd.serviceRevenue,
+                                      },
+                                      {
+                                        label: "Product Cost Used",
+                                        value: sd.productCost,
+                                        negative: true,
+                                      },
+                                    ]}
+                                  />
                                 ))}
                             </div>
                           );
@@ -1014,7 +1306,7 @@ export default function SettlementsPage() {
             })
           )}
         </div>
-      </div>
+      </section>
     </div>
   );
 }

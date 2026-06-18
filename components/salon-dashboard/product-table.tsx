@@ -85,7 +85,7 @@ export function ProductTable({
                     type="number"
                     min="1"
                     placeholder="1"
-                    disabled={disabled}
+                    disabled={disabled || row.isCreditSettle}
                     value={row.quantity === 0 ? "" : row.quantity}
                     onChange={(event) => updateRow(row.id, { quantity: event.target.value === "" ? 0 : Number(event.target.value) })}
                     className="h-10 w-full rounded-xl border border-[#2E2B24] bg-[#131210] px-2 text-[#F5F0E8] outline-none transition focus:border-[#B8962E] disabled:bg-[#0E0D0B] disabled:text-[#6B6358] text-xs font-semibold"
@@ -96,7 +96,7 @@ export function ProductTable({
                     type="number"
                     min="0"
                     placeholder="0"
-                    disabled={disabled}
+                    disabled={disabled || row.isCreditSettle}
                     value={row.price === 0 ? "" : row.price}
                     onChange={(event) => updateRow(row.id, { price: event.target.value === "" ? 0 : Number(event.target.value) })}
                     className="h-10 w-full rounded-xl border border-[#2E2B24] bg-[#131210] px-2 text-[#F5F0E8] outline-none transition focus:border-[#B8962E] disabled:bg-[#0E0D0B] disabled:text-[#6B6358] text-xs font-semibold"
@@ -107,7 +107,7 @@ export function ProductTable({
                     type="number"
                     min="0"
                     placeholder="0"
-                    disabled={disabled}
+                    disabled={disabled || row.isCreditSettle}
                     value={row.discount === 0 ? "" : row.discount}
                     onChange={(event) => updateRow(row.id, { discount: event.target.value === "" ? 0 : Number(event.target.value) })}
                     className="h-10 w-full rounded-xl border border-[#2E2B24] bg-[#131210] px-2 text-[#F5F0E8] outline-none transition focus:border-[#B8962E] disabled:bg-[#0E0D0B] disabled:text-[#6B6358] text-xs font-semibold"

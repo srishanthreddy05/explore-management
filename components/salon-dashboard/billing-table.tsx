@@ -94,7 +94,7 @@ export function BillingTable({
                 <td className="px-2 py-2 w-[130px]">
                   <select
                     value={row.staff}
-                    disabled={disabled}
+                    disabled={disabled || row.isCreditSettle}
                     onChange={(event) => updateRow(row.id, { staff: event.target.value })}
                     className="h-10 w-full rounded-xl border border-[#2E2B24] bg-[#131210] px-2.5 text-[#F5F0E8] outline-none transition focus:border-[#B8962E] disabled:bg-[#0E0D0B] disabled:text-[#6B6358] text-xs font-semibold cursor-pointer appearance-none"
                   >
@@ -109,7 +109,7 @@ export function BillingTable({
                 <td className="px-2 py-2 w-[160px]">
                   <select
                     value={row.usedProductId || ""}
-                    disabled={disabled}
+                    disabled={disabled || row.isCreditSettle}
                     onChange={(event) => {
                       const val = event.target.value;
                       const matched = serviceProductOptions.find(p => p.id === val);
@@ -133,7 +133,7 @@ export function BillingTable({
                     type="number"
                     min="0"
                     placeholder="0"
-                    disabled={disabled}
+                    disabled={disabled || row.isCreditSettle}
                     value={row.price === 0 ? "" : row.price}
                     onChange={(event) => updateRow(row.id, { price: event.target.value === "" ? 0 : Number(event.target.value) })}
                     className="h-10 w-full rounded-xl border border-[#2E2B24] bg-[#131210] px-2 text-[#F5F0E8] outline-none transition focus:border-[#B8962E] disabled:bg-[#0E0D0B] disabled:text-[#6B6358] text-xs font-semibold"
@@ -144,7 +144,7 @@ export function BillingTable({
                     type="number"
                     min="0"
                     placeholder="0"
-                    disabled={disabled}
+                    disabled={disabled || row.isCreditSettle}
                     value={row.discount === 0 ? "" : row.discount}
                     onChange={(event) => updateRow(row.id, { discount: event.target.value === "" ? 0 : Number(event.target.value) })}
                     className="h-10 w-full rounded-xl border border-[#2E2B24] bg-[#131210] px-2 text-[#F5F0E8] outline-none transition focus:border-[#B8962E] disabled:bg-[#0E0D0B] disabled:text-[#6B6358] text-xs font-semibold"

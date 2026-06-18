@@ -2,6 +2,7 @@
 
 import { Menu } from "lucide-react";
 import DashboardNotifications from "@/components/salon-dashboard/dashboard-notifications";
+import CreditTracker from "@/components/salon-dashboard/credit-tracker";
 
 interface NavbarProps {
   onToggleMobileSidebar: () => void;
@@ -40,11 +41,13 @@ export function Navbar({ onToggleMobileSidebar }: NavbarProps) {
         {/* Center: empty — banner is the branding */}
         <div />
 
-        {/* Right: Notification Bell */}
-        <div className="flex justify-end gap-2">
+        {/* Right: Notification Bell & Credit Tracker */}
+        <div className="flex justify-end gap-3">
+          <CreditTracker />
           <DashboardNotifications />
         </div>
       </div>
     </header>
+
   );
 }
