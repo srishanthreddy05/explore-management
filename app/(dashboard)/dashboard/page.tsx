@@ -40,6 +40,7 @@ import { AddExpenseModal } from "@/components/expenses/AddExpenseModal";
 import * as customerService from "@/services/customers";
 import * as expensesService from "@/services/expenses";
 import { toLocalDateString } from "@/lib/utils/date";
+import { getInvoicePayments } from "@/lib/utils/settlements";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface Invoice {
@@ -88,6 +89,8 @@ interface StaffDetail {
   productCost: number;
   staffShare: number;
   ownerShareContribution: number;
+  collectedCredits?: any[];
+  collectedCreditsShare?: number;
 }
 
 interface TodaySettlement {
@@ -101,6 +104,7 @@ interface TodaySettlement {
   staffProductReimbursement: number;
   retailProductsRevenue: number;
   staffDetails: Record<string, StaffDetail>;
+  collectedCredits: any[];
 }
 
 // ── Utilities ──────────────────────────────────────────────────────────────
@@ -451,12 +455,24 @@ function SettlementCard({
   icon: Icon,
   items,
   isOwner = false,
+  collectedCredits,
 }: {
   title: string;
   value: number;
   icon: React.ElementType;
   items: { label: string; value: number; negative?: boolean }[];
   isOwner?: boolean;
+  collectedCredits?: {
+    originalBillDate?: string;
+    originalInvoiceNumber?: string;
+    collectionDate?: string;
+    collectionMethod?: string;
+    collectedBy?: string;
+    amount: number;
+    serviceOrProductName: string;
+    type?: string;
+    share: number;
+  }[];
 }) {
   return (
     <div
@@ -509,6 +525,38 @@ function SettlementCard({
           </div>
         ))}
       </div>
+
+      {collectedCredits && collectedCredits.length > 0 && (
+        <div className="space-y-2.5 border-t border-[#2E2B24] pt-3">
+          <h5 className="text-[10px] font-bold uppercase tracking-wider text-[#B8962E]">
+            Collected Credit Settlements
+          </h5>
+          <div className="space-y-2 max-h-[180px] overflow-y-auto pr-1">
+            {collectedCredits.map((c, idx) => (
+              <div key={idx} className="rounded-xl bg-[#1C1A16] border border-[#2E2B24] p-2.5 space-y-1.5 text-[11px]">
+                <div className="flex justify-between font-semibold text-[#F5F0E8]">
+                  <span className="truncate max-w-[170px]" title={c.serviceOrProductName}>
+                    {c.serviceOrProductName}
+                  </span>
+                  <span className="text-emerald-500 font-bold">
+                    +{formatCurrency(c.share)}
+                  </span>
+                </div>
+                <div className="flex justify-between text-[#6B6358] text-[10px] font-medium">
+                  <span>Bill Date: {c.originalBillDate || "N/A"}</span>
+                  <span className="rounded bg-[#2A2310] text-[#D4A935] px-1 font-bold text-[9px]">
+                    Inv #{c.originalInvoiceNumber || "N/A"}
+                  </span>
+                </div>
+                <div className="flex justify-between text-[#6B6358] text-[10px] font-medium">
+                  <span>Method: {c.collectionMethod || "N/A"}</span>
+                  <span>Amt: {formatCurrency(c.amount)}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -787,16 +835,40 @@ export default function DashboardPage() {
       staffProductReimbursement: 0,
       retailProductsRevenue: 0,
       staffDetails: {},
+      collectedCredits: [],
     };
 
     todayInvoices.forEach((inv) => {
       const discountFactor = inv.subtotal > 0 ? inv.grandTotal / inv.subtotal : 1;
 
+      const payments = getInvoicePayments(inv);
+      const collected = (payments.cash || 0) + (payments.upi || 0) + (payments.card || 0);
+      const ratio = inv.grandTotal > 0 ? Math.min(1, Math.max(0, collected / inv.grandTotal)) : 1;
+
       (inv.products || []).forEach((p: any) => {
         const base = p.amount ?? Math.max((p.price || 0) * (p.quantity || 1) - (p.discount || 0), 0);
         const amount = base * discountFactor;
-        dayObj.retailProductsRevenue += amount;
-        dayObj.totalOwnerShare += amount;
+        
+        if (p.isCreditSettle) {
+          dayObj.collectedCredits.push({
+            originalBillDate: p.originalBillDate || "",
+            originalInvoiceNumber: p.originalInvoiceNumber || "",
+            collectionDate: p.collectionDate || todayStr,
+            collectionMethod: p.collectionMethod || inv.paymentMethod || "UPI",
+            collectedBy: p.collectedBy || "System",
+            amount: amount * ratio,
+            staffName: "System",
+            staffId: "system",
+            serviceOrProductName: p.productName || p.product || "Credit Settle (Product)",
+            type: "product",
+          });
+          dayObj.ownerDirectRevenue += amount * ratio;
+          dayObj.totalOwnerShare += amount * ratio;
+          return;
+        }
+
+        dayObj.retailProductsRevenue += amount * ratio;
+        dayObj.totalOwnerShare += amount * ratio;
       });
 
       (inv.services || []).forEach((s: any) => {
@@ -809,11 +881,71 @@ export default function DashboardPage() {
         const staffMember = staff.find(
           (st) => st.id === staffId || st.name === staffName
         );
-        const role = staffMember?.role || "Stylist";
+        const role = s.staffRole || staffMember?.role || "Stylist";
 
-        if (s.serviceId === "membership_fee" || staffId === "system" || staffName === "System") {
-          dayObj.totalMembershipAmount += amount;
-          dayObj.totalOwnerShare += amount;
+        if (s.serviceId === "membership_fee") {
+          dayObj.totalMembershipAmount += amount * ratio;
+          dayObj.totalOwnerShare += amount * ratio;
+          return;
+        }
+
+        if (s.isCreditSettle) {
+          dayObj.collectedCredits.push({
+            originalBillDate: s.originalBillDate || "",
+            originalInvoiceNumber: s.originalInvoiceNumber || "",
+            collectionDate: s.collectionDate || todayStr,
+            collectionMethod: s.collectionMethod || inv.paymentMethod || "UPI",
+            collectedBy: s.collectedBy || "System",
+            amount: amount * ratio,
+            staffName,
+            staffId,
+            serviceOrProductName: s.serviceName || s.service || "Credit Settle",
+            type: "service",
+          });
+
+          const key = staffId !== "unassigned" ? staffId : staffName;
+          if (!dayObj.staffDetails[key]) {
+            dayObj.staffDetails[key] = {
+              staffId,
+              name: staffName,
+              role,
+              serviceRevenue: 0,
+              productCost: 0,
+              staffShare: 0,
+              ownerShareContribution: 0,
+              collectedCredits: [],
+              collectedCreditsShare: 0,
+            };
+          }
+          const sd = dayObj.staffDetails[key];
+          if (!sd.collectedCredits) {
+            sd.collectedCredits = [];
+            sd.collectedCreditsShare = 0;
+          }
+
+          sd.collectedCredits.push({
+            originalBillDate: s.originalBillDate || "",
+            originalInvoiceNumber: s.originalInvoiceNumber || "",
+            collectionDate: s.collectionDate || todayStr,
+            collectionMethod: s.collectionMethod || inv.paymentMethod || "UPI",
+            collectedBy: s.collectedBy || "System",
+            amount: amount * ratio,
+            serviceOrProductName: s.serviceName || s.service || "Credit Settle",
+            type: "service",
+          });
+
+          if (role === "Owner") {
+            dayObj.ownerDirectRevenue += amount * ratio;
+            dayObj.totalOwnerShare += amount * ratio;
+            sd.ownerShareContribution += amount * ratio;
+          } else {
+            const staffShare = 0.5 * amount; // no product cost for credit settle
+            const ownerShare = 0.5 * amount;
+            dayObj.totalOwnerShare += ownerShare * ratio;
+            dayObj.staffRevenueContribution += 0.5 * amount * ratio;
+            sd.collectedCreditsShare = (sd.collectedCreditsShare || 0) + staffShare * ratio;
+            sd.ownerShareContribution += ownerShare * ratio;
+          }
           return;
         }
 
@@ -827,36 +959,38 @@ export default function DashboardPage() {
             productCost: 0,
             staffShare: 0,
             ownerShareContribution: 0,
+            collectedCredits: [],
+            collectedCreditsShare: 0,
           };
         }
         const sd = dayObj.staffDetails[key];
 
         if (role === "Owner") {
-          dayObj.ownerDirectRevenue += amount;
-          dayObj.totalServiceRevenue += amount;
-          dayObj.totalOwnerShare += amount;
-          sd.serviceRevenue += amount;
-          sd.productCost += cost;
-          sd.ownerShareContribution += amount;
+          dayObj.ownerDirectRevenue += amount * ratio;
+          dayObj.totalServiceRevenue += amount * ratio;
+          dayObj.totalOwnerShare += amount * ratio;
+          sd.serviceRevenue += amount * ratio;
+          sd.productCost += cost * ratio;
+          sd.ownerShareContribution += amount * ratio;
         } else {
           const staffShare = 0.5 * amount - cost;
           const ownerShare = 0.5 * amount + cost;
-          dayObj.totalServiceRevenue += amount;
-          dayObj.totalProductCost += cost;
-          dayObj.totalStaffShare += staffShare;
-          dayObj.totalOwnerShare += ownerShare;
-          dayObj.staffRevenueContribution += 0.5 * amount;
-          dayObj.staffProductReimbursement += cost;
-          sd.serviceRevenue += amount;
-          sd.productCost += cost;
-          sd.staffShare += staffShare;
-          sd.ownerShareContribution += ownerShare;
+          dayObj.totalServiceRevenue += amount * ratio;
+          dayObj.totalProductCost += cost * ratio;
+          dayObj.totalStaffShare += staffShare * ratio;
+          dayObj.totalOwnerShare += ownerShare * ratio;
+          dayObj.staffRevenueContribution += 0.5 * amount * ratio;
+          dayObj.staffProductReimbursement += cost * ratio;
+          sd.serviceRevenue += amount * ratio;
+          sd.productCost += cost * ratio;
+          sd.staffShare += staffShare * ratio;
+          sd.ownerShareContribution += ownerShare * ratio;
         }
       });
     });
 
     return dayObj;
-  }, [todayInvoices, staff]);
+  }, [todayInvoices, staff, todayStr]);
 
   const staffSplits = useMemo(() => {
     const stylistStaff = staff.filter(
@@ -870,13 +1004,20 @@ export default function DashboardPage() {
         const isToday = dateKeyStr === todayStr;
         const discountFactor = inv.subtotal > 0 ? inv.grandTotal / inv.subtotal : 1;
 
+        const payments = getInvoicePayments(inv);
+        const collected = (payments.cash || 0) + (payments.upi || 0) + (payments.card || 0);
+        const ratio = inv.grandTotal > 0 ? Math.min(1, Math.max(0, collected / inv.grandTotal)) : 1;
+
         (inv.services || []).forEach((s: any) => {
           if (s.staffId === member.id || s.staffName === member.name) {
             if (s.serviceId !== "membership_fee") {
               const base = s.amount ?? Math.max((s.price || 0) - (s.discount || 0), 0);
               const amount = base * discountFactor;
               const cost = s.usedProductCost || 0;
-              if (isToday) todayShare += 0.5 * amount - cost;
+              if (isToday) {
+                const stylistShare = s.isCreditSettle ? (0.5 * amount) : (0.5 * amount - cost);
+                todayShare += stylistShare * ratio;
+              }
             }
           }
         });
@@ -1270,24 +1411,48 @@ export default function DashboardPage() {
                     { label: "Gross Share", value: todaySettlement.totalOwnerShare },
                     { label: "Today's Expenses", value: todayExpensesTotal, negative: true },
                   ]}
+                  collectedCredits={(todaySettlement.collectedCredits || []).map((c: any) => {
+                    let share = 0;
+                    if (c.staffName === "System" || c.role === "Owner") {
+                      share = c.amount;
+                    } else {
+                      share = 0.5 * c.amount;
+                    }
+                    return {
+                      ...c,
+                      share,
+                    };
+                  })}
                 />
 
                 {/* Stylist Cards */}
                 {Object.values(todaySettlement.staffDetails)
                   .filter((sd) => sd.role !== "Owner")
-                  .map((sd) => (
-                    <SettlementCard
-                      key={sd.staffId}
-                      title={sd.name}
-                      value={sd.staffShare}
-                      icon={Users}
-                      items={[
-                        { label: "Service Revenue", value: sd.serviceRevenue },
-                        { label: "50% Base Share", value: 0.5 * sd.serviceRevenue },
-                        { label: "Product Cost Used", value: sd.productCost, negative: true },
-                      ]}
-                    />
-                  ))}
+                  .map((sd) => {
+                    const collectedCredits = sd.collectedCredits || [];
+                    const collectedCreditsShare = sd.collectedCreditsShare || 0;
+                    const totalShare = sd.staffShare + collectedCreditsShare;
+                    
+                    const mappedCollectedCredits = collectedCredits.map((c: any) => ({
+                      ...c,
+                      share: 0.5 * c.amount,
+                    }));
+
+                    return (
+                      <SettlementCard
+                        key={sd.staffId}
+                        title={sd.name}
+                        value={totalShare}
+                        icon={Users}
+                        items={[
+                          { label: "Service Revenue", value: sd.serviceRevenue },
+                          { label: "50% Base Share", value: 0.5 * sd.serviceRevenue },
+                          { label: "Product Cost Used", value: sd.productCost, negative: true },
+                        ]}
+                        collectedCredits={mappedCollectedCredits}
+                      />
+                    );
+                  })}
               </div>
             )}
           </div>

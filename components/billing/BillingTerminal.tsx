@@ -200,66 +200,72 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
 
   // Keep collectedCredits synced if the cashier deletes the Credit Settle row from either table
   useEffect(() => {
-    const activeServiceInvoiceNumbers = services
-      .filter((s) => s.service.startsWith("Credit Settle (Inv #"))
-      .map((s) => {
-        const match = s.service.match(/Credit Settle \(Inv #([^)]+)\)/);
-        return match ? match[1] : "";
-      })
-      .filter(Boolean);
+    const activeServiceCreditIds = services
+      .filter((s: any) => s.isCreditSettle && s.creditBalanceId)
+      .map((s: any) => s.creditBalanceId);
 
-    const activeProductInvoiceNumbers = products
-      .filter((p) => p.product.startsWith("Credit Settle (Inv #"))
-      .map((p) => {
-        const match = p.product.match(/Credit Settle \(Inv #([^)]+)\)/);
-        return match ? match[1] : "";
-      })
-      .filter(Boolean);
+    const activeProductCreditIds = products
+      .filter((p: any) => p.isCreditSettle && p.creditBalanceId)
+      .map((p: any) => p.creditBalanceId);
 
-    const activeInvoiceNumbers = new Set([...activeServiceInvoiceNumbers, ...activeProductInvoiceNumbers]);
+    const activeCreditIds = [...activeServiceCreditIds, ...activeProductCreditIds];
     
-    const newCollectedCredits = allCustomerPendingCredits
-      .filter((c) => activeInvoiceNumbers.has(c.invoiceNumber))
-      .map((c) => c.id || "")
-      .filter(Boolean);
-      
-    if (JSON.stringify(newCollectedCredits) !== JSON.stringify(collectedCredits)) {
-      setCollectedCredits(newCollectedCredits);
+    if (JSON.stringify(activeCreditIds) !== JSON.stringify(collectedCredits)) {
+      setCollectedCredits(activeCreditIds);
     }
-  }, [services, products, allCustomerPendingCredits, collectedCredits]);
+  }, [services, products, collectedCredits]);
 
   const handleCollectCredit = (credit: CreditBalance) => {
+    const collectAmount = credit.remainingAmount !== undefined ? credit.remainingAmount : (credit.amount ?? 0);
     if (credit.type === "product") {
       setProducts((prev) => {
-        const isAlreadyAdded = prev.some((p) => p.product === `Credit Settle (Inv #${credit.invoiceNumber})`);
+        const isAlreadyAdded = prev.some((p: any) => p.isCreditSettle && p.creditBalanceId === credit.id);
         if (isAlreadyAdded) return prev;
 
         const nextId = Math.max(0, ...prev.map((row) => row.id)) + 1;
-        const newProductRow: ProductRow = {
+        const newProductRow: ProductRow & { 
+          creditBalanceId?: string;
+          originalBillDate?: string;
+          originalInvoiceNumber?: string;
+        } = {
           id: nextId,
           productId: "",
           product: `Credit Settle (Inv #${credit.invoiceNumber})`,
-          price: credit.amount,
+          price: collectAmount,
           quantity: 1,
           discount: 0,
           isCreditSettle: true,
+          creditBalanceId: credit.id,
+          originalBillDate: credit.originalBillDate,
+          originalInvoiceNumber: credit.originalInvoiceNumber,
         };
         return [...prev, newProductRow];
       });
     } else {
       setServices((prev) => {
-        const isAlreadyAdded = prev.some((s) => s.service === `Credit Settle (Inv #${credit.invoiceNumber})`);
+        const isAlreadyAdded = prev.some((s: any) => s.isCreditSettle && s.creditBalanceId === credit.id);
         if (isAlreadyAdded) return prev;
 
         const nextId = Math.max(0, ...prev.map((row) => row.id)) + 1;
-        const newServiceRow: ServiceRow = {
+        const newServiceRow: ServiceRow & { 
+          originalStaffId?: string; 
+          originalStaffRole?: string; 
+          creditBalanceId?: string;
+          originalBillDate?: string;
+          originalInvoiceNumber?: string;
+        } = {
           id: nextId,
           service: `Credit Settle (Inv #${credit.invoiceNumber})`,
-          staff: "System",
-          price: credit.amount,
+          staff: credit.originalStaffName || "System",
+          price: collectAmount,
           quantity: 1,
           discount: 0,
           isCreditSettle: true,
+          originalStaffId: credit.originalStaffId,
+          originalStaffRole: credit.originalStaffRole,
+          creditBalanceId: credit.id,
+          originalBillDate: credit.originalBillDate,
+          originalInvoiceNumber: credit.originalInvoiceNumber,
         };
         return [...prev, newServiceRow];
       });
@@ -527,9 +533,17 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
       }
 
       // Step 3: Build correctly-shaped service and product rows
-      const enrichedServices = services.map((row) => {
+      const invoicePaymentMethod = cashVal === totals.grandTotal 
+        ? "Cash" 
+        : upiVal === totals.grandTotal 
+          ? "UPI" 
+          : cardVal === totals.grandTotal 
+            ? "Card" 
+            : "Split";
+
+      const enrichedServices = services.map((row: any) => {
         const matchedService = servicesList.find((s) => s.name === row.service);
-        const matchedStaff = staffList.find((s) => s.name === row.staff);
+        const matchedStaff = staffContextData.find((s) => s.name === row.staff);
         let usedProductCost = 0;
         if (row.usedProductId) {
           const matchedProduct = productsList.find((p) => p.id === row.usedProductId);
@@ -538,13 +552,19 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
           }
         }
         const serviceAmount = Math.max(row.price - (row.discount || 0), 0);
-        const staffRole = row.staff === "System" ? "Owner" : (matchedStaff?.role || "Stylist");
+        
+        // Use original staff metadata if it's a credit settlement row
+        const staffId = row.isCreditSettle ? (row.originalStaffId || matchedStaff?.id || "system") : (matchedStaff?.id ?? "");
+        const staffRole = row.isCreditSettle 
+          ? (row.originalStaffRole || (row.staff === "System" ? "Owner" : (matchedStaff?.role || "Stylist")))
+          : (row.staff === "System" ? "Owner" : (matchedStaff?.role || "Stylist"));
+          
         const stylistShare = staffRole === "Owner" ? 0 : 0.5 * serviceAmount - usedProductCost;
         const ownerShare = staffRole === "Owner" ? serviceAmount : 0.5 * serviceAmount + usedProductCost;
         return {
           serviceId: matchedService?.id ?? "",
           serviceName: row.service,
-          staffId: matchedStaff?.id ?? "",
+          staffId,
           staffName: row.staff,
           price: row.price,
           discount: row.discount || 0,
@@ -555,10 +575,17 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
           staffRole,
           stylistShare,
           ownerShare,
+          isCreditSettle: row.isCreditSettle || false,
+          creditBalanceId: row.creditBalanceId ?? null,
+          originalBillDate: row.originalBillDate ?? null,
+          originalInvoiceNumber: row.originalInvoiceNumber ?? null,
+          collectionDate: dateString,
+          collectionMethod: row.isCreditSettle ? invoicePaymentMethod : null,
+          collectedBy: row.isCreditSettle ? "System" : null,
         };
       });
 
-      const enrichedProducts = products.map((row) => {
+      const enrichedProducts = products.map((row: any) => {
         return {
           productId: row.productId || "",
           productName: row.product,
@@ -566,6 +593,13 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
           price: row.price,
           discount: row.discount || 0,
           amount: Math.max(row.price * row.quantity - (row.discount || 0), 0),
+          isCreditSettle: row.isCreditSettle || false,
+          creditBalanceId: row.creditBalanceId ?? null,
+          originalBillDate: row.originalBillDate ?? null,
+          originalInvoiceNumber: row.originalInvoiceNumber ?? null,
+          collectionDate: dateString,
+          collectionMethod: row.isCreditSettle ? invoicePaymentMethod : null,
+          collectedBy: row.isCreditSettle ? "System" : null,
         };
       });
 
@@ -670,45 +704,81 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
         });
       }
 
-      // Step 5: Save or update credit balance in DB (split proportionally by services vs products)
+      // Step 5: Save or update credit balance in DB (split proportionally by services vs products at item level)
       if (markAsCredit) {
         const creditAmount = totals.grandTotal - totalPaid;
         if (creditAmount > 0) {
-          const serviceTotalVal = totals.serviceTotal;
-          const productTotalVal = totals.productTotal;
-          const subtotalVal = serviceTotalVal + productTotalVal;
+          const discountFactor = totals.subtotal > 0 ? totals.grandTotal / totals.subtotal : 1;
+          const paidRatio = totals.grandTotal > 0 ? totalPaid / totals.grandTotal : 0;
+          const invNum = invoiceNumberDisplay === "Auto-assigned on save" ? invoiceNumber : invoiceNumberDisplay;
+          const invId = savedInvoiceId || editInvoiceId || "";
           
-          if (subtotalVal > 0) {
-            const serviceRatio = serviceTotalVal / subtotalVal;
-            const productRatio = productTotalVal / subtotalVal;
+          // Allocate service-level credits and associate original stylists
+          for (const s of enrichedServices) {
+            const serviceFinalAmount = s.amount * discountFactor;
+            const serviceCredit = Math.max(0, serviceFinalAmount * (1 - paidRatio));
+            const roundedServiceCredit = Math.round(serviceCredit * 100) / 100;
             
-            const serviceCredit = Math.round(creditAmount * serviceRatio * 100) / 100;
-            const productCredit = Math.round(creditAmount * productRatio * 100) / 100;
-            
-            const invNum = invoiceNumberDisplay === "Auto-assigned on save" ? invoiceNumber : invoiceNumberDisplay;
-            
-            if (serviceCredit > 0) {
+            if (roundedServiceCredit > 0) {
               await creditBalancesService.create({
-                customerId: customerId,
+                customerId,
                 customerName: customerName.trim(),
                 customerPhone: customerMobile.trim(),
-                invoiceId: savedInvoiceId || editInvoiceId || "",
+                originalInvoiceId: invId,
+                originalInvoiceNumber: invNum,
+                originalBillDate: dateString,
+                originalStaffId: s.staffId || "system",
+                originalStaffName: s.staffName || "System",
+                originalStaffRole: s.staffRole || "Owner",
+                originalServiceId: s.serviceId || "",
+                originalServiceName: s.serviceName || "",
+                originalServiceAmount: serviceFinalAmount,
+                originalServiceCommission: s.stylistShare,
+                creditAmount: roundedServiceCredit,
+                remainingAmount: roundedServiceCredit,
+                collectionStatus: "pending",
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                // compatibility fields
+                invoiceId: invId,
                 invoiceNumber: invNum,
-                amount: serviceCredit,
-                type: "service",
-                notes: `Outstanding service credit deferred during bill save.`,
+                amount: roundedServiceCredit,
+                type: "service"
               });
             }
-            if (productCredit > 0) {
+          }
+
+          // Allocate product-level credits
+          for (const p of enrichedProducts) {
+            const productFinalAmount = p.amount * discountFactor;
+            const productCredit = Math.max(0, productFinalAmount * (1 - paidRatio));
+            const roundedProductCredit = Math.round(productCredit * 100) / 100;
+            
+            if (roundedProductCredit > 0) {
               await creditBalancesService.create({
-                customerId: customerId,
+                customerId,
                 customerName: customerName.trim(),
                 customerPhone: customerMobile.trim(),
-                invoiceId: savedInvoiceId || editInvoiceId || "",
+                originalInvoiceId: invId,
+                originalInvoiceNumber: invNum,
+                originalBillDate: dateString,
+                originalStaffId: "system",
+                originalStaffName: "System",
+                originalStaffRole: "Owner",
+                originalServiceId: p.productId || "",
+                originalServiceName: p.productName || "",
+                originalServiceAmount: productFinalAmount,
+                originalServiceCommission: 0,
+                creditAmount: roundedProductCredit,
+                remainingAmount: roundedProductCredit,
+                collectionStatus: "pending",
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                // compatibility fields
+                invoiceId: invId,
                 invoiceNumber: invNum,
-                amount: productCredit,
-                type: "product",
-                notes: `Outstanding product credit deferred during bill save.`,
+                amount: roundedProductCredit,
+                type: "product"
               });
             }
           }
@@ -717,8 +787,20 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
 
       // Settle any previously collected outstanding credits
       if (collectedCredits.length > 0) {
-        for (const creditId of collectedCredits) {
-          await creditBalancesService.settle(creditId);
+        const creditSettlesMap: Record<string, number> = {};
+        enrichedServices.forEach((s: any) => {
+          if (s.isCreditSettle && s.creditBalanceId) {
+            creditSettlesMap[s.creditBalanceId] = (creditSettlesMap[s.creditBalanceId] || 0) + s.amount;
+          }
+        });
+        enrichedProducts.forEach((p: any) => {
+          if (p.isCreditSettle && p.creditBalanceId) {
+            creditSettlesMap[p.creditBalanceId] = (creditSettlesMap[p.creditBalanceId] || 0) + p.amount;
+          }
+        });
+
+        for (const [creditId, collectedAmount] of Object.entries(creditSettlesMap)) {
+          await creditBalancesService.settle(creditId, collectedAmount);
         }
       }
 
@@ -1006,7 +1088,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
                 {pendingCreditsToShow.length === 1 ? (
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <span>
-                      Customer has outstanding credit of <b>{formatCurrency(pendingCreditsToShow[0].amount)}</b> since{" "}
+                      Customer has outstanding credit of <b>{formatCurrency(pendingCreditsToShow[0].remainingAmount !== undefined ? pendingCreditsToShow[0].remainingAmount : (pendingCreditsToShow[0].amount ?? 0))}</b> since{" "}
                       <b>{new Date(pendingCreditsToShow[0].createdAt).toLocaleDateString()}</b> — Invoice #{pendingCreditsToShow[0].invoiceNumber}
                     </span>
                     <button
@@ -1022,7 +1104,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
                   <div>
                     <div className="flex items-center justify-between flex-wrap gap-2 font-semibold">
                       <span>
-                        Total Outstanding Credit: <b>{formatCurrency(pendingCreditsToShow.reduce((sum, c) => sum + c.amount, 0))}</b> ({pendingCreditsToShow.length} invoices)
+                        Total Outstanding Credit: <b>{formatCurrency(pendingCreditsToShow.reduce((sum, c) => sum + (c.remainingAmount !== undefined ? c.remainingAmount : (c.amount ?? 0)), 0))}</b> ({pendingCreditsToShow.length} invoices)
                       </span>
                       <button
                         type="button"
@@ -1030,14 +1112,14 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
                         className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#B8962E] px-3 text-xs font-bold text-[#0E0D0B] hover:bg-[#D4A935] transition cursor-pointer shadow-sm animate-pulse"
                       >
                         <Wallet size={12} />
-                        Collect All ({formatCurrency(pendingCreditsToShow.reduce((sum, c) => sum + c.amount, 0))})
+                        Collect All ({formatCurrency(pendingCreditsToShow.reduce((sum, c) => sum + (c.remainingAmount !== undefined ? c.remainingAmount : (c.amount ?? 0)), 0))})
                       </button>
                     </div>
                     <ul className="mt-2 space-y-1.5 border-t border-amber-900/20 pt-2 text-xs text-stone-400">
                       {pendingCreditsToShow.map((credit) => (
                         <li key={credit.id} className="flex items-center justify-between">
                           <span>
-                            • {formatCurrency(credit.amount)} since {new Date(credit.createdAt).toLocaleDateString()} — {credit.invoiceNumber}
+                            • {formatCurrency(credit.remainingAmount !== undefined ? credit.remainingAmount : (credit.amount ?? 0))} since {new Date(credit.createdAt).toLocaleDateString()} — {credit.invoiceNumber}
                           </span>
                           <button
                             type="button"

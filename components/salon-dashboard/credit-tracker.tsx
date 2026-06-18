@@ -174,7 +174,7 @@ export default function CreditTracker() {
                       
                       <div className="flex items-center gap-2 shrink-0">
                         <span className="font-extrabold text-amber-700 text-sm whitespace-nowrap">
-                          {formatCurrency(credit.amount)}
+                          {formatCurrency(credit.remainingAmount !== undefined ? credit.remainingAmount : (credit.amount ?? 0))}
                         </span>
                         <button
                           onClick={() => credit.id && handleSettleCredit(credit.id, credit.customerName)}

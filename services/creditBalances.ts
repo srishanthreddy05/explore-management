@@ -75,14 +75,32 @@ export async function getAllPending(): Promise<CreditBalance[]> {
     return [];
   }
 }
-
-export async function settle(id: string, providedBatch?: any): Promise<void> {
+export async function settle(id: string, collectedAmount?: number, providedBatch?: any): Promise<void> {
   try {
     const docRef = doc(db, COLLECTION_NAME, id);
-    const updateData = {
-      status: "settled",
-      settledAt: new Date().toISOString(),
+    
+    // Retrieve the document first to calculate the correct remainingAmount
+    const snap = await getDoc(docRef);
+    if (!snap.exists()) {
+      throw new Error(`Credit balance document ${id} not found`);
+    }
+    const data = snap.data();
+    const currentRemaining = data.remainingAmount !== undefined ? data.remainingAmount : (data.amount ?? 0);
+    const amountToSettle = collectedAmount !== undefined ? collectedAmount : currentRemaining;
+    const newRemaining = Math.max(0, currentRemaining - amountToSettle);
+    const isFullySettled = newRemaining <= 0;
+    
+    const updateData: any = {
+      remainingAmount: newRemaining,
+      collectionStatus: isFullySettled ? "settled" : "partial",
+      status: isFullySettled ? "settled" : "pending", // fallback for legacy compatibility
+      updatedAt: new Date().toISOString(),
     };
+    
+    if (isFullySettled) {
+      updateData.settledAt = new Date().toISOString();
+    }
+    
     if (providedBatch) {
       providedBatch.update(docRef, updateData);
     } else {

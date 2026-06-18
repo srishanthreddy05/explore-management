@@ -1,17 +1,18 @@
-const fs = require('fs');
-const path = require('path');
-const { initializeApp } = require('firebase/app');
-const {
+import * as fs from 'fs';
+import * as path from 'path';
+import { initializeApp } from 'firebase/app';
+import {
   getFirestore,
   collection,
   getDocs,
   doc,
   writeBatch
-} = require('firebase/firestore');
+} from 'firebase/firestore';
+import { getInvoicePayments, getInvoicePaymentRatio, getServiceCommission } from '../lib/utils/settlements';
 
 // Load environment variables from .env.local
 const dotenvPath = path.resolve(__dirname, '../.env.local');
-const env = {};
+const env: Record<string, string> = {};
 if (fs.existsSync(dotenvPath)) {
   const content = fs.readFileSync(dotenvPath, 'utf8');
   content.split('\n').forEach((line) => {
@@ -39,7 +40,7 @@ if (!firebaseConfig.projectId) {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-function getInvoiceDateKeys(invoice) {
+function getInvoiceDateKeys(invoice: any) {
   let dateKey = invoice.dateKey;
   if (!dateKey) {
     let d = new Date();
@@ -57,57 +58,6 @@ function getInvoiceDateKeys(invoice) {
   };
 }
 
-function getInvoicePayments(inv) {
-  return {
-    cash:
-      inv.paymentSplit?.cash ??
-      inv.payments?.cash ??
-      (inv.paymentMethod === 'Cash' ? inv.grandTotal || 0 : 0),
-    upi:
-      inv.paymentSplit?.upi ??
-      inv.payments?.upi ??
-      (inv.paymentMethod === 'UPI' ? inv.grandTotal || 0 : 0),
-    card:
-      inv.paymentSplit?.card ??
-      inv.payments?.card ??
-      (inv.paymentMethod === 'Card' ? inv.grandTotal || 0 : 0),
-  };
-}
-
-function getServiceCommission(s, inv) {
-  const discountFactor = inv && inv.subtotal > 0 ? (inv.grandTotal / inv.subtotal) : 1;
-  const serviceBaseAmount = s.amount ?? Math.max((s.price || 0) - (s.discount || 0), 0);
-  const amount = serviceBaseAmount * discountFactor;
-  const cost = s.usedProductCost || 0;
-  
-  let role = s.staffRole;
-  if (!role) {
-    if (s.serviceId === 'membership_fee' || s.staffId === 'system' || s.staffName === 'System') {
-      role = 'Owner';
-    } else {
-      role = 'Stylist';
-    }
-  }
-
-  let stylistShare = 0;
-  let ownerShare = 0;
-
-  if (role === 'Owner') {
-    stylistShare = 0;
-    ownerShare = amount;
-  } else {
-    stylistShare = 0.5 * amount - cost;
-    ownerShare = 0.5 * amount + cost;
-  }
-
-  return {
-    serviceRevenue: amount,
-    productCost: cost,
-    stylistShare,
-    ownerShare,
-  };
-}
-
 async function runMigration() {
   console.log("Starting backfill migration...");
   console.log("Using configuration for project:", firebaseConfig.projectId);
@@ -117,21 +67,23 @@ async function runMigration() {
     const invoicesSnap = await getDocs(collection(db, 'invoices'));
     console.log(`Fetched ${invoicesSnap.size} invoices.`);
 
-    const monthlyStats = {};
-    const dailyStats = {};
-    const staffStats = {};
+    const monthlyStats: Record<string, any> = {};
+    const dailyStats: Record<string, any> = {};
+    const staffStats: Record<string, any> = {};
 
     invoicesSnap.forEach((docSnap) => {
-      const inv = docSnap.data();
+      const inv: any = docSnap.data();
       const { dateKey, monthKey } = getInvoiceDateKeys(inv);
       const payments = getInvoicePayments(inv);
       const grandTotal = inv.grandTotal || 0;
+      const collected = (payments.cash || 0) + (payments.upi || 0) + (payments.card || 0);
+      const ratio = grandTotal > 0 ? Math.min(1, Math.max(0, collected / grandTotal)) : 1;
 
       // Initialize monthly stats
       if (!monthlyStats[monthKey]) {
         monthlyStats[monthKey] = { totalRevenue: 0, totalVisits: 0, cash: 0, upi: 0, card: 0 };
       }
-      monthlyStats[monthKey].totalRevenue += grandTotal;
+      monthlyStats[monthKey].totalRevenue += collected;
       monthlyStats[monthKey].totalVisits += 1;
       monthlyStats[monthKey].cash += payments.cash;
       monthlyStats[monthKey].upi += payments.upi;
@@ -149,35 +101,39 @@ async function runMigration() {
           productCost: 0,
           stylistShare: 0,
           ownerShare: 0,
+          totalMembershipAmount: 0,
           retailProductsRevenue: 0
         };
       }
-      dailyStats[dateKey].totalRevenue += grandTotal;
+      dailyStats[dateKey].totalRevenue += collected;
       dailyStats[dateKey].totalVisits += 1;
       dailyStats[dateKey].cash += payments.cash;
       dailyStats[dateKey].upi += payments.upi;
       dailyStats[dateKey].card += payments.card;
 
-      (inv.services || []).forEach((s) => {
+      (inv.services || []).forEach((s: any) => {
         const comm = getServiceCommission(s, inv);
-        dailyStats[dateKey].serviceRevenue += comm.serviceRevenue;
-        dailyStats[dateKey].productCost += comm.productCost;
-        dailyStats[dateKey].stylistShare += comm.stylistShare;
-        dailyStats[dateKey].ownerShare += comm.ownerShare;
+        dailyStats[dateKey].serviceRevenue += comm.serviceRevenue * ratio;
+        dailyStats[dateKey].productCost += comm.productCost * ratio;
+        dailyStats[dateKey].stylistShare += comm.stylistShare * ratio;
+        dailyStats[dateKey].ownerShare += comm.ownerShare * ratio;
+        if (s.serviceId === "membership_fee") {
+          dailyStats[dateKey].totalMembershipAmount += comm.serviceRevenue * ratio;
+        }
       });
 
       // Add retail product sales to owner's share
       const discountFactor = inv.subtotal > 0 ? (inv.grandTotal / inv.subtotal) : 1;
-      (inv.products || []).forEach((p) => {
+      (inv.products || []).forEach((p: any) => {
         const productBaseAmount = p.amount ?? Math.max((p.price || 0) * (p.quantity || 1) - (p.discount || 0), 0);
         const amount = productBaseAmount * discountFactor;
-        dailyStats[dateKey].ownerShare += amount;
+        dailyStats[dateKey].ownerShare += amount * ratio;
+        dailyStats[dateKey].retailProductsRevenue += amount * ratio;
       });
 
       // Staff monthly splits
-      const staffInvoiceSummary = {};
-      const discountFactor = inv && inv.subtotal > 0 ? (inv.grandTotal / inv.subtotal) : 1;
-      (inv.services || []).forEach((s) => {
+      const staffInvoiceSummary: Record<string, any> = {};
+      (inv.services || []).forEach((s: any) => {
         const staffId = s.staffId || 'unassigned';
         if (!staffInvoiceSummary[staffId]) {
           staffInvoiceSummary[staffId] = { revenue: 0, servicesCount: 0, productCost: 0 };
@@ -195,9 +151,9 @@ async function runMigration() {
         if (!staffStats[staffMonthKey]) {
           staffStats[staffMonthKey] = { revenue: 0, servicesCount: 0, visits: 0, productCost: 0 };
         }
-        staffStats[staffMonthKey].revenue += summary.revenue;
+        staffStats[staffMonthKey].revenue += summary.revenue * ratio;
         staffStats[staffMonthKey].servicesCount += summary.servicesCount;
-        staffStats[staffMonthKey].productCost += summary.productCost;
+        staffStats[staffMonthKey].productCost += summary.productCost * ratio;
         staffStats[staffMonthKey].visits += 1; // 1 visit per invoice worked on
       });
     });
@@ -205,7 +161,7 @@ async function runMigration() {
     console.log("Aggregation complete. Writing to stats collection in Firestore...");
 
     // 2. Write aggregated documents in batches of 500
-    const ops = [];
+    const ops: Array<{ ref: any; data: any }> = [];
 
     Object.entries(monthlyStats).forEach(([monthKey, stats]) => {
       ops.push({

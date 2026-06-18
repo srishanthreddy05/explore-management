@@ -98,7 +98,17 @@ export function BillingTable({
                     onChange={(event) => updateRow(row.id, { staff: event.target.value })}
                     className="h-10 w-full rounded-xl border border-[#2E2B24] bg-[#131210] px-2.5 text-[#F5F0E8] outline-none transition focus:border-[#B8962E] disabled:bg-[#0E0D0B] disabled:text-[#6B6358] text-xs font-semibold cursor-pointer appearance-none"
                   >
-                    {staffOptions.length === 0 && <option value="">No Options</option>}
+                    {staffOptions.length === 0 && !row.isCreditSettle && <option value="">No Options</option>}
+                    {(row.isCreditSettle || row.staff === "System") && (
+                      <option value="System" className="bg-[#131210] text-[#F5F0E8]">
+                        System
+                      </option>
+                    )}
+                    {row.isCreditSettle && row.staff && row.staff !== "System" && !staffOptions.includes(row.staff) && (
+                      <option value={row.staff} className="bg-[#131210] text-[#F5F0E8]">
+                        {row.staff}
+                      </option>
+                    )}
                     {staffOptions.map((option) => (
                       <option key={option} value={option} className="bg-[#131210] text-[#F5F0E8]">
                         {option}
