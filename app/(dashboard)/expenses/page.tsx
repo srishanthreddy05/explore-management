@@ -27,7 +27,7 @@ export default function ExpensesPage() {
   const [formData, setFormData] = useState({
     description: "",
     amount: 0,
-    date: new Date().toISOString().split("T")[0],
+    date: toLocalDateString(new Date()),
     category: "Rent",
     type: "monthly" as "daily" | "monthly",
   });
@@ -72,7 +72,7 @@ export default function ExpensesPage() {
     setFormData({
       description: "",
       amount: 0,
-      date: new Date().toISOString().split("T")[0],
+      date: toLocalDateString(new Date()),
       category: "Rent",
       type: "monthly",
     });
@@ -125,7 +125,7 @@ export default function ExpensesPage() {
 
   // ── Summary card calculations ─────────────────────────────────────────────
   const summary = useMemo(() => {
-    const todayStr = new Date().toISOString().split("T")[0];
+    const todayStr = toLocalDateString(new Date());
     const currentMonth = new Date().getMonth();
     const currentYear = new Date().getFullYear();
 

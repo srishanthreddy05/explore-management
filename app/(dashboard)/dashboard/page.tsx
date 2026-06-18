@@ -284,11 +284,10 @@ function StaffCard({
 
   return (
     <div
-      className={`group relative overflow-hidden rounded-2xl border bg-[#131210] p-4 transition-all duration-300 hover:-translate-y-0.5 ${
-        isOnDuty
+      className={`group relative overflow-hidden rounded-2xl border bg-[#131210] p-4 transition-all duration-300 hover:-translate-y-0.5 ${isOnDuty
           ? "border-[#B8962E]/30 shadow-[0_4px_20px_rgba(184,150,46,0.08)]"
           : "border-[#2E2B24] hover:border-[#4A4535]"
-      }`}
+        }`}
     >
       <div className="flex items-start justify-between">
         <div className="min-w-0 flex-1">
@@ -297,11 +296,10 @@ function StaffCard({
               {member.name}
             </h3>
             <span
-              className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold tracking-[0.1em] uppercase border ${
-                isOnDuty
+              className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold tracking-[0.1em] uppercase border ${isOnDuty
                   ? "border-[#4A3A10] bg-[#2A2310] text-[#D4A935]"
                   : "border-[#2E2B24] bg-[#1C1A16] text-[#6B6358]"
-              }`}
+                }`}
             >
               {isOnDuty ? "On Duty" : "Off Duty"}
             </span>
@@ -311,9 +309,8 @@ function StaffCard({
           </p>
         </div>
         <div
-          className={`size-2 rounded-full shrink-0 mt-1.5 ${
-            isOnDuty ? "bg-[#4ADE80] shadow-[0_0_8px_rgba(74,222,128,0.4)]" : "bg-[#6B6358]"
-          }`}
+          className={`size-2 rounded-full shrink-0 mt-1.5 ${isOnDuty ? "bg-[#4ADE80] shadow-[0_0_8px_rgba(74,222,128,0.4)]" : "bg-[#6B6358]"
+            }`}
         />
       </div>
 
@@ -327,11 +324,10 @@ function StaffCard({
 
       <button
         onClick={() => onToggle(member)}
-        className={`mt-3 h-9 w-full rounded-xl text-[11px] font-bold tracking-wide transition-all duration-200 ${
-          isOnDuty
+        className={`mt-3 h-9 w-full rounded-xl text-[11px] font-bold tracking-wide transition-all duration-200 ${isOnDuty
             ? "border border-[#2E2B24] bg-transparent text-[#A89F8C] hover:border-[#B8962E] hover:text-[#B8962E]"
             : "bg-[#B8962E] text-[#0E0D0B] hover:bg-[#D4A935] shadow-[0_2px_12px_rgba(184,150,46,0.2)]"
-        }`}
+          }`}
       >
         {isOnDuty ? "Clock Out" : "Clock In"}
       </button>
@@ -476,11 +472,10 @@ function SettlementCard({
 }) {
   return (
     <div
-      className={`rounded-2xl border p-5 space-y-4 ${
-        isOwner
+      className={`rounded-2xl border p-5 space-y-4 ${isOwner
           ? "border-[#4A3A10]/50 bg-[#1A1500]/80"
           : "border-[#2E2B24] bg-[#131210]"
-      }`}
+        }`}
     >
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-2">
@@ -489,9 +484,8 @@ function SettlementCard({
             className={isOwner ? "text-[#D4A935]" : "text-[#B8962E]"}
           />
           <h4
-            className={`font-extrabold text-sm ${
-              isOwner ? "text-[#D4A935]" : "text-[#F5F0E8]"
-            }`}
+            className={`font-extrabold text-sm ${isOwner ? "text-[#D4A935]" : "text-[#F5F0E8]"
+              }`}
           >
             {title}
           </h4>
@@ -501,9 +495,8 @@ function SettlementCard({
             Net Share
           </span>
           <p
-            className={`font-black text-xl mt-0.5 ${
-              isOwner ? "text-[#D4A935]" : "text-[#F5F0E8]"
-            }`}
+            className={`font-black text-xl mt-0.5 ${isOwner ? "text-[#D4A935]" : "text-[#F5F0E8]"
+              }`}
           >
             {formatCurrency(value)}
           </p>
@@ -515,9 +508,8 @@ function SettlementCard({
           <div key={i} className="flex justify-between text-xs">
             <span className="text-[#A89F8C] font-medium">{item.label}</span>
             <span
-              className={`font-bold ${
-                item.negative ? "text-[#E57373]" : "text-[#F5F0E8]"
-              }`}
+              className={`font-bold ${item.negative ? "text-[#E57373]" : "text-[#F5F0E8]"
+                }`}
             >
               {item.negative ? "-" : "+"}
               {formatCurrency(Math.abs(item.value))}
@@ -632,9 +624,9 @@ export default function DashboardPage() {
       const snap = await getDoc(docRef);
       const data = snap.exists()
         ? {
-            totalRevenue: snap.data().totalRevenue ?? 0,
-            totalVisits: snap.data().totalVisits ?? 0,
-          }
+          totalRevenue: snap.data().totalRevenue ?? 0,
+          totalVisits: snap.data().totalVisits ?? 0,
+        }
         : { totalRevenue: 0, totalVisits: 0 };
 
       setMonthlyStats(data);
@@ -673,9 +665,9 @@ export default function DashboardPage() {
             const snap = await getDoc(ref);
             map[member.id] = snap.exists()
               ? {
-                  revenue: snap.data().revenue ?? 0,
-                  productCost: snap.data().productCost ?? 0,
-                }
+                revenue: snap.data().revenue ?? 0,
+                productCost: snap.data().productCost ?? 0,
+              }
               : { revenue: 0, productCost: 0 };
           })
         );
@@ -848,7 +840,7 @@ export default function DashboardPage() {
       (inv.products || []).forEach((p: any) => {
         const base = p.amount ?? Math.max((p.price || 0) * (p.quantity || 1) - (p.discount || 0), 0);
         const amount = base * discountFactor;
-        
+
         if (p.isCreditSettle) {
           dayObj.collectedCredits.push({
             originalBillDate: p.originalBillDate || "",
@@ -1432,7 +1424,7 @@ export default function DashboardPage() {
                     const collectedCredits = sd.collectedCredits || [];
                     const collectedCreditsShare = sd.collectedCreditsShare || 0;
                     const totalShare = sd.staffShare + collectedCreditsShare;
-                    
+
                     const mappedCollectedCredits = collectedCredits.map((c: any) => ({
                       ...c,
                       share: 0.5 * c.amount,

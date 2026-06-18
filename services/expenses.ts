@@ -13,6 +13,8 @@ import {
 } from "firebase/firestore";
 import type { Expense } from "@/types/expense";
 import { toTitleCase } from "@/lib/utils/text";
+import { toLocalDateString } from "@/lib/utils/date";
+
 
 const COLLECTION_NAME = "expenses";
 
@@ -50,8 +52,8 @@ export async function getAll(): Promise<Expense[]> {
 
 export async function getByDateRange(startDate: Date, endDate: Date): Promise<Expense[]> {
   try {
-    const startStr = startDate.toISOString().split("T")[0];
-    const endStr = endDate.toISOString().split("T")[0];
+    const startStr = toLocalDateString(startDate);
+    const endStr = toLocalDateString(endDate);
     const q = query(
       collection(db, COLLECTION_NAME),
       where("date", ">=", startStr),

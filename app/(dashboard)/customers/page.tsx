@@ -18,6 +18,8 @@ import {
   orderBy,
 } from "firebase/firestore";
 import { toTitleCase } from "@/lib/utils/text";
+import { toLocalDateString } from "@/lib/utils/date";
+
 
 export default function CustomersPage() {
   const [loading, setLoading] = useState(true);
@@ -260,7 +262,7 @@ export default function CustomersPage() {
       customerType: "regular",
       membershipAmount: "",
       membershipDuration: "",
-      membershipStart: new Date().toISOString().split("T")[0],
+      membershipStart: toLocalDateString(new Date()),
       paymentMethod: "UPI",
       recordInvoice: true,
     });
@@ -275,7 +277,7 @@ export default function CustomersPage() {
       customerType: customer.customerType || "regular",
       membershipAmount: customer.membershipAmount?.toString() || "",
       membershipDuration: customer.membershipDuration?.toString() || "",
-      membershipStart: customer.membershipStart ? new Date(customer.membershipStart).toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
+      membershipStart: customer.membershipStart ? toLocalDateString(customer.membershipStart) : toLocalDateString(new Date()),
       paymentMethod: "UPI",
       recordInvoice: false,
     });

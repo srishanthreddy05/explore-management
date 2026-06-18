@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import * as customerService from "@/services/customers";
 import * as invoicesService from "@/services/invoices";
+import { toLocalDateString } from "@/lib/utils/date";
+
 
 interface AddCustomerModalProps {
   onClose: () => void;
@@ -16,7 +18,7 @@ export function AddCustomerModal({ onClose, onSuccess }: AddCustomerModalProps) 
   const [customerType, setCustomerType] = useState<"regular" | "membership">("regular");
   const [membershipAmount, setMembershipAmount] = useState("");
   const [membershipDuration, setMembershipDuration] = useState("");
-  const [membershipStart, setMembershipStart] = useState(new Date().toISOString().split("T")[0]);
+  const [membershipStart, setMembershipStart] = useState(toLocalDateString(new Date()));
   const [paymentMethod, setPaymentMethod] = useState<"UPI" | "Cash" | "Card">("UPI");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");

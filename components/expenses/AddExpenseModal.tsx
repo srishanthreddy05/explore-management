@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import * as expensesService from "@/services/expenses";
+import { toLocalDateString } from "@/lib/utils/date";
+
 
 interface AddExpenseModalProps {
   onClose: () => void;
@@ -12,7 +14,7 @@ interface AddExpenseModalProps {
 export function AddExpenseModal({ onClose, onSuccess }: AddExpenseModalProps) {
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState<number | "">("");
-  const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [date, setDate] = useState(() => toLocalDateString(new Date()));
   const [category, setCategory] = useState("Rent");
   const [type, setType] = useState<"daily" | "monthly">("monthly");
   const [saving, setSaving] = useState(false);
