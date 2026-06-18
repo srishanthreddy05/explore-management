@@ -146,12 +146,14 @@ function MetricCard({
   monthly,
   icon: Icon,
   variant = "default",
+  isHorizontal = false,
 }: {
   title: string;
   today: number;
   monthly: number;
   icon: React.ElementType;
   variant?: "default" | "danger" | "owner";
+  isHorizontal?: boolean;
 }) {
   const variants = {
     default: {
@@ -175,6 +177,51 @@ function MetricCard({
   };
 
   const v = variants[variant];
+
+  if (isHorizontal) {
+    return (
+      <div
+        className={`group relative overflow-hidden rounded-2xl border ${v.border} bg-[#1C1A16] p-5 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_8px_30px_rgba(184,150,46,0.06)]`}
+      >
+        <div className="absolute -right-20 -top-20 size-40 rounded-full blur-[80px] pointer-events-none opacity-10 bg-[#B8962E]" />
+        
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className={`rounded-xl p-2.5 shrink-0 ${v.iconBg}`}>
+              <Icon size={18} strokeWidth={2.5} />
+            </div>
+            <div>
+              <h4 className="font-extrabold text-base tracking-tight text-[#F5F0E8]">
+                {title}
+              </h4>
+              <span className="inline-block rounded-full border border-[#D4A935]/20 bg-[#D4A935]/5 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider mt-1 text-[#D4A935]">
+                Owner
+              </span>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-6 sm:gap-12 md:mr-4">
+            <div>
+              <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#6B6358]">
+                Today
+              </span>
+              <p className={`mt-1 text-2xl font-black ${v.todayColor}`}>
+                {formatCurrency(today)}
+              </p>
+            </div>
+            <div className="sm:border-l sm:border-[#2E2B24] sm:pl-12">
+              <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#6B6358]">
+                This Month
+              </span>
+              <p className={`mt-1 text-2xl font-black ${v.monthlyColor}`}>
+                {formatCurrency(monthly)}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -265,18 +312,16 @@ function DayHeader({
   return (
     <div
       onClick={() => hasTransactions && onToggle()}
-      className={`flex items-center justify-between p-5 select-none transition-colors ${
-        hasTransactions
+      className={`flex items-center justify-between p-5 select-none transition-colors ${hasTransactions
           ? "cursor-pointer hover:bg-[#1F1A0F]/30"
           : "opacity-50"
-      }`}
+        }`}
     >
       <div className="flex items-center gap-3">
         {hasTransactions ? (
           <div
-            className={`grid size-8 place-items-center rounded-lg border border-[#2E2B24] bg-[#131210] transition-all ${
-              isExpanded ? "border-[#B8962E]/30 text-[#B8962E]" : "text-[#6B6358]"
-            }`}
+            className={`grid size-8 place-items-center rounded-lg border border-[#2E2B24] bg-[#131210] transition-all ${isExpanded ? "border-[#B8962E]/30 text-[#B8962E]" : "text-[#6B6358]"
+              }`}
           >
             {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
           </div>
@@ -381,90 +426,308 @@ function SettlementDetailCard({
   }[];
 }) {
   const isOwner = variant === "owner";
+  const cardBorder = isOwner
+    ? "border-[#4A3A10]/60 hover:border-[#D4A935]/40"
+    : "border-[#2E2B24] hover:border-[#60A5FA]/30";
+  const cardBg = isOwner
+    ? "bg-gradient-to-r from-[#1E1700]/95 via-[#120E01]/98 to-[#0E0B01]/98"
+    : "bg-gradient-to-b from-[#181613] to-[#11100E]";
+  const shadowEffect = isOwner
+    ? "hover:shadow-[0_8px_30px_rgba(212,169,53,0.08)] hover:-translate-y-0.5"
+    : "hover:shadow-[0_8px_30px_rgba(96,165,250,0.06)] hover:-translate-y-0.5";
+  const iconWrapperBg = isOwner ? "bg-[#D4A935]/10 text-[#D4A935]" : "bg-[#60A5FA]/10 text-[#60A5FA]";
+  const heroTextColor = isOwner ? "text-[#D4A935]" : "text-[#F5F0E8]";
+  const badgeText = isOwner ? "Owner" : "Stylist";
+  const badgeClass = isOwner
+    ? "border-[#D4A935]/20 bg-[#D4A935]/5 text-[#D4A935]"
+    : "border-[#60A5FA]/20 bg-[#60A5FA]/5 text-[#60A5FA]";
 
+  const hasCredits = collectedCredits && collectedCredits.length > 0;
+
+  if (isOwner) {
+    // Horizontal layout for Owner
+    return (
+      <div
+        className={`relative overflow-hidden rounded-3xl border p-6 transition-all duration-300 ${cardBorder} ${cardBg} ${shadowEffect}`}
+      >
+        {/* Subtle background glow */}
+        <div
+          className="absolute -right-20 -top-20 size-40 rounded-full blur-[80px] pointer-events-none opacity-15 transition-all duration-300 bg-[#D4A935]"
+        />
+
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-stretch">
+          {/* Left Section: Info & Net Share */}
+          <div className="md:col-span-4 flex flex-col justify-between space-y-4">
+            <div className="flex items-center gap-3">
+              <div className={`rounded-xl p-2.5 shrink-0 ${iconWrapperBg}`}>
+                <Icon size={18} strokeWidth={2.5} />
+              </div>
+              <div className="min-w-0">
+                <h4 className="font-extrabold text-base tracking-tight text-[#F5F0E8] truncate">
+                  {title}
+                </h4>
+                <span
+                  className={`inline-block rounded-full border px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider mt-1 ${badgeClass}`}
+                >
+                  {badgeText}
+                </span>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-[#2E2B24] bg-[#0E0D0B]/80 p-4 flex flex-col justify-center space-y-1.5 shadow-inner">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[#6B6358]">
+                Today's Net Share
+              </span>
+              <div className="flex items-baseline justify-between gap-2">
+                <p className={`font-black text-2xl tracking-tight ${heroTextColor}`}>
+                  {formatCurrency(value)}
+                </p>
+                <span className="text-[8px] font-extrabold uppercase tracking-widest px-1.5 py-0.5 rounded bg-[#131210] border border-[#4ADE80]/20 text-[#4ADE80]">
+                  SURPLUS
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Middle Section: Breakdown */}
+          <div className="md:col-span-4 border-t md:border-t-0 md:border-l border-[#2E2B24] pt-4 md:pt-0 md:pl-6 flex flex-col justify-between">
+            <div className="space-y-3">
+              <h5 className="text-[10px] font-bold uppercase tracking-wider text-[#6B6358] border-b border-[#2E2B24] pb-1.5">
+                Settlement Breakdown
+              </h5>
+              <div className="space-y-2">
+                {items.map((item, i) => {
+                  const isNegative = item.negative;
+                  const isTotal = item.label.toLowerCase().includes("gross") || item.label.toLowerCase().includes("total");
+                  return (
+                    <div 
+                      key={i} 
+                      className={`flex justify-between items-center text-xs py-0.5 ${
+                        isTotal ? "border-t border-[#2E2B24]/60 pt-2 font-bold mt-1" : ""
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 text-[#A89F8C]">
+                        {!isTotal && (
+                          <div 
+                            className={`size-1.5 rounded-full shrink-0 ${
+                              isNegative ? "bg-[#E57373]" : "bg-[#4ADE80]"
+                            }`} 
+                          />
+                        )}
+                        <span className={`${isTotal ? "text-[#F5F0E8] font-semibold" : "font-medium"}`}>{item.label}</span>
+                      </div>
+                      <span
+                        className={`font-mono font-bold ${
+                          isTotal 
+                            ? "text-[#D4A935]" 
+                            : isNegative 
+                              ? "text-[#E57373]" 
+                              : "text-[#4ADE80]"
+                        }`}
+                      >
+                        {isNegative ? "−" : "+"}
+                        {formatCurrency(Math.abs(item.value))}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Right Section: Credit Collections */}
+          <div className="md:col-span-4 border-t md:border-t-0 md:border-l border-[#2E2B24] pt-4 md:pt-0 md:pl-6 flex flex-col justify-between">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h5 className="text-[10px] font-bold uppercase tracking-wider text-[#B8962E]">
+                  Collected Credits
+                </h5>
+                <span className="text-[8px] font-bold text-[#6B6358] uppercase tracking-wider">Cash Basis</span>
+              </div>
+              
+              {hasCredits ? (
+                <div className="space-y-2 max-h-[140px] overflow-y-auto pr-1">
+                  {collectedCredits.map((c, idx) => {
+                    const method = c.collectionMethod?.toUpperCase() || "UPI";
+                    let methodBadge = "border-[#60A5FA]/20 bg-[#60A5FA]/5 text-[#60A5FA]";
+                    if (method === "UPI") {
+                      methodBadge = "border-[#A78BFA]/20 bg-[#A78BFA]/5 text-[#A78BFA]";
+                    } else if (method === "CASH") {
+                      methodBadge = "border-[#4ADE80]/20 bg-[#4ADE80]/5 text-[#4ADE80]";
+                    }
+
+                    return (
+                      <div 
+                        key={idx} 
+                        className="rounded-xl bg-[#0E0D0B]/60 border border-[#2E2B24]/60 p-2.5 space-y-2 text-[11px] transition hover:bg-[#0E0D0B]"
+                      >
+                        <div className="flex justify-between items-start font-semibold">
+                          <span className="text-[#F5F0E8] truncate max-w-[145px] font-medium" title={c.serviceOrProductName}>
+                            {c.serviceOrProductName}
+                          </span>
+                          <span className="text-emerald-500 font-bold font-mono">
+                            +{formatCurrency(c.share)}
+                          </span>
+                        </div>
+                        
+                        <div className="flex flex-wrap items-center justify-between gap-1 text-[10px] text-[#6B6358]">
+                          <div className="flex items-center gap-1.5">
+                            <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold tracking-wider border ${methodBadge}`}>
+                              {method}
+                            </span>
+                            <span>Amt: <span className="font-semibold text-[#A89F8C]">{formatCurrency(c.amount)}</span></span>
+                          </div>
+                          <span className="font-semibold text-[#D4A935] bg-[#2A2310] px-1.5 py-0.5 rounded text-[8px] border border-[#D4A935]/15">
+                            INV #{c.originalInvoiceNumber || "—"}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-6 border border-dashed border-[#2E2B24] rounded-2xl bg-[#0E0D0B]/20 text-[#6B6358]">
+                  <span className="text-[10px] font-semibold italic">No credit collections today</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Vertical layout for Staff card (3 columns side-by-side in grid)
   return (
     <div
-      className={`rounded-2xl border p-5 space-y-4 transition-all hover:-translate-y-0.5 ${
-        isOwner
-          ? "border-[#4A3A10]/40 bg-[#1A1500]/60 hover:border-[#B8962E]/40"
-          : "border-[#2E2B24] bg-[#131210] hover:border-[#B8962E]/30"
-      }`}
+      className={`relative overflow-hidden rounded-3xl border p-5 space-y-4 transition-all duration-300 ${cardBorder} ${cardBg} ${shadowEffect} flex flex-col justify-between h-full`}
     >
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-2">
-          <div
-            className={`rounded-lg p-1.5 ${
-              isOwner ? "bg-[#B8962E]/10 text-[#D4A935]" : "bg-[#60A5FA]/10 text-[#60A5FA]"
-            }`}
-          >
-            <Icon size={14} strokeWidth={2.5} />
-          </div>
-          <h4
-            className={`font-extrabold text-sm ${
-              isOwner ? "text-[#D4A935]" : "text-[#F5F0E8]"
-            }`}
-          >
-            {title}
-          </h4>
-        </div>
-        <div className="text-right">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-[#6B6358]">
-            Net Share
-          </span>
-          <p
-            className={`font-black text-xl mt-0.5 ${
-              isOwner ? "text-[#D4A935]" : "text-[#F5F0E8]"
-            }`}
-          >
-            {formatCurrency(value)}
-          </p>
-        </div>
-      </div>
+      {/* Subtle Glow backdrop */}
+      <div
+        className="absolute -right-20 -top-20 size-40 rounded-full blur-[80px] pointer-events-none opacity-20 transition-all duration-300 bg-[#60A5FA]"
+      />
 
-      <div className="space-y-2 border-t border-[#2E2B24] pt-3">
-        {items.map((item, i) => (
-          <div key={i} className="flex justify-between text-xs">
-            <span className="text-[#A89F8C] font-medium">{item.label}</span>
-            <span
-              className={`font-bold ${
-                item.negative ? "text-[#E57373]" : "text-[#F5F0E8]"
-              }`}
-            >
-              {item.negative ? "−" : "+"}
-              {formatCurrency(Math.abs(item.value))}
+      <div className="space-y-4">
+        {/* Header Info */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className={`rounded-xl p-2 shrink-0 ${iconWrapperBg}`}>
+              <Icon size={16} strokeWidth={2.5} />
+            </div>
+            <div className="min-w-0">
+              <h4 className="font-extrabold text-[14px] tracking-tight text-[#F5F0E8] truncate">
+                {title}
+              </h4>
+              <span
+                className={`inline-block rounded-full border px-2 py-0.5 text-[8px] font-bold uppercase tracking-wider mt-0.5 ${badgeClass}`}
+              >
+                {badgeText}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Hero Wallet Display */}
+        <div className="rounded-2xl border border-[#2E2B24] bg-[#0E0D0B]/80 p-4 flex justify-between items-center shadow-inner">
+          <div className="space-y-0.5">
+            <span className="text-[9px] font-bold uppercase tracking-wider text-[#6B6358]">
+              Today's Net Share
+            </span>
+            <p className={`font-black text-xl tracking-tight ${heroTextColor}`}>
+              {formatCurrency(value)}
+            </p>
+          </div>
+          <div className="shrink-0">
+            <span className={`text-[8px] font-extrabold uppercase tracking-widest px-1.5 py-0.5 rounded-lg bg-[#131210] border ${
+              value >= 0 
+                ? "border-[#4ADE80]/20 text-[#4ADE80]" 
+                : "border-[#E57373]/20 text-[#E57373]"
+            }`}>
+              {value >= 0 ? "SURPLUS" : "DEFICIT"}
             </span>
           </div>
-        ))}
+        </div>
+
+        {/* Itemized Splits */}
+        <div className="space-y-2">
+          <h5 className="text-[9px] font-bold uppercase tracking-wider text-[#6B6358] border-b border-[#2E2B24] pb-1">
+            Settlement Breakdown
+          </h5>
+          <div className="space-y-1.5">
+            {items.map((item, i) => {
+              const isNegative = item.negative;
+              const isTotal = item.label.toLowerCase().includes("gross") || item.label.toLowerCase().includes("total");
+              return (
+                <div 
+                  key={i} 
+                  className="flex justify-between items-center text-xs py-0.5"
+                >
+                  <div className="flex items-center gap-2 text-[#A89F8C]">
+                    <div 
+                      className={`size-1.5 rounded-full shrink-0 ${
+                        isNegative ? "bg-[#E57373]" : "bg-[#4ADE80]"
+                      }`} 
+                    />
+                    <span className="font-medium text-[11px]">{item.label}</span>
+                  </div>
+                  <span
+                    className={`font-mono font-bold text-[11px] ${
+                      isNegative ? "text-[#E57373]" : "text-[#4ADE80]"
+                    }`}
+                  >
+                    {isNegative ? "−" : "+"}
+                    {formatCurrency(Math.abs(item.value))}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
-      {collectedCredits && collectedCredits.length > 0 && (
-        <div className="space-y-2.5 border-t border-[#2E2B24] pt-3">
-          <h5 className="text-[10px] font-bold uppercase tracking-wider text-[#B8962E]">
-            Collected Credit Settlements
-          </h5>
-          <div className="space-y-2 max-h-[180px] overflow-y-auto pr-1">
-            {collectedCredits.map((c, idx) => (
-              <div key={idx} className="rounded-xl bg-[#1C1A16] border border-[#2E2B24] p-2.5 space-y-1.5 text-[11px]">
-                <div className="flex justify-between font-semibold text-[#F5F0E8]">
-                  <span className="truncate max-w-[170px]" title={c.serviceOrProductName}>
-                    {c.serviceOrProductName}
-                  </span>
-                  <span className="text-emerald-500 font-bold">
-                    +{formatCurrency(c.share)}
-                  </span>
+      {/* Credit Collections */}
+      {hasCredits && (
+        <div className="space-y-2 border-t border-[#2E2B24]/80 pt-3 mt-auto">
+          <div className="flex items-center justify-between">
+            <h5 className="text-[9px] font-bold uppercase tracking-wider text-[#B8962E]">
+              Collected Credits ({collectedCredits.length})
+            </h5>
+          </div>
+          <div className="space-y-1.5 max-h-[120px] overflow-y-auto pr-1">
+            {collectedCredits.map((c, idx) => {
+              const method = c.collectionMethod?.toUpperCase() || "UPI";
+              let methodBadge = "border-[#60A5FA]/20 bg-[#60A5FA]/5 text-[#60A5FA]";
+              if (method === "UPI") {
+                methodBadge = "border-[#A78BFA]/20 bg-[#A78BFA]/5 text-[#A78BFA]";
+              } else if (method === "CASH") {
+                methodBadge = "border-[#4ADE80]/20 bg-[#4ADE80]/5 text-[#4ADE80]";
+              }
+
+              return (
+                <div 
+                  key={idx} 
+                  className="rounded-xl bg-[#0E0D0B]/60 border border-[#2E2B24]/60 p-2 space-y-1.5 text-[10px] transition hover:bg-[#0E0D0B]"
+                >
+                  <div className="flex justify-between items-start font-semibold px-1">
+                    <span className="text-[#F5F0E8] truncate max-w-[120px] font-medium" title={c.serviceOrProductName}>
+                      {c.serviceOrProductName}
+                    </span>
+                    <span className="text-emerald-500 font-bold font-mono">
+                      +{formatCurrency(c.share)}
+                    </span>
+                  </div>
+                  
+                  <div className="flex items-center justify-between gap-1 text-[9px] text-[#6B6358] px-1 pb-0.5">
+                    <span className={`px-1.5 py-0.2 rounded text-[7px] font-bold tracking-wider border ${methodBadge}`}>
+                      {method}
+                    </span>
+                    <span className="font-semibold text-[#D4A935] text-[9px]">
+                      INV #{c.originalInvoiceNumber || "—"}
+                    </span>
+                  </div>
                 </div>
-                <div className="flex justify-between text-[#6B6358] text-[10px] font-medium">
-                  <span>Bill Date: {c.originalBillDate || "N/A"}</span>
-                  <span className="rounded bg-[#2A2310] text-[#D4A935] px-1 font-bold text-[9px]">
-                    Inv #{c.originalInvoiceNumber || "N/A"}
-                  </span>
-                </div>
-                <div className="flex justify-between text-[#6B6358] text-[10px] font-medium">
-                  <span>Method: {c.collectionMethod || "N/A"}</span>
-                  <span>Amt: {formatCurrency(c.amount)}</span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -895,7 +1158,7 @@ export default function SettlementsPage() {
             p.amount ??
             Math.max((p.price || 0) * (p.quantity || 1) - (p.discount || 0), 0);
           const amount = productBaseAmount * discountFactor;
-          
+
           if (p.isCreditSettle) {
             collectedCredits.push({
               originalBillDate: p.originalBillDate || "",
@@ -1196,17 +1459,20 @@ export default function SettlementsPage() {
             Owner & Staff Splits
           </h2>
         </div>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="flex flex-col gap-4">
           <MetricCard
             title="Owner Settlement"
             today={todayMetrics.ownerShare - todayDailyExpenses}
             monthly={monthlyStatsTotals.ownerShare - monthDailyExpenses}
             icon={ShieldCheck}
             variant="owner"
+            isHorizontal={true}
           />
-          {staffSplits.map((member) => (
-            <StaffSplitCard key={member.id} member={member} />
-          ))}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {staffSplits.map((member) => (
+              <StaffSplitCard key={member.id} member={member} />
+            ))}
+          </div>
         </div>
       </section>
 
@@ -1299,7 +1565,7 @@ export default function SettlementsPage() {
                         (() => {
                           const details = getDayDetails(day.date);
                           return (
-                            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                            <div className="flex flex-col gap-6">
                               <SettlementDetailCard
                                 title="Owner Settlement"
                                 value={day.totalOwnerShare}
@@ -1355,43 +1621,46 @@ export default function SettlementsPage() {
                                 })}
                               />
 
-                              {details.staffDetails
-                                .filter((sd) => sd.role !== "Owner")
-                                .map((sd) => {
-                                  const collectedCredits = sd.collectedCredits || [];
-                                  const collectedCreditsShare = sd.collectedCreditsShare || 0;
-                                  const totalShare = sd.staffShare + collectedCreditsShare;
-                                  
-                                  const mappedCollectedCredits = collectedCredits.map((c: any) => ({
-                                    ...c,
-                                    share: 0.5 * c.amount,
-                                  }));
+                              {/* Stylist Cards (3 Vertical Columns side-by-side) */}
+                              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                                {details.staffDetails
+                                  .filter((sd) => sd.role !== "Owner")
+                                  .map((sd) => {
+                                    const collectedCredits = sd.collectedCredits || [];
+                                    const collectedCreditsShare = sd.collectedCreditsShare || 0;
+                                    const totalShare = sd.staffShare + collectedCreditsShare;
 
-                                  return (
-                                    <SettlementDetailCard
-                                      key={sd.staffId}
-                                      title={sd.name}
-                                      value={totalShare}
-                                      icon={Users}
-                                      items={[
-                                        {
-                                          label: "Service Revenue",
-                                          value: sd.serviceRevenue,
-                                        },
-                                        {
-                                          label: "50% Base Share",
-                                          value: 0.5 * sd.serviceRevenue,
-                                        },
-                                        {
-                                          label: "Product Cost Used",
-                                          value: sd.productCost,
-                                          negative: true,
-                                        },
-                                      ]}
-                                      collectedCredits={mappedCollectedCredits}
-                                    />
-                                  );
-                                })}
+                                    const mappedCollectedCredits = collectedCredits.map((c: any) => ({
+                                      ...c,
+                                      share: 0.5 * c.amount,
+                                    }));
+
+                                    return (
+                                      <SettlementDetailCard
+                                        key={sd.staffId}
+                                        title={sd.name}
+                                        value={totalShare}
+                                        icon={Users}
+                                        items={[
+                                          {
+                                            label: "Service Revenue",
+                                            value: sd.serviceRevenue,
+                                          },
+                                          {
+                                            label: "50% Base Share",
+                                            value: 0.5 * sd.serviceRevenue,
+                                          },
+                                          {
+                                            label: "Product Cost Used",
+                                            value: sd.productCost,
+                                            negative: true,
+                                          },
+                                        ]}
+                                        collectedCredits={mappedCollectedCredits}
+                                      />
+                                    );
+                                  })}
+                              </div>
                             </div>
                           );
                         })()

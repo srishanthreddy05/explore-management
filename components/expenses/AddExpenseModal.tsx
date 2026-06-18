@@ -16,7 +16,7 @@ export function AddExpenseModal({ onClose, onSuccess }: AddExpenseModalProps) {
   const [amount, setAmount] = useState<number | "">("");
   const [date, setDate] = useState(() => toLocalDateString(new Date()));
   const [category, setCategory] = useState("Rent");
-  const [type, setType] = useState<"daily" | "monthly">("monthly");
+  const [type, setType] = useState<"daily" | "monthly">("daily");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -56,11 +56,11 @@ export function AddExpenseModal({ onClose, onSuccess }: AddExpenseModalProps) {
   };
 
   return (
-    <div 
+    <div
       className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200"
       onClick={onClose}
     >
-      <div 
+      <div
         className="relative w-full max-w-md rounded-3xl border border-[#2E2B24] bg-[#1C1A16] p-6 shadow-2xl text-[#A89F8C] my-auto animate-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
@@ -72,7 +72,7 @@ export function AddExpenseModal({ onClose, onSuccess }: AddExpenseModalProps) {
           <X size={20} />
         </button>
         <h2 className="text-xl font-bold text-[#F5F0E8] mb-4">Log Business Expense</h2>
-        
+
         {error && (
           <div className="mb-4 text-xs font-semibold text-[#E57373] bg-[#131210] border border-[#2E2B24] rounded-lg p-2.5">
             {error}
