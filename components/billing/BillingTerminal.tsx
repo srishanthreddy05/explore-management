@@ -1180,7 +1180,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
               </div>
 
               {/* Mark as Credit Checkbox */}
-              {foundCustomerId && customerMobile !== GUEST_PHONE && (
+              {customerMobile.trim().length >= 10 && customerMobile.trim() !== GUEST_PHONE && (
                 <div className="border-t border-[#2E2B24] pt-3">
                   <label className="flex items-center gap-2 cursor-pointer select-none text-xs font-semibold text-[#A89F8C] hover:text-[#F5F0E8] transition">
                     <input
