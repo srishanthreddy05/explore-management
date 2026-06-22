@@ -26,10 +26,19 @@ export function BillingTable({
   const [showModal, setShowModal] = useState(false);
   const [selectedCat, setSelectedCat] = useState("All");
   const [mounted, setMounted] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Reset search when modal opens or closes
+  useEffect(() => {
+    if (!showModal) {
+      setSearchQuery("");
+      setSelectedCat("All");
+    }
+  }, [showModal]);
 
   const updateRow = (id: number, patch: Partial<ServiceRow>) => {
     onRowsChange(rows.map((row) => (row.id === id ? { ...row, ...patch } : row)));
@@ -53,9 +62,28 @@ export function BillingTable({
 
   const categories = ["All", ...Array.from(new Set(serviceOptions.map(s => s.category || "General")))];
 
-  const filteredServices = selectedCat === "All"
-    ? serviceOptions
-    : serviceOptions.filter(s => (s.category || "General") === selectedCat);
+  const filteredServices = serviceOptions.filter(s => {
+    const matchesCategory = selectedCat === "All" || (s.category || "General") === selectedCat;
+    const matchesSearch = s.name.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesCategory && matchesSearch;
+  });
+
+  // Group services by category and sort categories alphabetically
+  const serviceGroups: Record<string, typeof serviceOptions> = {};
+  filteredServices.forEach(s => {
+    const cat = s.category || "General";
+    if (!serviceGroups[cat]) {
+      serviceGroups[cat] = [];
+    }
+    serviceGroups[cat].push(s);
+  });
+
+  const sortedCategories = Object.keys(serviceGroups).sort((a, b) => a.localeCompare(b));
+
+  // Sort services alphabetically within each category group
+  sortedCategories.forEach(cat => {
+    serviceGroups[cat].sort((a, b) => a.name.localeCompare(b.name));
+  });
 
   return (
     <section className="mt-6">
@@ -194,6 +222,17 @@ export function BillingTable({
 
             <h2 className="text-xl font-bold text-[#F5F0E8] mb-4">Select Service Menu</h2>
 
+            {/* Search Input */}
+            <div className="mb-4 flex items-center rounded-xl border border-[#2E2B24] bg-[#131210] px-3 h-11 shadow-sm focus-within:border-[#B8962E] transition">
+              <input
+                type="text"
+                placeholder="Search services by name..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-transparent text-sm text-[#F5F0E8] outline-none placeholder:text-[#6B6358]"
+              />
+            </div>
+
             {/* Category Filter Chips */}
             <div className="flex flex-wrap gap-2 mb-4">
               {categories.map(cat => (
@@ -210,26 +249,35 @@ export function BillingTable({
               ))}
             </div>
 
-            {/* Service Cards Grid */}
-            <div className="flex-1 overflow-y-auto pr-1">
-              {filteredServices.length === 0 ? (
-                <p className="text-sm text-[#6B6358] italic text-center py-8">No services in this category.</p>
+            {/* Service Cards Grouped Grid */}
+            <div className="flex-1 overflow-y-auto pr-1 space-y-6">
+              {sortedCategories.length === 0 ? (
+                <p className="text-sm text-[#6B6358] italic text-center py-8">No services found matching the criteria.</p>
               ) : (
-                <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
-                  {filteredServices.map(svc => (
-                    <div
-                      key={svc.name}
-                      onClick={() => selectService(svc)}
-                      className="cursor-pointer rounded-2xl border border-[#2E2B24] bg-[#131210] p-4 transition duration-200 hover:-translate-y-0.5 hover:border-[#B8962E] hover:shadow-[0_4px_16px_rgba(184,150,46,0.12)]"
-                    >
-                      <span className="inline-block rounded-full bg-[#1C1A16] border border-[#2E2B24] px-2 py-0.5 text-[9px] font-bold text-[#A89F8C] uppercase tracking-wider">
-                        {svc.category || "General"}
-                      </span>
-                      <h3 className="mt-2 text-sm font-bold text-[#F5F0E8] truncate" title={svc.name}>{svc.name}</h3>
-                      <p className="mt-1 text-sm font-bold text-[#B8962E]">{formatCurrency(svc.price)}</p>
+                sortedCategories.map(catName => (
+                  <div key={catName} className="space-y-3">
+                    {/* Visual Category Header/Divider */}
+                    <div className="flex items-center gap-3">
+                      <h4 className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#B8962E]">
+                        {catName}
+                      </h4>
+                      <div className="h-px flex-1 bg-[#2E2B24]" />
                     </div>
-                  ))}
-                </div>
+
+                    <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
+                      {serviceGroups[catName].map(svc => (
+                        <div
+                          key={svc.name}
+                          onClick={() => selectService(svc)}
+                          className="cursor-pointer rounded-2xl border border-[#2E2B24] bg-[#131210] p-4 transition duration-200 hover:-translate-y-0.5 hover:border-[#B8962E] hover:shadow-[0_4px_16px_rgba(184,150,46,0.12)]"
+                        >
+                          <h3 className="text-sm font-bold text-[#F5F0E8] truncate" title={svc.name}>{svc.name}</h3>
+                          <p className="mt-1 text-sm font-bold text-[#B8962E]">{formatCurrency(svc.price)}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))
               )}
             </div>
           </div>

@@ -36,6 +36,14 @@ service cloud.firestore {
       allow read, write: if isAuthenticated();
     }
 
+    match /services/{document} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /serviceCategories/{document} {
+      allow read, write: if isAuthenticated();
+    }
+
     // Stats: read for all authenticated users, write for authenticated users (as writes are triggered in transaction/batches)
     match /stats/{document} {
       allow read, write: if isAuthenticated();

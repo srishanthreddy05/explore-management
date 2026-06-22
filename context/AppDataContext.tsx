@@ -9,13 +9,17 @@ import {
   orderBy,
   getDocs,
   onSnapshot,
+  doc,
+  setDoc,
 } from "firebase/firestore";
 import type { Service } from "@/types/service";
 import type { Product } from "@/types/product";
 import type { Staff } from "@/types/staff";
 import type { Offer } from "@/types/offer";
 import type { Settings } from "@/types/settings";
+import type { ServiceCategory } from "@/types/serviceCategory";
 import { getSettings } from "@/services/settings";
+import { toTitleCase } from "@/lib/utils/text";
 import {
   CACHE_TTL,
   CACHE_KEYS,
@@ -31,13 +35,15 @@ interface AppDataContextType {
   staff: Staff[];
   offers: Offer[];
   settings: Settings | null;
+  categories: ServiceCategory[];
   loadingAppData: boolean;
   refreshServices: () => Promise<Service[]>;
   refreshProducts: () => Promise<Product[]>;
   refreshStaff: () => Promise<Staff[]>;
   refreshOffers: () => Promise<Offer[]>;
   refreshSettings: () => Promise<Settings | null>;
-  invalidateCache: (key: "services" | "products" | "settings") => void;
+  refreshCategories: () => Promise<ServiceCategory[]>;
+  invalidateCache: (key: "services" | "products" | "settings" | "serviceCategories") => void;
 }
 
 const AppDataContext = createContext<AppDataContextType | undefined>(undefined);
@@ -48,7 +54,81 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [offers, setOffers] = useState<Offer[]>([]);
   const [settings, setSettings] = useState<Settings | null>(null);
+  const [categories, setCategories] = useState<ServiceCategory[]>([]);
   const [loadingAppData, setLoadingAppData] = useState(true);
+
+  const loadCategories = useCallback(async (showLoading = false) => {
+    if (showLoading) setLoadingAppData(true);
+    try {
+      const cached = readCache<ServiceCategory>(CACHE_KEYS.serviceCategories, CACHE_TTL.serviceCategories);
+      if (cached) {
+        setCategories(cached);
+        return cached;
+      }
+      const q = query(
+        collection(db, "serviceCategories"),
+        orderBy("name", "asc")
+      );
+      const snap = await getDocs(q);
+      const result = snap.docs.map((d) => ({ id: d.id, ...d.data() } as ServiceCategory));
+      
+      // Seeding / migration first-run grace handler
+      if (result.length === 0) {
+        // Fetch only active services to extract categories
+        const servicesSnap = await getDocs(
+          query(collection(db, "services"), where("isActive", "==", true))
+        );
+        const uniqueCats = new Set<string>();
+        servicesSnap.forEach((d) => {
+          const data = d.data();
+          if (data.category) {
+            uniqueCats.add(data.category.trim());
+          }
+        });
+        
+        const DEFAULT_CATEGORIES = [
+          "Hair Care", "Hair Cuts", "Hair Colors", "Hair Treatments",
+          "D-Tan /Bleach", "Clean Ups", "Facials", "Luxury Facials", "Makeup"
+        ];
+        
+        const catsToSeed = uniqueCats.size > 0 
+          ? Array.from(uniqueCats).map(c => toTitleCase(c))
+          : DEFAULT_CATEGORIES;
+          
+        const seeded: ServiceCategory[] = [];
+        for (const catName of catsToSeed) {
+          const slug = catName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+          const docRef = doc(collection(db, "serviceCategories"), slug || undefined);
+          await setDoc(docRef, {
+            name: catName,
+            createdAt: new Date().toISOString(),
+          });
+          seeded.push({ id: docRef.id, name: catName, createdAt: new Date().toISOString() });
+        }
+        
+        seeded.sort((a, b) => a.name.localeCompare(b.name));
+        writeCache(CACHE_KEYS.serviceCategories, seeded);
+        setCategories(seeded);
+        return seeded;
+      }
+
+      writeCache(CACHE_KEYS.serviceCategories, result);
+      setCategories(result);
+      return result;
+    } catch (err) {
+      console.error("Error loading categories:", err);
+      const fallback = readCache<ServiceCategory>(CACHE_KEYS.serviceCategories, Infinity);
+      if (fallback) {
+        setCategories(fallback);
+        return fallback;
+      } else {
+        setCategories([]);
+        return [];
+      }
+    } finally {
+      if (showLoading) setLoadingAppData(false);
+    }
+  }, []);
 
   const loadServices = useCallback(async (showLoading = false) => {
     if (showLoading) setLoadingAppData(true);
@@ -190,7 +270,12 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     return loadSettings(false);
   }, [loadSettings]);
 
-  const invalidateCache = useCallback((key: "services" | "products" | "settings") => {
+  const refreshCategories = useCallback(() => {
+    clearCache(CACHE_KEYS.serviceCategories);
+    return loadCategories(false);
+  }, [loadCategories]);
+
+  const invalidateCache = useCallback((key: "services" | "products" | "settings" | "serviceCategories") => {
     clearCache(CACHE_KEYS[key]);
   }, []);
 
@@ -204,6 +289,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
           loadOffers(false),
           loadStaff(false),
           loadSettings(false),
+          loadCategories(false),
         ]);
       } catch (err) {
         console.error("Failed parallel initialization load:", err);
@@ -212,7 +298,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       }
     }
     initLoad();
-  }, [loadServices, loadProducts, loadOffers, loadStaff, loadSettings]);
+  }, [loadServices, loadProducts, loadOffers, loadStaff, loadSettings, loadCategories]);
 
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -226,6 +312,9 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         if (isCacheExpired(CACHE_KEYS.settings, CACHE_TTL.settings)) {
           refreshSettings();
         }
+        if (isCacheExpired(CACHE_KEYS.serviceCategories, CACHE_TTL.serviceCategories)) {
+          refreshCategories();
+        }
       }
     };
 
@@ -233,7 +322,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [refreshServices, refreshProducts, refreshSettings]);
+  }, [refreshServices, refreshProducts, refreshSettings, refreshCategories]);
 
   useEffect(() => {
     if (loadingAppData) return;
@@ -316,12 +405,14 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     staff,
     offers,
     settings,
+    categories,
     loadingAppData,
     refreshServices,
     refreshProducts,
     refreshStaff,
     refreshOffers,
     refreshSettings,
+    refreshCategories,
     invalidateCache,
   }), [
     services,
@@ -329,12 +420,14 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     staff,
     offers,
     settings,
+    categories,
     loadingAppData,
     refreshServices,
     refreshProducts,
     refreshStaff,
     refreshOffers,
     refreshSettings,
+    refreshCategories,
     invalidateCache,
   ]);
 

@@ -2,15 +2,18 @@
 
 import { useState } from "react";
 import * as servicesService from "@/services/services";
+import * as serviceCategoriesService from "@/services/serviceCategories";
 import { useAppData } from "@/context/AppDataContext";
 import type { Service } from "@/types/service";
 import { Plus, Search, Edit2, Trash2, X, Scissors } from "lucide-react";
 import { formatCurrency } from "@/components/salon-dashboard/types";
+import { toast } from "react-hot-toast";
 
 export default function ServicesPage() {
-  const { services, refreshServices, loadingAppData } = useAppData();
+  const { services, refreshServices, loadingAppData, categories, refreshCategories } = useAppData();
   const loading = loadingAppData;
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("All");
 
   // Modal states
   const [modalOpen, setModalOpen] = useState(false);
@@ -18,8 +21,13 @@ export default function ServicesPage() {
   const [formData, setFormData] = useState({
     name: "",
     price: 0,
-    category: "Hair",
+    category: "",
   });
+
+  // Inline category management states
+  const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [loadingNewCategory, setLoadingNewCategory] = useState(false);
 
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [idToDelete, setIdToDelete] = useState<string | null>(null);
@@ -29,8 +37,10 @@ export default function ServicesPage() {
     setFormData({
       name: "",
       price: 0,
-      category: "Hair",
+      category: categories[0]?.name || "",
     });
+    setShowNewCategoryInput(false);
+    setNewCategoryName("");
     setModalOpen(true);
   };
 
@@ -39,8 +49,10 @@ export default function ServicesPage() {
     setFormData({
       name: service.name,
       price: service.price,
-      category: service.category || "Hair",
+      category: service.category || categories[0]?.name || "",
     });
+    setShowNewCategoryInput(false);
+    setNewCategoryName("");
     setModalOpen(true);
   };
 
@@ -56,23 +68,71 @@ export default function ServicesPage() {
       setDeleteConfirmOpen(false);
       setIdToDelete(null);
       await refreshServices();
+      toast.success("Service deleted successfully!");
     } catch (error) {
       console.error("Failed to delete service:", error);
+      toast.error("Failed to delete service.");
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!formData.category) {
+      toast.error("Please select a category.");
+      return;
+    }
     try {
       if (editingService?.id) {
         await servicesService.update(editingService.id, formData);
+        toast.success("Service updated successfully!");
       } else {
         await servicesService.create(formData);
+        toast.success("Service created successfully!");
       }
       setModalOpen(false);
       await refreshServices();
     } catch (error) {
       console.error("Failed to save service:", error);
+      toast.error("Failed to save service.");
+    }
+  };
+
+  const handleAddNewCategory = async () => {
+    const trimmed = newCategoryName.trim();
+    if (!trimmed) {
+      toast.error("Category name cannot be empty");
+      return;
+    }
+
+    setLoadingNewCategory(true);
+    try {
+      // client-side duplicate check
+      const titleCased = trimmed
+        .replace(/\s+/g, " ")
+        .split(" ")
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+        .join(" ");
+
+      const exists = categories.some(
+        (c) => c.name.toLowerCase() === titleCased.toLowerCase()
+      );
+      if (exists) {
+        toast.error(`Category "${titleCased}" already exists.`);
+        setLoadingNewCategory(false);
+        return;
+      }
+
+      await serviceCategoriesService.create(titleCased);
+      await refreshCategories();
+      setFormData((prev) => ({ ...prev, category: titleCased }));
+      setShowNewCategoryInput(false);
+      setNewCategoryName("");
+      toast.success(`Category "${titleCased}" added successfully!`);
+    } catch (error: any) {
+      console.error("Failed to add category:", error);
+      toast.error(error.message || "Failed to add category.");
+    } finally {
+      setLoadingNewCategory(false);
     }
   };
 
@@ -128,62 +188,174 @@ export default function ServicesPage() {
         </div>
       ) : (
         <>
+          {/* Category Cards Top Row */}
+          <div className="mb-6 overflow-x-auto pb-2 scrollbar-thin">
+            <div className="flex gap-4 min-w-max">
+              {/* All Card */}
+              <button
+                onClick={() => setSelectedCategory("All")}
+                className={`flex flex-col min-w-[120px] rounded-2xl border p-4 transition-all duration-200 cursor-pointer text-left shadow-sm ${
+                  selectedCategory === "All"
+                    ? "bg-[#B8962E] border-[#B8962E] text-[#0E0D0B] font-bold"
+                    : "bg-[#131210] border-[#2E2B24] text-[#A89F8C] hover:border-[#B8962E] hover:text-[#B8962E] hover:bg-[#1F1A0F]"
+                }`}
+              >
+                <span className="text-[10px] font-bold uppercase tracking-wider opacity-70">
+                  Filter
+                </span>
+                <span className="mt-1 text-base font-extrabold">All Services</span>
+                <span className="mt-2 text-xs font-semibold">
+                  {services.length} {services.length === 1 ? "service" : "services"}
+                </span>
+              </button>
+
+              {/* Dynamic Category Cards */}
+              {categories.map((cat) => {
+                const count = services.filter(
+                  (s) => s.category?.toLowerCase() === cat.name.toLowerCase()
+                ).length;
+
+                return (
+                  <button
+                    key={cat.id}
+                    onClick={() => setSelectedCategory(cat.name)}
+                    className={`flex flex-col min-w-[140px] rounded-2xl border p-4 transition-all duration-200 cursor-pointer text-left shadow-sm ${
+                      selectedCategory === cat.name
+                        ? "bg-[#B8962E] border-[#B8962E] text-[#0E0D0B] font-bold"
+                        : "bg-[#131210] border-[#2E2B24] text-[#A89F8C] hover:border-[#B8962E] hover:text-[#B8962E] hover:bg-[#1F1A0F]"
+                    }`}
+                  >
+                    <span className="text-[10px] font-bold uppercase tracking-wider opacity-70">
+                      Category
+                    </span>
+                    <span className="mt-1 text-base font-extrabold truncate w-[105px]" title={cat.name}>
+                      {cat.name}
+                    </span>
+                    <span className="mt-2 text-xs font-semibold">
+                      {count} {count === 1 ? "service" : "services"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Search bar */}
-          <div className="mb-4 flex max-w-md items-center rounded-xl border border-[#2E2B24] bg-[#131210] px-4 h-12 shadow-sm focus-within:border-[#B8962E] transition">
+          <div className="mb-6 flex max-w-md items-center rounded-xl border border-[#2E2B24] bg-[#131210] px-4 h-12 shadow-sm focus-within:border-[#B8962E] transition">
             <Search size={18} className="text-[#6B6358] mr-2" />
             <input
               type="text"
-              placeholder="Search services or categories..."
+              placeholder="Search services..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full bg-transparent text-sm text-[#F5F0E8] outline-none placeholder:text-[#6B6358]"
             />
           </div>
 
-          {/* List display */}
-          <div className="overflow-x-auto rounded-2xl border border-[#2E2B24] bg-[#131210] shadow-md">
-            <table className="w-full min-w-[700px] border-collapse text-left text-sm text-[#A89F8C]">
-              <thead className="bg-[#0E0D0B] text-[10px] font-bold uppercase tracking-[0.18em] text-[#A89F8C] border-b border-[#2E2B24]">
-                <tr>
-                  <th className="px-6 py-4 font-bold">Service Name</th>
-                  <th className="px-6 py-4 font-bold">Category</th>
-                  <th className="px-6 py-4 font-bold">Price</th>
-                  <th className="px-6 py-4 font-bold text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#2E2B24]">
-                {filteredServices.map((service) => (
-                  <tr key={service.id} className="hover:bg-[#1C1A16] transition bg-transparent text-[#A89F8C]">
-                    <td className="px-6 py-4 font-semibold text-[#F5F0E8]">{service.name}</td>
-                    <td className="px-6 py-4">
-                      <span className="inline-block rounded-full bg-[#0E0D0B] border border-[#2E2B24] px-3 py-1 text-xs text-[#A89F8C]">
-                        {service.category || "Hair"}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 font-bold text-[#B8962E]">{formatCurrency(service.price)}</td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex justify-end gap-2">
-                        <button
-                          onClick={() => handleOpenEdit(service)}
-                          className="grid size-10 place-items-center rounded-xl bg-[#131210] border border-[#2E2B24] text-[#B8962E] hover:bg-[#1F1A0F] hover:border-[#B8962E] transition cursor-pointer"
-                          title="Edit"
-                        >
-                          <Edit2 size={16} />
-                        </button>
-                        <button
-                          onClick={() => service.id && handleDeleteTrigger(service.id)}
-                          className="grid size-10 place-items-center rounded-xl bg-[#131210] border border-[#2E2B24] text-[#E57373] hover:bg-[#131210] hover:border-[#E57373] transition cursor-pointer"
-                          title="Delete"
-                        >
-                          <Trash2 size={16} />
-                        </button>
+          {/* Grouped Services List Display */}
+          {(() => {
+            // Filter categories that should render based on selection and services match
+            const categoriesToRender = categories.filter((cat) => {
+              if (selectedCategory !== "All" && selectedCategory.toLowerCase() !== cat.name.toLowerCase()) {
+                return false;
+              }
+              const catServices = filteredServices.filter(
+                (s) => (s.category || "General").toLowerCase() === cat.name.toLowerCase()
+              );
+              return catServices.length > 0;
+            });
+
+            // Handle any services that have categories not tracked in current serviceCategories collection
+            const untrackedCategories = Array.from(
+              new Set(
+                filteredServices
+                  .map((s) => s.category || "General")
+                  .filter(
+                    (catName) =>
+                      !categories.some((c) => c.name.toLowerCase() === catName.toLowerCase())
+                  )
+              )
+            );
+
+            const allCategoriesToRender = [
+              ...categoriesToRender.map((c) => c.name),
+              ...untrackedCategories.filter(
+                (catName) =>
+                  selectedCategory === "All" ||
+                  selectedCategory.toLowerCase() === catName.toLowerCase()
+              ),
+            ];
+
+            if (allCategoriesToRender.length === 0) {
+              return (
+                <div className="flex flex-col items-center justify-center rounded-2xl border border-[#2E2B24] bg-[#131210] p-12 text-center shadow-md">
+                  <p className="text-[#A89F8C]">No services found matching the criteria.</p>
+                </div>
+              );
+            }
+
+            return (
+              <div className="space-y-8">
+                {allCategoriesToRender.map((catName) => {
+                  const catServices = filteredServices.filter(
+                    (s) => (s.category || "General").toLowerCase() === catName.toLowerCase()
+                  );
+
+                  return (
+                    <div key={catName} className="space-y-3">
+                      <div className="flex items-center gap-3">
+                        <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-[#B8962E]">
+                          {catName}
+                        </h3>
+                        <span className="rounded-full bg-[#1C1A16] border border-[#2E2B24] px-2 py-0.5 text-xs text-[#A89F8C]">
+                          {catServices.length} {catServices.length === 1 ? "service" : "services"}
+                        </span>
+                        <div className="h-px flex-1 bg-[#2E2B24]" />
                       </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+
+                      <div className="overflow-x-auto rounded-2xl border border-[#2E2B24] bg-[#131210] shadow-md">
+                        <table className="w-full min-w-[700px] border-collapse text-left text-sm text-[#A89F8C]">
+                          <thead className="bg-[#0E0D0B] text-[10px] font-bold uppercase tracking-[0.18em] text-[#A89F8C] border-b border-[#2E2B24]">
+                            <tr>
+                              <th className="px-6 py-4 font-bold">Service Name</th>
+                              <th className="px-6 py-4 font-bold">Price</th>
+                              <th className="px-6 py-4 font-bold text-right">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-[#2E2B24]">
+                            {catServices.map((service) => (
+                              <tr key={service.id} className="hover:bg-[#1C1A16] transition bg-transparent text-[#A89F8C]">
+                                <td className="px-6 py-4 font-semibold text-[#F5F0E8]">{service.name}</td>
+                                <td className="px-6 py-4 font-bold text-[#B8962E]">{formatCurrency(service.price)}</td>
+                                <td className="px-6 py-4 text-right">
+                                  <div className="flex justify-end gap-2">
+                                    <button
+                                      onClick={() => handleOpenEdit(service)}
+                                      className="grid size-10 place-items-center rounded-xl bg-[#131210] border border-[#2E2B24] text-[#B8962E] hover:bg-[#1F1A0F] hover:border-[#B8962E] transition cursor-pointer"
+                                      title="Edit"
+                                    >
+                                      <Edit2 size={16} />
+                                    </button>
+                                    <button
+                                      onClick={() => service.id && handleDeleteTrigger(service.id)}
+                                      className="grid size-10 place-items-center rounded-xl bg-[#131210] border border-[#2E2B24] text-[#E57373] hover:bg-[#131210] hover:border-[#E57373] transition cursor-pointer"
+                                      title="Delete"
+                                    >
+                                      <Trash2 size={16} />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </>
       )}
 
@@ -218,21 +390,57 @@ export default function ServicesPage() {
                 <span className="text-sm font-semibold text-[#A89F8C]">Category</span>
                 <select
                   value={formData.category}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                  onChange={(e) => {
+                    if (e.target.value === "ADD_NEW") {
+                      setShowNewCategoryInput(true);
+                    } else {
+                      setShowNewCategoryInput(false);
+                      setFormData({ ...formData, category: e.target.value });
+                    }
+                  }}
                   className="mt-2 h-11 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-4 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E] focus:ring-1 focus:ring-[#B8962E]"
                 >
-                  <option value="Hair">Hair Care</option>
-                  <option value="Skin">Hair Cuts</option>
-                  <option value="Bridal">Hair Colors</option>
-                  <option value="Massage">Hair Treatments</option>
-                  <option value="Hair">D-Tan /Bleach</option>
-                  <option value="Skin">Clean Ups</option>
-                  <option value="Bridal">Facials</option>
-                  <option value="Massage">Luxury Facials</option>
-                  <option value="Bridal">Makeup</option>
-
+                  {categories.map((cat) => (
+                    <option key={cat.id} value={cat.name}>
+                      {cat.name}
+                    </option>
+                  ))}
+                  <option value="ADD_NEW">+ Add new category</option>
                 </select>
               </label>
+
+              {showNewCategoryInput && (
+                <div className="mt-3 rounded-2xl border border-[#2E2B24] bg-[#0E0D0B] p-4 space-y-3">
+                  <span className="text-xs font-semibold text-[#A89F8C]">New Category Name</span>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="e.g. Nail Art"
+                      value={newCategoryName}
+                      onChange={(e) => setNewCategoryName(e.target.value)}
+                      className="h-10 flex-1 rounded-xl border border-[#2E2B24] bg-[#131210] px-3 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E] placeholder-[#6B6358]"
+                    />
+                    <button
+                      type="button"
+                      disabled={loadingNewCategory}
+                      onClick={handleAddNewCategory}
+                      className="h-10 rounded-xl bg-[#B8962E] px-4 text-xs font-bold text-[#0E0D0B] hover:bg-[#D4A935] transition disabled:opacity-50 cursor-pointer"
+                    >
+                      {loadingNewCategory ? "Adding..." : "Add"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowNewCategoryInput(false);
+                        setNewCategoryName("");
+                      }}
+                      className="h-10 rounded-xl border border-[#2E2B24] bg-[#131210] px-3 text-xs font-semibold text-[#A89F8C] hover:border-[#B8962E] hover:text-[#B8962E] transition cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <label className="block">
                 <span className="text-sm font-semibold text-[#A89F8C]">Price (INR)</span>

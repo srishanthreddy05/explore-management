@@ -8,6 +8,7 @@ export const CACHE_TTL = {
   products: 30 * 60 * 1000,        // 30 minutes
   offers:   60 * 60 * 1000,        // 1 hour
   settings: 24 * 60 * 60 * 1000,   // 24 hours
+  serviceCategories: 24 * 60 * 60 * 1000, // 24 hours
 };
 
 export const CACHE_KEYS = {
@@ -15,6 +16,7 @@ export const CACHE_KEYS = {
   products: "cache_products_v1",
   offers:   "cache_offers_v1",
   settings: "cache_settings_v1",
+  serviceCategories: "cache_service_categories_v1",
 };
 
 export function readCache<T>(key: string, ttl: number): T[] | null {
