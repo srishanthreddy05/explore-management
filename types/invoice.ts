@@ -11,6 +11,7 @@ export interface Invoice {
   // Stored as Firestore Timestamp so date-range queries and orderBy("date") work correctly.
   // Use toDate() when you need a JS Date, or serverTimestamp() on write.
   date: Timestamp;
+  billDate?: Timestamp; // user-selected date at midnight
 
   // ── Customer ──────────────────────────────────────────────────────────────
   customerId: string;               // Firestore /customers/{id}  (was missing)

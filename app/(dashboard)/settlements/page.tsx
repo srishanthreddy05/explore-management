@@ -51,6 +51,7 @@ interface Invoice {
   payments?: { cash?: number; upi?: number; card?: number };
   services?: ServiceItem[];
   products?: ProductItem[];
+  billDate?: any;
 }
 
 interface ServiceItem {
@@ -118,19 +119,13 @@ interface Expense {
 
 // ── Utilities ──────────────────────────────────────────────────────────────
 function getInvoiceDateKeys(invoice: Invoice) {
-  let dateKey = invoice.dateKey;
-  if (!dateKey) {
-    let d = new Date();
-    if (invoice.date) {
-      d =
-        typeof invoice.date.toDate === "function"
-          ? invoice.date.toDate()
-          : new Date(invoice.date);
-    }
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    dateKey = `${yyyy}-${mm}-${dd}`;
+  let dateKey = "";
+  if (invoice.billDate) {
+    dateKey = toLocalDateString(invoice.billDate);
+  } else if (invoice.date) {
+    dateKey = toLocalDateString(invoice.date);
+  } else {
+    dateKey = invoice.dateKey || toLocalDateString(new Date());
   }
   return {
     dateKey,

@@ -61,6 +61,7 @@ interface Invoice {
   products?: ProductItem[];
   createdAt?: Timestamp;
   invoiceDate?: Timestamp;
+  billDate?: Timestamp;
 }
 
 interface ServiceItem {
@@ -917,7 +918,7 @@ export default function DashboardPage() {
 
     const qInvoices = query(
       collection(db, "invoices"),
-      where("date", ">=", Timestamp.fromDate(startOfToday))
+      where("billDate", "==", Timestamp.fromDate(startOfToday))
     );
 
     const unsub = onSnapshot(

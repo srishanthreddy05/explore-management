@@ -30,12 +30,12 @@ const COUNTER_DOC = doc(db, "counters", "invoice");  // /counters/invoice { last
  * Atomically increments the daily counter document inside /counters/invoices_YYMMDD
  * and returns the next invoice number string. Safe under concurrent billing sessions.
  */
-async function getNextInvoiceNumber(): Promise<string> {
-  const now = new Date();
-  const yy = String(now.getFullYear()).slice(-2);
-  const mm = String(now.getMonth() + 1).padStart(2, '0');
-  const dd = String(now.getDate()).padStart(2, '0');
-  const dateStr = `${yy}${mm}${dd}`; // "260614"
+async function getNextInvoiceNumber(dateString?: string): Promise<string> {
+  const selectedDate = dateString ? new Date(dateString) : new Date();
+  const yy = String(selectedDate.getFullYear()).slice(-2);
+  const mm = String(selectedDate.getMonth() + 1).padStart(2, '0');
+  const dd = String(selectedDate.getDate()).padStart(2, '0');
+  const dateStr = `${yy}${mm}${dd}`; // e.g. "260614"
 
   const dailyCounterDoc = doc(db, "counters", `invoices_${dateStr}`);
 
@@ -62,16 +62,13 @@ export { getNextInvoiceNumber };
 // ── CRUD ──────────────────────────────────────────────────────────────────────
 
 function getInvoiceDateKeys(invoice: any): { dateKey: string; monthKey: string } {
-  let dateKey = invoice.dateKey;
-  if (!dateKey) {
-    let d = new Date();
-    if (invoice.date) {
-      d = typeof invoice.date.toDate === "function" ? invoice.date.toDate() : new Date(invoice.date);
-    }
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    dateKey = `${yyyy}-${mm}-${dd}`;
+  let dateKey = "";
+  if (invoice.billDate) {
+    dateKey = toLocalDateString(invoice.billDate);
+  } else if (invoice.date) {
+    dateKey = toLocalDateString(invoice.date);
+  } else {
+    dateKey = invoice.dateKey || toLocalDateString(new Date());
   }
   return {
     dateKey,
@@ -346,7 +343,10 @@ export async function create(
   providedDocRef?: any
 ): Promise<string> {
   try {
-    const dateTs = Timestamp.fromDate(new Date(invoice.dateString));
+    const selectedDateMidnight = new Date(invoice.dateString);
+    selectedDateMidnight.setHours(0, 0, 0, 0);
+    const dateTs = Timestamp.fromDate(selectedDateMidnight);
+    
     const { dateString, ...rest } = invoice;
 
     const normalizedServices = rest.services?.map((s: any) => ({
@@ -372,10 +372,7 @@ export async function create(
     selectedDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
     const invoiceDate = Timestamp.fromDate(selectedDate);
 
-    const yyyy = now.getFullYear();
-    const mmStr = String(now.getMonth() + 1).padStart(2, '0');
-    const ddStr = String(now.getDate()).padStart(2, '0');
-    const dateKey = `${yyyy}-${mmStr}-${ddStr}`;
+    const dateKey = toLocalDateString(selectedDate);
 
     const hhStr = String(now.getHours()).padStart(2, '0');
     const minStr = String(now.getMinutes()).padStart(2, '0');
@@ -390,6 +387,7 @@ export async function create(
       products: normalizedProducts,
       ...(normalizedAppliedOffer ? { appliedOffer: normalizedAppliedOffer } : {}),
       date: dateTs,
+      billDate: dateTs,
       invoiceDate,
       createdAt: serverTimestamp(),
       dateKey,
@@ -508,6 +506,16 @@ export async function update(
       };
     }
 
+    if (normalizedData.invoiceDate) {
+      normalizedData.dateKey = toLocalDateString(normalizedData.invoiceDate);
+      const dateObj = typeof normalizedData.invoiceDate.toDate === "function" 
+        ? normalizedData.invoiceDate.toDate() 
+        : new Date(normalizedData.invoiceDate);
+      dateObj.setHours(0, 0, 0, 0);
+      normalizedData.billDate = Timestamp.fromDate(dateObj);
+      normalizedData.date = normalizedData.billDate;
+    }
+
     await runTransaction(db, async (tx) => {
       const docRef = doc(db, COLLECTION, id);
       const oldSnap = await tx.get(docRef);
@@ -555,8 +563,8 @@ export async function createMembershipInvoice(params: {
   paymentMethod: "Cash" | "UPI" | "Card";
   dateString?: string;
 }): Promise<string> {
-  const invoiceNumber = await getNextInvoiceNumber();
   const dateStr = params.dateString || toLocalDateString(new Date());
+  const invoiceNumber = await getNextInvoiceNumber(dateStr);
 
   const cashVal = params.paymentMethod === "Cash" ? params.membershipAmount : 0;
   const upiVal = params.paymentMethod === "UPI" ? params.membershipAmount : 0;

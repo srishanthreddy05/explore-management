@@ -515,7 +515,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
           invoiceNumber = `EXP-${dateStr}-OFF-${rand}`;
         } else {
           try {
-            invoiceNumber = await invoicesService.getNextInvoiceNumber();
+            invoiceNumber = await invoicesService.getNextInvoiceNumber(dateString);
           } catch (txErr: any) {
             console.warn("Failed to get invoice number via transaction, falling back to offline code:", txErr);
             const now = new Date();
@@ -984,6 +984,13 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
         </div>
       )}
 
+      {dateString !== toLocalDateString(new Date()) && (
+        <div className="mb-5 rounded-2xl border border-amber-900/40 bg-amber-950/20 p-4 text-sm font-semibold text-[#D4A935] flex items-center gap-2 max-w-4xl">
+          <AlertCircle size={16} />
+          <span>You are adding/editing a bill for {dateString}. This will not affect today's records.</span>
+        </div>
+      )}
+
       <div className="grid gap-5 xl:grid-cols-[minmax(0,7fr)_minmax(320px,3fr)]">
         <section className="rounded-2xl border border-[#2E2B24] bg-[#131210] p-4 shadow-md sm:p-5 text-[#A89F8C]">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -1003,6 +1010,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
                 type="date"
                 value={dateString}
                 disabled={saved}
+                max={toLocalDateString(new Date())}
                 onChange={(e) => setDateString(e.target.value)}
                 className="mt-2 h-12 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-4 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E] focus:ring-1 focus:ring-[#B8962E] disabled:bg-stone-900 disabled:text-[#6B6358]"
               />
