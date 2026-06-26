@@ -5,6 +5,7 @@ import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import type { ProductRow } from "./types";
 import { formatCurrency } from "./types";
+import { ClearableNumberInput } from "../ui/ClearableNumberInput";
 
 interface ProductTableProps {
   rows: ProductRow[];
@@ -81,40 +82,41 @@ export function ProductTable({
                 </td>
                 <td className="px-2 py-2 w-[130px]" />
                 <td className="px-2 py-2 w-[160px]">
-                  <input
-                    type="number"
-                    min="1"
-                    placeholder="1"
-                    disabled={disabled || row.isCreditSettle}
-                    value={row.quantity === 0 ? "" : row.quantity}
-                    onChange={(event) => updateRow(row.id, { quantity: event.target.value === "" ? 0 : Number(event.target.value) })}
-                    className="h-10 w-full rounded-xl border border-[#2E2B24] bg-[#131210] px-2 text-[#F5F0E8] outline-none transition focus:border-[#B8962E] disabled:bg-[#0E0D0B] disabled:text-[#6B6358] text-xs font-semibold"
-                  />
+                  <div className="h-10 w-full rounded-xl border border-[#2E2B24] bg-[#131210] px-2 flex items-center transition focus-within:border-[#B8962E] disabled:bg-[#0E0D0B]">
+                    <ClearableNumberInput
+                      min="1"
+                      placeholder="1"
+                      disabled={disabled || row.isCreditSettle}
+                      value={row.quantity}
+                      onChange={(val) => updateRow(row.id, { quantity: val })}
+                      className="text-[#F5F0E8] text-xs font-semibold disabled:text-[#6B6358]"
+                    />
+                  </div>
                 </td>
                 <td className="px-2 py-2 w-[90px]">
-                  <input
-                    type="number"
-                    min="0"
-                    placeholder="0"
-                    disabled={disabled || row.isCreditSettle}
-                    value={row.price === 0 ? "" : row.price}
-                    onChange={(event) => updateRow(row.id, { price: event.target.value === "" ? 0 : Number(event.target.value) })}
-                    className="h-10 w-full rounded-xl border border-[#2E2B24] bg-[#131210] px-2 text-[#F5F0E8] outline-none transition focus:border-[#B8962E] disabled:bg-[#0E0D0B] disabled:text-[#6B6358] text-xs font-semibold"
-                  />
+                  <div className="h-10 w-full rounded-xl border border-[#2E2B24] bg-[#131210] px-2 flex items-center transition focus-within:border-[#B8962E] disabled:bg-[#0E0D0B]">
+                    <ClearableNumberInput
+                      min="0"
+                      disabled={disabled || row.isCreditSettle}
+                      value={row.price}
+                      onChange={(val) => updateRow(row.id, { price: val })}
+                      className="text-[#F5F0E8] text-xs font-semibold disabled:text-[#6B6358]"
+                    />
+                  </div>
                 </td>
                 <td className="px-2 py-2 w-[90px]">
-                  <input
-                    type="number"
-                    min="0"
-                    placeholder="0"
-                    disabled={disabled || row.isCreditSettle}
-                    value={row.discount === 0 ? "" : row.discount}
-                    onChange={(event) => updateRow(row.id, { discount: event.target.value === "" ? 0 : Number(event.target.value) })}
-                    className="h-10 w-full rounded-xl border border-[#2E2B24] bg-[#131210] px-2 text-[#F5F0E8] outline-none transition focus:border-[#B8962E] disabled:bg-[#0E0D0B] disabled:text-[#6B6358] text-xs font-semibold"
-                  />
+                  <div className="h-10 w-full rounded-xl border border-[#2E2B24] bg-[#131210] px-2 flex items-center transition focus-within:border-[#B8962E] disabled:bg-[#0E0D0B]">
+                    <ClearableNumberInput
+                      min="0"
+                      disabled={disabled || row.isCreditSettle}
+                      value={row.discount}
+                      onChange={(val) => updateRow(row.id, { discount: val })}
+                      className="text-[#F5F0E8] text-xs font-semibold disabled:text-[#6B6358]"
+                    />
+                  </div>
                 </td>
                 <td className="px-2 py-2 font-bold text-[#F5F0E8] text-xs w-[90px]">
-                  {formatCurrency(Math.max(row.price * row.quantity - row.discount, 0))}
+                  {formatCurrency(Math.max((Number(row.price) || 0) * (Number(row.quantity) || 1) - (Number(row.discount) || 0), 0))}
                 </td>
                 <td className="px-2 py-2 text-right w-[50px]">
                   <button

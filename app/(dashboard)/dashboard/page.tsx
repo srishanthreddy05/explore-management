@@ -71,16 +71,16 @@ interface ServiceItem {
   staffName?: string;
   staff?: string;
   serviceId?: string;
-  price?: number;
+  price?: number | "";
   amount?: number;
-  discount?: number;
+  discount?: number | "";
   usedProductCost?: number;
 }
 
 interface ProductItem {
-  price?: number;
-  quantity?: number;
-  discount?: number;
+  price?: number | "";
+  quantity?: number | "";
+  discount?: number | "";
   amount?: number;
 }
 

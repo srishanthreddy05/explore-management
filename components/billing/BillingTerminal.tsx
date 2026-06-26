@@ -7,6 +7,7 @@ import { ProductTable } from "@/components/salon-dashboard/product-table";
 import { SummaryCard } from "@/components/salon-dashboard/summary-card";
 import type { ProductRow, ServiceRow } from "@/components/salon-dashboard/types";
 import { formatCurrency } from "@/components/salon-dashboard/types";
+import { ClearableNumberInput } from "../ui/ClearableNumberInput";
 import { X, UserX, AlertCircle, Wallet } from "lucide-react";
 import { Timestamp } from "firebase/firestore";
 
@@ -81,7 +82,8 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
   const [billDiscountPercent, setBillDiscountPercent] = useState<number>(0);
 
   // Advance balance states
-  const [amountPaid, setAmountPaid] = useState<number>(0);
+  const [amountPaid, setAmountPaid] = useState<number | "">(0);
+  const [isAmountPaidEdited, setIsAmountPaidEdited] = useState(false);
   const [advanceToAdd, setAdvanceToAdd] = useState<number>(0);
   const [customerAdvance, setCustomerAdvance] = useState<any>(null);
   const [advanceApplied, setAdvanceApplied] = useState<number>(0);
@@ -134,6 +136,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
             
             const isSplit = (payments.cash > 0 && (payments.upi > 0 || payments.card > 0)) || (payments.upi > 0 && payments.card > 0);
             setIsSplitEdited(isSplit || inv.paymentMethod === "Split");
+            setIsAmountPaidEdited(true);
 
             if (inv.appliedOffer) {
               setSelectedOfferId(inv.appliedOffer.offerId || "");
@@ -311,8 +314,8 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
 
   // Bill subtotal (services + products) before any offer discount
   const baseSubtotal = useMemo(() => {
-    const serviceTotal = services.reduce((sum, s) => sum + Math.max(s.price, 0), 0);
-    const productTotal = products.reduce((sum, p) => sum + Math.max(p.price * p.quantity, 0), 0);
+    const serviceTotal = services.reduce((sum, s) => sum + Math.max(Number(s.price) || 0, 0), 0);
+    const productTotal = products.reduce((sum, p) => sum + Math.max((Number(p.price) || 0) * (Number(p.quantity) || 1), 0), 0);
     return serviceTotal + productTotal;
   }, [services, products]);
 
@@ -345,7 +348,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
             eligibleSubtotal += services.reduce((sum, row) => {
               const matched = servicesList.find((s) => s.name === row.service);
               if (matched?.id && offer.applicableServiceIds!.includes(matched.id)) {
-                return sum + Math.max(row.price, 0);
+                return sum + Math.max(Number(row.price) || 0, 0);
               }
               return sum;
             }, 0);
@@ -354,7 +357,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
             eligibleSubtotal += products.reduce((sum, row) => {
               const matched = productsList.find((p) => p.id === row.productId || p.name === row.product);
               if (matched?.id && offer.applicableProductIds!.includes(matched.id)) {
-                return sum + Math.max(row.price * row.quantity, 0);
+                return sum + Math.max((Number(row.price) || 0) * (Number(row.quantity) || 1), 0);
               }
               return sum;
             }, 0);
@@ -390,16 +393,16 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
   const selectedOffer = eligibleOffers.find((o) => o.id === selectedOfferId) || null;
 
   const totals = useMemo(() => {
-    const serviceTotal = services.reduce((sum, s) => sum + Math.max(s.price, 0), 0);
-    const productTotal = products.reduce((sum, p) => sum + Math.max(p.price * p.quantity, 0), 0);
+    const serviceTotal = services.reduce((sum, s) => sum + Math.max(Number(s.price) || 0, 0), 0);
+    const productTotal = products.reduce((sum, p) => sum + Math.max((Number(p.price) || 0) * (Number(p.quantity) || 1), 0), 0);
     
     // billDiscount applies ONLY to serviceTotal
     const discountedServiceTotal = Math.max(serviceTotal - billDiscount, 0);
     const subtotal = discountedServiceTotal + productTotal;
 
     const lineDiscount =
-      services.reduce((sum, s) => sum + (s.discount || 0), 0) +
-      products.reduce((sum, p) => sum + (p.discount || 0), 0);
+      services.reduce((sum, s) => sum + (Number(s.discount) || 0), 0) +
+      products.reduce((sum, p) => sum + (Number(p.discount) || 0), 0);
 
     // Compute offer discount
     let offerDiscount = 0;
@@ -415,7 +418,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
           offerBase += services.reduce((sum, row) => {
             const matched = servicesList.find((s) => s.name === row.service);
             if (matched?.id && selectedOffer.applicableServiceIds!.includes(matched.id)) {
-              return sum + Math.max(row.price, 0);
+              return sum + Math.max(Number(row.price) || 0, 0);
             }
             return sum;
           }, 0);
@@ -424,7 +427,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
           offerBase += products.reduce((sum, row) => {
             const matched = productsList.find((p) => p.id === row.productId || p.name === row.product);
             if (matched?.id && selectedOffer.applicableProductIds!.includes(matched.id)) {
-              return sum + Math.max(row.price * row.quantity, 0);
+              return sum + Math.max((Number(row.price) || 0) * (Number(row.quantity) || 1), 0);
             }
             return sum;
           }, 0);
@@ -455,7 +458,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
 
   // Cap bill discount if serviceTotal decreases below it
   useEffect(() => {
-    const serviceTotal = services.reduce((sum, s) => sum + Math.max(s.price, 0), 0);
+    const serviceTotal = services.reduce((sum, s) => sum + Math.max(Number(s.price) || 0, 0), 0);
     if (billDiscount > serviceTotal) {
       const newBillDiscount = Math.round(serviceTotal * 100) / 100;
       setBillDiscount(newBillDiscount);
@@ -472,11 +475,12 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
   const amountToCollect = Math.max(0, totals.grandTotal - advanceApplied);
 
   useEffect(() => {
-    if (!isSplitEdited && amountPaid > 0) {
-      setUpiAmount(amountPaid);
+    const amt = Number(amountPaid) || 0;
+    if (!isSplitEdited && amt > 0) {
+      setUpiAmount(amt);
       setCashAmount("");
       setCardAmount("");
-    } else if (amountPaid === 0) {
+    } else if (amt === 0) {
       setUpiAmount("");
       setCashAmount("");
       setCardAmount("");
@@ -488,7 +492,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
   const cardVal = cardAmount === "" ? 0 : Number(cardAmount);
   const totalPaid = cashVal + upiVal + cardVal;
   const paymentDiff = amountToCollect - totalPaid;
-  const change = Math.max(0, amountPaid - amountToCollect);
+  const change = Math.max(0, (Number(amountPaid) || 0) - amountToCollect);
   
   // Reset advanceToAdd if change becomes 0
   useEffect(() => {
@@ -498,13 +502,11 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
   }, [change]);
 
   // Keep amountPaid synced with amountToCollect by default
-  const prevAmountToCollectRef = useRef(0);
   useEffect(() => {
-    if (amountPaid === prevAmountToCollectRef.current || amountPaid === 0) {
+    if (!isAmountPaidEdited) {
       setAmountPaid(amountToCollect);
     }
-    prevAmountToCollectRef.current = amountToCollect;
-  }, [amountToCollect, amountPaid]);
+  }, [amountToCollect, isAmountPaidEdited]);
 
   // Sync amountPaid with totalPaid if splits are edited and totalPaid exceeds amountToCollect
   useEffect(() => {
@@ -513,6 +515,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
                       (cardAmount === "" ? 0 : Number(cardAmount));
     if (totalPaid > amountToCollect) {
       setAmountPaid(totalPaid);
+      setIsAmountPaidEdited(true);
     }
   }, [cashAmount, upiAmount, cardAmount, amountToCollect]);
 
@@ -676,7 +679,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
 
       const rawNonCreditServiceTotal = services
         .filter((s) => !s.isCreditSettle)
-        .reduce((sum, s) => sum + Math.max(s.price - (s.discount || 0), 0), 0);
+        .reduce((sum, s) => sum + Math.max((Number(s.price) || 0) - (Number(s.discount) || 0), 0), 0);
       
       const serviceBillDiscountFactor = rawNonCreditServiceTotal > 0 
         ? Math.max(rawNonCreditServiceTotal - billDiscount, 0) / rawNonCreditServiceTotal 
@@ -692,7 +695,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
             usedProductCost = matchedProduct.costPerServing;
           }
         }
-        const serviceBaseAmount = Math.max(row.price - (row.discount || 0), 0);
+        const serviceBaseAmount = Math.max((Number(row.price) || 0) - (Number(row.discount) || 0), 0);
         const serviceAmount = row.isCreditSettle
           ? serviceBaseAmount
           : Math.round(serviceBaseAmount * serviceBillDiscountFactor * 100) / 100;
@@ -710,8 +713,8 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
           serviceName: row.service,
           staffId,
           staffName: row.staff,
-          price: row.price,
-          discount: row.discount || 0,
+          price: Number(row.price) || 0,
+          discount: Number(row.discount) || 0,
           amount: serviceAmount,
           usedProductId: row.usedProductId ?? null,
           usedProductName: row.usedProductName ?? null,
@@ -733,10 +736,10 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
         return {
           productId: row.productId || "",
           productName: row.product,
-          quantity: row.quantity,
-          price: row.price,
-          discount: row.discount || 0,
-          amount: Math.max(row.price * row.quantity - (row.discount || 0), 0),
+          quantity: Number(row.quantity) || 1,
+          price: Number(row.price) || 0,
+          discount: Number(row.discount) || 0,
+          amount: Math.max((Number(row.price) || 0) * (Number(row.quantity) || 1) - (Number(row.discount) || 0), 0),
           isCreditSettle: row.isCreditSettle || false,
           creditBalanceId: row.creditBalanceId ?? null,
           originalBillDate: row.originalBillDate ?? null,
@@ -1035,6 +1038,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
     setBillDiscount(0);
     setBillDiscountPercent(0);
     setAmountPaid(0);
+    setIsAmountPaidEdited(false);
     setAdvanceToAdd(0);
     setCustomerAdvance(null);
     setAdvanceApplied(0);
@@ -1051,10 +1055,15 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
     }
 
     const formattedServices = services
-      .map((s) => `• ${s.service} - ₹${s.price - (s.discount || 0)}`)
+      .map((s) => `• ${s.service} - ₹${(Number(s.price) || 0) - (Number(s.discount) || 0)}`)
       .join("\n");
     const formattedProducts = products
-      .map((p) => `• ${p.product} (x${p.quantity}) - ₹${p.price * p.quantity - (p.discount || 0)}`)
+      .map((p) => {
+        const qty = Number(p.quantity) || 1;
+        const price = Number(p.price) || 0;
+        const discount = Number(p.discount) || 0;
+        return `• ${p.product} (x${qty}) - ₹${price * qty - discount}`;
+      })
       .join("\n");
 
     const greeting = `Hello ${customerName},\n\nThank you for choosing Explore Salon ✨\n\n`;
@@ -1453,7 +1462,10 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
               setBillDiscountPercent(percent);
             }}
             amountPaid={amountPaid}
-            onChangeAmountPaid={setAmountPaid}
+            onChangeAmountPaid={(val) => {
+              setAmountPaid(val);
+              setIsAmountPaidEdited(true);
+            }}
             advanceToAdd={advanceToAdd}
             onAddAdvance={setAdvanceToAdd}
             advanceApplied={advanceApplied}
@@ -1488,19 +1500,19 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
                   return (
                     <label key={method} className="block">
                       <span className="text-[10px] uppercase tracking-[0.15em] text-[#6B6358] capitalize">{method} Amount</span>
-                      <input
-                        type="number"
-                        min="0"
-                        value={val}
-                        placeholder="0"
-                        disabled={saved}
-                        onChange={(e) => {
-                          setIsSplitEdited(true);
-                          const v = e.target.value;
-                          setFn(v === "" ? "" : Math.max(0, Number(v)));
-                        }}
-                        className="mt-1.5 h-10 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-2 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E] focus:ring-1 focus:ring-[#B8962E] disabled:bg-stone-900 disabled:text-[#6B6358]"
-                      />
+                      <div className="mt-1.5 h-10 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-2 flex items-center transition focus-within:border-[#B8962E] focus-within:ring-1 focus-within:ring-[#B8962E] disabled:bg-stone-900">
+                        <ClearableNumberInput
+                          min="0"
+                          value={val}
+                          placeholder="0"
+                          disabled={saved}
+                          onChange={(newVal) => {
+                            setIsSplitEdited(true);
+                            setFn(newVal === "" ? "" : Math.max(0, newVal));
+                          }}
+                          className="text-[#F5F0E8] text-sm disabled:text-[#6B6358]"
+                        />
+                      </div>
                     </label>
                   );
                 })}

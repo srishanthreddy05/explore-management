@@ -1,9 +1,10 @@
 "use client";
 
 import React from "react";
-import { Receipt, CreditCard } from "lucide-react";
+import { Receipt, CreditCard, PiggyBank } from "lucide-react";
 import type { BillTotals } from "./types";
 import { formatCurrency } from "./types";
+import { ClearableNumberInput } from "../ui/ClearableNumberInput";
 
 interface SummaryCardProps {
   totals: BillTotals;
@@ -12,8 +13,8 @@ interface SummaryCardProps {
   onChangeDiscount?: (val: number, percent: number) => void;
   
   // Advance balance fields
-  amountPaid: number;
-  onChangeAmountPaid?: (val: number) => void;
+  amountPaid: number | "";
+  onChangeAmountPaid?: (val: number | "") => void;
   advanceToAdd: number;
   onAddAdvance?: (val: number) => void;
 
@@ -32,38 +33,24 @@ export function SummaryCard({
   onAddAdvance,
   advanceApplied,
 }: SummaryCardProps) {
-  const handlePercentChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const valStr = e.target.value;
-    if (valStr === "") {
+  const handlePercentChange = (val: number | "") => {
+    if (val === "") {
       onChangeDiscount?.(0, 0);
       return;
     }
-    let percent = parseFloat(valStr);
-    if (isNaN(percent) || percent < 0) {
-      percent = 0;
-    }
-    if (percent > 100) {
-      percent = 100;
-    }
+    let percent = Math.min(100, Math.max(0, val));
     let value = (totals.serviceTotal * percent) / 100;
     value = Math.round(value * 100) / 100;
     percent = Math.round(percent * 100) / 100;
     onChangeDiscount?.(value, percent);
   };
 
-  const handleValueChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const valStr = e.target.value;
-    if (valStr === "") {
+  const handleValueChange = (val: number | "") => {
+    if (val === "") {
       onChangeDiscount?.(0, 0);
       return;
     }
-    let value = parseFloat(valStr);
-    if (isNaN(value) || value < 0) {
-      value = 0;
-    }
-    if (value > totals.serviceTotal) {
-      value = totals.serviceTotal;
-    }
+    let value = Math.min(totals.serviceTotal, Math.max(0, val));
     let percent = totals.serviceTotal > 0 ? (value / totals.serviceTotal) * 100 : 0;
     percent = Math.round(percent * 100) / 100;
     value = Math.round(value * 100) / 100;
@@ -79,7 +66,7 @@ export function SummaryCard({
   const amountToCollect = Math.max(0, grandTotal - advanceApplied);
 
   // Overpayment calculations
-  const change = Math.max(0, amountPaid - amountToCollect);
+  const change = Math.max(0, (Number(amountPaid) || 0) - amountToCollect);
   const isAdvanceSelected = change > 0 && advanceToAdd === change;
   const isChangeSelected = change > 0 && advanceToAdd === 0;
 
@@ -116,29 +103,27 @@ export function SummaryCard({
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div className="relative rounded-xl border border-stone-200 focus-within:border-[#B8962E] focus-within:ring-1 focus-within:ring-[#B8962E] transition bg-stone-50 px-2 py-1 flex items-center">
-              <input
-                type="number"
+              <ClearableNumberInput
                 min="0"
                 max="100"
                 step="0.01"
                 placeholder="0%"
                 value={billDiscountPercent === 0 ? "" : billDiscountPercent}
                 onChange={handlePercentChange}
-                className="w-full text-xs text-stone-900 bg-transparent outline-none pr-3 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                className="w-full text-xs text-stone-900 pr-3"
               />
               <span className="absolute right-2 text-[10px] font-bold text-stone-400 pointer-events-none">%</span>
             </div>
             <div className="relative rounded-xl border border-stone-200 focus-within:border-[#B8962E] focus-within:ring-1 focus-within:ring-[#B8962E] transition bg-stone-50 px-2 py-1 flex items-center">
               <span className="absolute left-2 text-[10px] font-bold text-stone-400 pointer-events-none">₹</span>
-              <input
-                type="number"
+              <ClearableNumberInput
                 min="0"
                 max={totals.serviceTotal}
                 step="0.01"
                 placeholder="0.00"
                 value={billDiscount === 0 ? "" : billDiscount}
                 onChange={handleValueChange}
-                className="w-full text-xs text-stone-900 bg-transparent outline-none pl-3 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                className="w-full text-xs text-stone-900 pl-3"
               />
             </div>
           </div>
@@ -221,16 +206,14 @@ export function SummaryCard({
           <span className="text-xs uppercase tracking-[0.28em] text-stone-500 font-bold">Amount Paid</span>
           <div className="mt-2 relative rounded-xl border border-stone-200 focus-within:border-[#B8962E] focus-within:ring-1 focus-within:ring-[#B8962E] transition bg-stone-50 px-3 py-2 flex items-center shadow-inner">
             <span className="text-sm font-bold text-stone-400 pointer-events-none">₹</span>
-            <input
-              type="number"
+            <ClearableNumberInput
               min="0"
               placeholder={amountToCollect > 0 ? amountToCollect.toFixed(2) : "0.00"}
-              value={amountPaid === 0 ? "" : amountPaid}
-              onChange={(e) => {
-                const val = e.target.value === "" ? 0 : Math.max(0, parseFloat(e.target.value));
+              value={amountPaid}
+              onChange={(val) => {
                 onChangeAmountPaid?.(val);
               }}
-              className="w-full text-sm font-bold text-stone-900 bg-transparent outline-none pl-3 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              className="w-full text-sm font-bold text-stone-900 pl-3"
             />
           </div>
         </label>

@@ -2,9 +2,9 @@ export type ServiceRow = {
   id: number;
   service: string;
   staff: string;
-  price: number;
-  quantity: number;
-  discount: number;
+  price: number | "";
+  quantity: number | "";
+  discount: number | "";
   usedProductId?: string;
   usedProductName?: string;
   usedProductCost?: number;
@@ -15,9 +15,9 @@ export type ProductRow = {
   id: number;
   productId?: string;
   product: string;
-  price: number;
-  quantity: number;
-  discount: number;
+  price: number | "";
+  quantity: number | "";
+  discount: number | "";
   isCreditSettle?: boolean;
 };
 

@@ -93,10 +93,19 @@ select {
   background-image: none;
 }
 
+/* ── Reset input default borders and backgrounds ────────────────────────── */
+input,
+select,
+textarea {
+  border: none;
+  background-color: transparent;
+}
+
 /* ── Kill input/select white highlight on focus in WebKit ───────────────── */
 input:focus,
 select:focus,
 textarea:focus {
-  background-color: #131210 !important;
-  color: #F5F0E8 !important;
+  background-color: #131210;
+  color: #F5F0E8;
+  outline: none;
 }
