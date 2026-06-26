@@ -52,6 +52,8 @@ interface Invoice {
   services?: ServiceItem[];
   products?: ProductItem[];
   billDate?: any;
+  advanceAdded?: number;
+  advanceUsed?: number;
 }
 
 interface ServiceItem {
@@ -784,8 +786,8 @@ export default function SettlementsPage() {
         const { dateKey, monthKey } = getInvoiceDateKeys(inv);
         const payments = getInvoicePayments(inv);
         const grandTotal = inv.grandTotal || 0;
-        const collected = (payments.cash || 0) + (payments.upi || 0) + (payments.card || 0);
-        const ratio = grandTotal > 0 ? Math.min(1, Math.max(0, collected / grandTotal)) : 1;
+        const collected = (payments.cash || 0) + (payments.upi || 0) + (payments.card || 0) + (inv.advanceUsed || 0);
+        const ratio = getInvoicePaymentRatio(inv);
 
         if (!monthlyStats[monthKey]) {
           monthlyStats[monthKey] = {
@@ -1144,9 +1146,7 @@ export default function SettlementsPage() {
         const discountFactor =
           inv.subtotal > 0 ? inv.grandTotal / inv.subtotal : 1;
 
-        const payments = getInvoicePayments(inv);
-        const collected = (payments.cash || 0) + (payments.upi || 0) + (payments.card || 0);
-        const ratio = inv.grandTotal > 0 ? Math.min(1, Math.max(0, collected / inv.grandTotal)) : 1;
+        const ratio = getInvoicePaymentRatio(inv);
 
         (inv.products || []).forEach((p: any) => {
           const productBaseAmount =
@@ -1309,9 +1309,7 @@ export default function SettlementsPage() {
       todayInvoices.forEach((inv) => {
         const discountFactor =
           inv.subtotal > 0 ? inv.grandTotal / inv.subtotal : 1;
-        const payments = getInvoicePayments(inv);
-        const collected = (payments.cash || 0) + (payments.upi || 0) + (payments.card || 0);
-        const ratio = inv.grandTotal > 0 ? Math.min(1, Math.max(0, collected / inv.grandTotal)) : 1;
+        const ratio = getInvoicePaymentRatio(inv);
 
         (inv.services || []).forEach((s: any) => {
           if (s.staffId === member.id || s.staffName === member.name) {

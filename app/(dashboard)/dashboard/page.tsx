@@ -40,7 +40,7 @@ import { AddExpenseModal } from "@/components/expenses/AddExpenseModal";
 import * as customerService from "@/services/customers";
 import * as expensesService from "@/services/expenses";
 import { toLocalDateString } from "@/lib/utils/date";
-import { getInvoicePayments } from "@/lib/utils/settlements";
+import { getInvoicePayments, getInvoicePaymentRatio } from "@/lib/utils/settlements";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface Invoice {
@@ -62,6 +62,8 @@ interface Invoice {
   createdAt?: Timestamp;
   invoiceDate?: Timestamp;
   billDate?: Timestamp;
+  advanceAdded?: number;
+  advanceUsed?: number;
 }
 
 interface ServiceItem {
@@ -233,16 +235,20 @@ function PaymentBreakdown({
   cash,
   upi,
   card,
+  advance,
 }: {
   cash: number;
   upi: number;
   card: number;
+  advance?: number;
 }) {
-  const total = cash + upi + card || 1;
+  const advVal = advance || 0;
+  const total = cash + upi + card + advVal || 1;
   const items = [
     { label: "Cash", value: cash, color: "bg-[#4ADE80]" },
     { label: "UPI", value: upi, color: "bg-[#60A5FA]" },
     { label: "Card", value: card, color: "bg-[#A78BFA]" },
+    ...(advVal > 0 ? [{ label: "Advance", value: advVal, color: "bg-[#059669]" }] : []),
   ];
 
   return (
@@ -256,7 +262,7 @@ function PaymentBreakdown({
           />
         ))}
       </div>
-      <div className="grid grid-cols-3 gap-2">
+      <div className={`grid gap-2 ${advVal > 0 ? "grid-cols-4" : "grid-cols-3"}`}>
         {items.map((item) => (
           <div key={item.label} className="text-center">
             <p className="text-[10px] font-bold uppercase tracking-wider text-[#6B6358]">
@@ -978,6 +984,7 @@ export default function DashboardPage() {
     let cashToday = 0;
     let upiToday = 0;
     let cardToday = 0;
+    let advanceToday = 0;
     const uniqueCustomerIds = new Set<string>();
 
     invoices.forEach((inv) => {
@@ -993,11 +1000,12 @@ export default function DashboardPage() {
         inv.paymentSplit?.card ??
         inv.payments?.card ??
         (inv.paymentMethod === "Card" ? inv.grandTotal || 0 : 0);
+      const advance = inv.advanceUsed || 0;
 
       const invDateStr = inv.dateKey || toLocalDateString(inv.date);
 
       if (invDateStr === todayStr) {
-        todayRevenue += cash + upi + card;
+        todayRevenue += cash + upi + card + advance;
 
         const isGuest =
           inv.customerPhone === "0000000000" || inv.customerName === "Guest";
@@ -1009,6 +1017,7 @@ export default function DashboardPage() {
         cashToday += cash;
         upiToday += upi;
         cardToday += card;
+        advanceToday += advance;
       }
     });
 
@@ -1019,6 +1028,7 @@ export default function DashboardPage() {
       cashToday,
       upiToday,
       cardToday,
+      advanceToday,
       onDutyCount: staff.filter((s) => s.dutyStatus === "onDuty").length,
     };
   }, [invoices, staff, monthlyStats]);
@@ -1060,9 +1070,7 @@ export default function DashboardPage() {
     todayInvoices.forEach((inv) => {
       const discountFactor = inv.subtotal > 0 ? inv.grandTotal / inv.subtotal : 1;
 
-      const payments = getInvoicePayments(inv);
-      const collected = (payments.cash || 0) + (payments.upi || 0) + (payments.card || 0);
-      const ratio = inv.grandTotal > 0 ? Math.min(1, Math.max(0, collected / inv.grandTotal)) : 1;
+      const ratio = getInvoicePaymentRatio(inv);
 
       (inv.products || []).forEach((p: any) => {
         const base = p.amount ?? Math.max((p.price || 0) * (p.quantity || 1) - (p.discount || 0), 0);
@@ -1223,9 +1231,7 @@ export default function DashboardPage() {
         const isToday = dateKeyStr === todayStr;
         const discountFactor = inv.subtotal > 0 ? inv.grandTotal / inv.subtotal : 1;
 
-        const payments = getInvoicePayments(inv);
-        const collected = (payments.cash || 0) + (payments.upi || 0) + (payments.card || 0);
-        const ratio = inv.grandTotal > 0 ? Math.min(1, Math.max(0, collected / inv.grandTotal)) : 1;
+        const ratio = getInvoicePaymentRatio(inv);
 
         (inv.services || []).forEach((s: any) => {
           if (s.staffId === member.id || s.staffName === member.name) {
@@ -1355,6 +1361,7 @@ export default function DashboardPage() {
                 cash={stats.cashToday}
                 upi={stats.upiToday}
                 card={stats.cardToday}
+                advance={stats.advanceToday}
               />
             </StatCard>
 

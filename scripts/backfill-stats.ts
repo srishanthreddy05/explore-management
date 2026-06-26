@@ -76,8 +76,8 @@ async function runMigration() {
       const { dateKey, monthKey } = getInvoiceDateKeys(inv);
       const payments = getInvoicePayments(inv);
       const grandTotal = inv.grandTotal || 0;
-      const collected = (payments.cash || 0) + (payments.upi || 0) + (payments.card || 0);
-      const ratio = grandTotal > 0 ? Math.min(1, Math.max(0, collected / grandTotal)) : 1;
+      const collected = (payments.cash || 0) + (payments.upi || 0) + (payments.card || 0) + (inv.advanceUsed || 0);
+      const ratio = getInvoicePaymentRatio(inv);
 
       // Initialize monthly stats
       if (!monthlyStats[monthKey]) {

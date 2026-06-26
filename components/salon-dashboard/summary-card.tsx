@@ -1,22 +1,87 @@
 "use client";
 
-import { Receipt } from "lucide-react";
+import React from "react";
+import { Receipt, CreditCard } from "lucide-react";
 import type { BillTotals } from "./types";
 import { formatCurrency } from "./types";
 
-export function SummaryCard({ totals }: { totals: BillTotals }) {
-  const rows: [string, number][] = [
-    ["Total Services", totals.serviceTotal],
-    ["Total Products", totals.productTotal],
-    ["Subtotal", totals.subtotal],
-    ["Discount", -totals.billDiscount],
-  ];
+interface SummaryCardProps {
+  totals: BillTotals;
+  billDiscount: number;
+  billDiscountPercent: number;
+  onChangeDiscount?: (val: number, percent: number) => void;
+  
+  // Advance balance fields
+  amountPaid: number;
+  onChangeAmountPaid?: (val: number) => void;
+  advanceToAdd: number;
+  onAddAdvance?: (val: number) => void;
 
-  if (totals.offerDiscount > 0) {
-    rows.push(["Offer Discount", -totals.offerDiscount]);
-  }
+  // Feature 3: Advance balance application fields
+  advanceApplied: number;
+}
 
-  const grandTotal = Math.max(totals.subtotal - totals.billDiscount - totals.offerDiscount, 0)
+export function SummaryCard({
+  totals,
+  billDiscount,
+  billDiscountPercent,
+  onChangeDiscount,
+  amountPaid,
+  onChangeAmountPaid,
+  advanceToAdd,
+  onAddAdvance,
+  advanceApplied,
+}: SummaryCardProps) {
+  const handlePercentChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const valStr = e.target.value;
+    if (valStr === "") {
+      onChangeDiscount?.(0, 0);
+      return;
+    }
+    let percent = parseFloat(valStr);
+    if (isNaN(percent) || percent < 0) {
+      percent = 0;
+    }
+    if (percent > 100) {
+      percent = 100;
+    }
+    let value = (totals.serviceTotal * percent) / 100;
+    value = Math.round(value * 100) / 100;
+    percent = Math.round(percent * 100) / 100;
+    onChangeDiscount?.(value, percent);
+  };
+
+  const handleValueChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const valStr = e.target.value;
+    if (valStr === "") {
+      onChangeDiscount?.(0, 0);
+      return;
+    }
+    let value = parseFloat(valStr);
+    if (isNaN(value) || value < 0) {
+      value = 0;
+    }
+    if (value > totals.serviceTotal) {
+      value = totals.serviceTotal;
+    }
+    let percent = totals.serviceTotal > 0 ? (value / totals.serviceTotal) * 100 : 0;
+    percent = Math.round(percent * 100) / 100;
+    value = Math.round(value * 100) / 100;
+    onChangeDiscount?.(value, percent);
+  };
+
+  // Grand total formula includes row-level line discounts
+  const grandTotal = Math.max(
+    totals.serviceTotal - totals.billDiscount - totals.offerDiscount + totals.productTotal - (totals.lineDiscount || 0),
+    0
+  );
+
+  const amountToCollect = Math.max(0, grandTotal - advanceApplied);
+
+  // Overpayment calculations
+  const change = Math.max(0, amountPaid - amountToCollect);
+  const isAdvanceSelected = change > 0 && advanceToAdd === change;
+  const isChangeSelected = change > 0 && advanceToAdd === 0;
 
   return (
     <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-md text-stone-900">
@@ -31,22 +96,186 @@ export function SummaryCard({ totals }: { totals: BillTotals }) {
       </div>
 
       <div className="space-y-3 border-t border-stone-100 pt-4">
-        {rows.map(([label, value]) => (
-          <div key={label} className="flex items-center justify-between text-sm">
-            <span className="text-stone-500">{label}</span>
-            <span className={value < 0 ? "font-semibold text-emerald-600" : "font-semibold text-stone-800"}>
-              {formatCurrency(value)}
+        {/* Total Services */}
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-stone-500">Total Services</span>
+          <span className="font-semibold text-stone-800">
+            {formatCurrency(totals.serviceTotal)}
+          </span>
+        </div>
+
+        {/* Bill Discount (percentage and rupee inputs side by side) */}
+        <div className="flex flex-col gap-2 py-1.5 border-y border-stone-100 my-1">
+          <div className="flex items-center justify-between text-xs font-bold text-stone-600">
+            <span>Bill Discount (Services Only)</span>
+            {billDiscount > 0 && (
+              <span className="text-emerald-600 font-semibold">
+                -{formatCurrency(billDiscount)}
+              </span>
+            )}
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="relative rounded-xl border border-stone-200 focus-within:border-[#B8962E] focus-within:ring-1 focus-within:ring-[#B8962E] transition bg-stone-50 px-2 py-1 flex items-center">
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="0.01"
+                placeholder="0%"
+                value={billDiscountPercent === 0 ? "" : billDiscountPercent}
+                onChange={handlePercentChange}
+                className="w-full text-xs text-stone-900 bg-transparent outline-none pr-3 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              />
+              <span className="absolute right-2 text-[10px] font-bold text-stone-400 pointer-events-none">%</span>
+            </div>
+            <div className="relative rounded-xl border border-stone-200 focus-within:border-[#B8962E] focus-within:ring-1 focus-within:ring-[#B8962E] transition bg-stone-50 px-2 py-1 flex items-center">
+              <span className="absolute left-2 text-[10px] font-bold text-stone-400 pointer-events-none">₹</span>
+              <input
+                type="number"
+                min="0"
+                max={totals.serviceTotal}
+                step="0.01"
+                placeholder="0.00"
+                value={billDiscount === 0 ? "" : billDiscount}
+                onChange={handleValueChange}
+                className="w-full text-xs text-stone-900 bg-transparent outline-none pl-3 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Total Products */}
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-stone-500">Total Products</span>
+          <span className="font-semibold text-stone-800">
+            {formatCurrency(totals.productTotal)}
+          </span>
+        </div>
+
+        {/* Subtotal */}
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-stone-500">Subtotal</span>
+          <span className="font-semibold text-stone-800">
+            {formatCurrency(totals.subtotal)}
+          </span>
+        </div>
+
+        {/* Item-level discounts display */}
+        {totals.lineDiscount !== undefined && totals.lineDiscount > 0 && (
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-stone-500">Item Discount</span>
+            <span className="font-semibold text-emerald-600">
+              -{formatCurrency(totals.lineDiscount)}
             </span>
           </div>
-        ))}
+        )}
+
+        {/* Offer Discount */}
+        {totals.offerDiscount > 0 && (
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-stone-500">Offer Discount</span>
+            <span className="font-semibold text-emerald-600">
+              -{formatCurrency(totals.offerDiscount)}
+            </span>
+          </div>
+        )}
+
+        {/* Advance Used */}
+        {advanceApplied > 0 && (
+          <div className="flex items-center justify-between text-sm font-semibold text-emerald-600">
+            <span className="text-emerald-700">Advance Used</span>
+            <span>
+              -{formatCurrency(advanceApplied)}
+            </span>
+          </div>
+        )}
       </div>
 
+      {/* Grand Total */}
       <div className="mt-5 rounded-2xl border border-stone-200 bg-stone-50 p-4">
         <p className="text-xs uppercase tracking-[0.28em] text-stone-500 font-bold">Grand Total</p>
         <p className="mt-2 text-4xl font-bold tracking-tight text-stone-900">
           {formatCurrency(grandTotal)}
         </p>
       </div>
+
+      {/* Amount to Collect */}
+      {advanceApplied > 0 && (
+        <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50/30 p-4">
+          <p className="text-xs uppercase tracking-[0.28em] text-emerald-700 font-bold">Amount to Collect</p>
+          {amountToCollect === 0 ? (
+            <p className="mt-2 text-lg font-bold text-emerald-800">
+              Fully covered by advance
+            </p>
+          ) : (
+            <p className="mt-2 text-4xl font-bold tracking-tight text-emerald-900">
+              {formatCurrency(amountToCollect)}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Amount Paid input */}
+      <div className="mt-4 pt-4 border-t border-stone-150">
+        <label className="block">
+          <span className="text-xs uppercase tracking-[0.28em] text-stone-500 font-bold">Amount Paid</span>
+          <div className="mt-2 relative rounded-xl border border-stone-200 focus-within:border-[#B8962E] focus-within:ring-1 focus-within:ring-[#B8962E] transition bg-stone-50 px-3 py-2 flex items-center shadow-inner">
+            <span className="text-sm font-bold text-stone-400 pointer-events-none">₹</span>
+            <input
+              type="number"
+              min="0"
+              placeholder={amountToCollect > 0 ? amountToCollect.toFixed(2) : "0.00"}
+              value={amountPaid === 0 ? "" : amountPaid}
+              onChange={(e) => {
+                const val = e.target.value === "" ? 0 : Math.max(0, parseFloat(e.target.value));
+                onChangeAmountPaid?.(val);
+              }}
+              className="w-full text-sm font-bold text-stone-900 bg-transparent outline-none pl-3 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+            />
+          </div>
+        </label>
+      </div>
+
+      {/* Extra Payment Options */}
+      {change > 0 && (
+        <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50/40 p-4 space-y-3 shadow-sm animate-in fade-in slide-in-from-bottom-2 duration-200">
+          <div className="flex items-center justify-between text-xs font-bold text-stone-600">
+            <div className="flex items-center gap-1">
+              <CreditCard size={13} className="text-amber-600" />
+              <span>Extra Received:</span>
+            </div>
+            <span className="text-sm font-extrabold text-amber-700">{formatCurrency(change)}</span>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                onAddAdvance?.(change);
+              }}
+              className={`py-2 px-1 text-[10px] font-bold uppercase tracking-wider rounded-xl border transition cursor-pointer text-center ${
+                isAdvanceSelected
+                  ? "bg-amber-600 text-white border-amber-600 shadow-sm"
+                  : "bg-white text-stone-700 border-stone-200 hover:bg-stone-50"
+              }`}
+            >
+              Add to Advance
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onAddAdvance?.(0);
+              }}
+              className={`py-2 px-1 text-[10px] font-bold uppercase tracking-wider rounded-xl border transition cursor-pointer text-center ${
+                isChangeSelected
+                  ? "bg-stone-900 text-white border-stone-900 shadow-sm"
+                  : "bg-white text-stone-700 border-stone-200 hover:bg-stone-50"
+              }`}
+            >
+              Give as Change
+            </button>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

@@ -116,7 +116,8 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
     const grandTotal = invoice.grandTotal;
     const discountAmount = totalDiscount;
     const offerDiscount = appliedOffer?.discountAmount ?? 0;
-    const lineDiscount = Math.max(discountAmount - offerDiscount, 0);
+    const billDiscountVal = invoice.billDiscount || 0;
+    const lineDiscount = Math.max(discountAmount - offerDiscount - billDiscountVal, 0);
     const subtotal = invoice.subtotal ?? (grandTotal + discountAmount);
 
     const hasDiscountOrOffer = discountAmount > 0;
@@ -125,7 +126,10 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
     if (hasDiscountOrOffer) {
       pricingText += `Subtotal: ₹${subtotal}\n`;
       if (lineDiscount > 0) {
-        pricingText += `Discount: -₹${lineDiscount}\n`;
+        pricingText += `Item Discount: -₹${lineDiscount}\n`;
+      }
+      if (billDiscountVal > 0) {
+        pricingText += `Bill Discount: -₹${billDiscountVal}\n`;
       }
       if (appliedOffer && offerDiscount > 0) {
         pricingText += `Offer Applied: ${appliedOffer.code} (-₹${offerDiscount})\n`;
@@ -345,6 +349,12 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                 <div className="flex items-center justify-between text-[#A89F8C]">
                   <span>Total Services</span>
                   <span className="font-semibold text-[#F5F0E8]">{formatCurrency(invoice.totalServices)}</span>
+                </div>
+              )}
+              {invoice.billDiscount !== undefined && invoice.billDiscount > 0 && (
+                <div className="flex items-center justify-between text-[#A89F8C]">
+                  <span>Bill Discount</span>
+                  <span className="font-semibold text-emerald-600">- {formatCurrency(invoice.billDiscount)}</span>
                 </div>
               )}
               {invoice.totalProducts !== undefined && (

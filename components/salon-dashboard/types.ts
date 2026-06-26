@@ -26,6 +26,7 @@ export type BillTotals = {
   productTotal: number;
   subtotal: number;
   billDiscount: number;
+  lineDiscount?: number;
   offerDiscount: number; // discount contributed by the selected offer
   gst: number;
   grandTotal: number;

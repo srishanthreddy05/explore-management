@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { ActionButtons } from "@/components/salon-dashboard/action-buttons";
 import { BillingTable } from "@/components/salon-dashboard/billing-table";
 import { ProductTable } from "@/components/salon-dashboard/product-table";
@@ -14,6 +14,7 @@ import * as customerService from "@/services/customers";
 import * as productsService from "@/services/products";
 import * as invoicesService from "@/services/invoices";
 import * as creditBalancesService from "@/services/creditBalances";
+import * as advanceBalancesService from "@/services/advanceBalances";
 import type { CreditBalance } from "@/types/creditBalance";
 import { useAppData } from "@/context/AppDataContext";
 import { toLocalDateString } from "@/lib/utils/date";
@@ -75,6 +76,16 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
   const [selectedOfferId, setSelectedOfferId] = useState<string>("");
   const [manuallyDeselected, setManuallyDeselected] = useState(false);
 
+  // Bill discount (service only)
+  const [billDiscount, setBillDiscount] = useState<number>(0);
+  const [billDiscountPercent, setBillDiscountPercent] = useState<number>(0);
+
+  // Advance balance states
+  const [amountPaid, setAmountPaid] = useState<number>(0);
+  const [advanceToAdd, setAdvanceToAdd] = useState<number>(0);
+  const [customerAdvance, setCustomerAdvance] = useState<any>(null);
+  const [advanceApplied, setAdvanceApplied] = useState<number>(0);
+
   useEffect(() => {
     if (editInvoiceId) {
       const fetchInvoiceForEdit = async () => {
@@ -127,6 +138,8 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
             if (inv.appliedOffer) {
               setSelectedOfferId(inv.appliedOffer.offerId || "");
             }
+            setBillDiscount(inv.billDiscount || 0);
+            setBillDiscountPercent(inv.billDiscountPercent || 0);
           }
         } catch (error) {
           console.error("Failed to fetch invoice for edit:", error);
@@ -168,7 +181,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
     return () => { active = false; };
   }, [customerMobile]);
 
-  // Fetch pending credit balances when customer is selected
+  // Fetch pending credit balances and advance balances when customer is selected
   useEffect(() => {
     let active = true;
     if (foundCustomerId) {
@@ -187,9 +200,28 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
         }
       };
       fetchCredits();
+
+      const fetchAdvance = async () => {
+        try {
+          const adv = await advanceBalancesService.getByCustomerId(foundCustomerId);
+          if (active) {
+            if (adv && adv.balance > 0) {
+              setCustomerAdvance(adv);
+            } else {
+              setCustomerAdvance(null);
+            }
+            setAdvanceApplied(0); // Reset applied advance when customer changes
+          }
+        } catch (err) {
+          console.error("Failed to fetch customer advance:", err);
+        }
+      };
+      fetchAdvance();
     } else {
       setAllCustomerPendingCredits([]);
       setCollectedCredits([]);
+      setCustomerAdvance(null);
+      setAdvanceApplied(0);
     }
     return () => { active = false; };
   }, [foundCustomerId]);
@@ -360,7 +392,11 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
   const totals = useMemo(() => {
     const serviceTotal = services.reduce((sum, s) => sum + Math.max(s.price, 0), 0);
     const productTotal = products.reduce((sum, p) => sum + Math.max(p.price * p.quantity, 0), 0);
-    const subtotal = serviceTotal + productTotal;
+    
+    // billDiscount applies ONLY to serviceTotal
+    const discountedServiceTotal = Math.max(serviceTotal - billDiscount, 0);
+    const subtotal = discountedServiceTotal + productTotal;
+
     const lineDiscount =
       services.reduce((sum, s) => sum + (s.discount || 0), 0) +
       products.reduce((sum, p) => sum + (p.discount || 0), 0);
@@ -408,31 +444,92 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
       serviceTotal,
       productTotal,
       subtotal,
-      totalDiscount,
-      billDiscount: lineDiscount,
+      totalDiscount: totalDiscount + billDiscount,
+      billDiscount: billDiscount,
+      lineDiscount: lineDiscount,
       offerDiscount,
       grandTotal,
       gst: 0,
     };
-  }, [services, products, selectedOffer, servicesList, productsList]);
+  }, [services, products, selectedOffer, servicesList, productsList, billDiscount]);
+
+  // Cap bill discount if serviceTotal decreases below it
+  useEffect(() => {
+    const serviceTotal = services.reduce((sum, s) => sum + Math.max(s.price, 0), 0);
+    if (billDiscount > serviceTotal) {
+      const newBillDiscount = Math.round(serviceTotal * 100) / 100;
+      setBillDiscount(newBillDiscount);
+      setBillDiscountPercent(serviceTotal > 0 ? 100 : 0);
+    } else if (serviceTotal > 0 && billDiscount > 0) {
+      const computedPercent = Math.round(((billDiscount / serviceTotal) * 100) * 100) / 100;
+      setBillDiscountPercent(computedPercent);
+    } else if (serviceTotal === 0) {
+      setBillDiscount(0);
+      setBillDiscountPercent(0);
+    }
+  }, [services, billDiscount]);
+
+  const amountToCollect = Math.max(0, totals.grandTotal - advanceApplied);
 
   useEffect(() => {
-    if (!isSplitEdited && totals.grandTotal > 0) {
-      setUpiAmount(totals.grandTotal);
+    if (!isSplitEdited && amountPaid > 0) {
+      setUpiAmount(amountPaid);
+      setCashAmount("");
+      setCardAmount("");
+    } else if (amountPaid === 0) {
+      setUpiAmount("");
       setCashAmount("");
       setCardAmount("");
     }
-  }, [totals.grandTotal, isSplitEdited]);
+  }, [amountPaid, isSplitEdited]);
 
   const cashVal = cashAmount === "" ? 0 : Number(cashAmount);
   const upiVal = upiAmount === "" ? 0 : Number(upiAmount);
   const cardVal = cardAmount === "" ? 0 : Number(cardAmount);
   const totalPaid = cashVal + upiVal + cardVal;
-  const paymentDiff = totals.grandTotal - totalPaid;
+  const paymentDiff = amountToCollect - totalPaid;
+  const change = Math.max(0, amountPaid - amountToCollect);
+  
+  // Reset advanceToAdd if change becomes 0
+  useEffect(() => {
+    if (change === 0) {
+      setAdvanceToAdd(0);
+    }
+  }, [change]);
+
+  // Keep amountPaid synced with amountToCollect by default
+  const prevAmountToCollectRef = useRef(0);
+  useEffect(() => {
+    if (amountPaid === prevAmountToCollectRef.current || amountPaid === 0) {
+      setAmountPaid(amountToCollect);
+    }
+    prevAmountToCollectRef.current = amountToCollect;
+  }, [amountToCollect, amountPaid]);
+
+  // Sync amountPaid with totalPaid if splits are edited and totalPaid exceeds amountToCollect
+  useEffect(() => {
+    const totalPaid = (cashAmount === "" ? 0 : Number(cashAmount)) + 
+                      (upiAmount === "" ? 0 : Number(upiAmount)) + 
+                      (cardAmount === "" ? 0 : Number(cardAmount));
+    if (totalPaid > amountToCollect) {
+      setAmountPaid(totalPaid);
+    }
+  }, [cashAmount, upiAmount, cardAmount, amountToCollect]);
+
+  // Keep advanceApplied capped by customerAdvance balance and grandTotal
+  useEffect(() => {
+    if (advanceApplied > 0 && customerAdvance) {
+      const maxPossible = Math.min(customerAdvance.balance, totals.grandTotal);
+      if (advanceApplied > maxPossible) {
+        setAdvanceApplied(maxPossible);
+      }
+    }
+  }, [totals.grandTotal, customerAdvance, advanceApplied]);
+
   const isPaymentValid = totals.grandTotal > 0 && (
     markAsCredit
-      ? (totalPaid <= totals.grandTotal)
-      : Math.abs(paymentDiff) < 0.01
+      ? (totalPaid <= amountToCollect)
+      : (totalPaid >= amountToCollect || Math.abs(paymentDiff) < 0.01)
   );
 
   // ESC Key Listener
@@ -533,13 +630,57 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
       }
 
       // Step 3: Build correctly-shaped service and product rows
-      const invoicePaymentMethod = cashVal === totals.grandTotal 
+      // Revenue Integrity Rule: Deduct advanceToAdd from the split payments to ensure only invoice grandTotal is registered as revenue
+      let remainingAdvanceDeduction = advanceToAdd;
+      let savedCash = cashVal;
+      let savedUpi = upiVal;
+      let savedCard = cardVal;
+
+      if (remainingAdvanceDeduction > 0) {
+        if (savedCard >= remainingAdvanceDeduction) {
+          savedCard -= remainingAdvanceDeduction;
+          remainingAdvanceDeduction = 0;
+        } else {
+          remainingAdvanceDeduction -= savedCard;
+          savedCard = 0;
+        }
+
+        if (remainingAdvanceDeduction > 0) {
+          if (savedUpi >= remainingAdvanceDeduction) {
+            savedUpi -= remainingAdvanceDeduction;
+            remainingAdvanceDeduction = 0;
+          } else {
+            remainingAdvanceDeduction -= savedUpi;
+            savedUpi = 0;
+          }
+        }
+
+        if (remainingAdvanceDeduction > 0) {
+          if (savedCash >= remainingAdvanceDeduction) {
+            savedCash -= remainingAdvanceDeduction;
+            remainingAdvanceDeduction = 0;
+          } else {
+            remainingAdvanceDeduction -= savedCash;
+            savedCash = 0;
+          }
+        }
+      }
+
+      const invoicePaymentMethod = savedCash === amountToCollect && amountToCollect > 0
         ? "Cash" 
-        : upiVal === totals.grandTotal 
+        : savedUpi === amountToCollect && amountToCollect > 0
           ? "UPI" 
-          : cardVal === totals.grandTotal 
+          : savedCard === amountToCollect && amountToCollect > 0
             ? "Card" 
             : "Split";
+
+      const rawNonCreditServiceTotal = services
+        .filter((s) => !s.isCreditSettle)
+        .reduce((sum, s) => sum + Math.max(s.price - (s.discount || 0), 0), 0);
+      
+      const serviceBillDiscountFactor = rawNonCreditServiceTotal > 0 
+        ? Math.max(rawNonCreditServiceTotal - billDiscount, 0) / rawNonCreditServiceTotal 
+        : 1;
 
       const enrichedServices = services.map((row: any) => {
         const matchedService = servicesList.find((s) => s.name === row.service);
@@ -551,7 +692,10 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
             usedProductCost = matchedProduct.costPerServing;
           }
         }
-        const serviceAmount = Math.max(row.price - (row.discount || 0), 0);
+        const serviceBaseAmount = Math.max(row.price - (row.discount || 0), 0);
+        const serviceAmount = row.isCreditSettle
+          ? serviceBaseAmount
+          : Math.round(serviceBaseAmount * serviceBillDiscountFactor * 100) / 100;
         
         // Use original staff metadata if it's a credit settlement row
         const staffId = row.isCreditSettle ? (row.originalStaffId || matchedStaff?.id || "system") : (matchedStaff?.id ?? "");
@@ -618,7 +762,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
         const dateKey = `${yyyy}-${mmStr}-${ddStr}`;
 
         const invoicePaymentStatus = markAsCredit
-          ? (totalPaid === 0 ? "unpaid" : "partial")
+          ? ((totalPaid + advanceApplied) === 0 ? "unpaid" : "partial")
           : "paid";
 
         await invoicesService.update(editInvoiceId, {
@@ -633,10 +777,12 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
           services: enrichedServices as any,
           products: enrichedProducts as any,
 
-          totalServices: totals.serviceTotal,
+          totalServices: totals.serviceTotal - billDiscount,
           totalProducts: totals.productTotal,
           subtotal: totals.subtotal,
           totalDiscount: totals.totalDiscount,
+          billDiscount: billDiscount,
+          billDiscountPercent: billDiscountPercent,
           grandTotal: totals.grandTotal,
 
           appliedOffer: selectedOffer
@@ -650,17 +796,19 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
               }
             : null as any,
 
+          advanceAdded: advanceToAdd,
+          advanceUsed: advanceApplied,
           paymentSplit: {
-            cash: cashVal,
-            upi: upiVal,
-            card: cardVal,
+            cash: savedCash,
+            upi: savedUpi,
+            card: savedCard,
           },
-          paymentMethod: cashVal === totals.grandTotal ? "Cash" : upiVal === totals.grandTotal ? "UPI" : cardVal === totals.grandTotal ? "Card" : "Split",
+          paymentMethod: invoicePaymentMethod,
           paymentStatus: invoicePaymentStatus,
         });
       } else {
         const invoicePaymentStatus = markAsCredit
-          ? (totalPaid === 0 ? "unpaid" : "partial")
+          ? ((totalPaid + advanceApplied) === 0 ? "unpaid" : "partial")
           : "paid";
 
         savedInvoiceId = await invoicesService.create({
@@ -675,10 +823,12 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
           services: enrichedServices as any,
           products: enrichedProducts as any,
 
-          totalServices: totals.serviceTotal,
+          totalServices: totals.serviceTotal - billDiscount,
           totalProducts: totals.productTotal,
           subtotal: totals.subtotal,
           totalDiscount: totals.totalDiscount,
+          billDiscount: billDiscount,
+          billDiscountPercent: billDiscountPercent,
           grandTotal: totals.grandTotal,
 
           ...(selectedOffer
@@ -694,14 +844,24 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
             }
             : {}),
 
+          advanceAdded: advanceToAdd,
+          advanceUsed: advanceApplied,
           paymentSplit: {
-            cash: cashVal,
-            upi: upiVal,
-            card: cardVal,
+            cash: savedCash,
+            upi: savedUpi,
+            card: savedCard,
           },
-          paymentMethod: cashVal === totals.grandTotal ? "Cash" : upiVal === totals.grandTotal ? "UPI" : cardVal === totals.grandTotal ? "Card" : "Split",
+          paymentMethod: invoicePaymentMethod,
           paymentStatus: invoicePaymentStatus,
         });
+      }
+
+      const invId = savedInvoiceId || editInvoiceId || "";
+      if (advanceToAdd > 0) {
+        await advanceBalancesService.addCredit(customerId, customerName, customerMobile, advanceToAdd, invId);
+      }
+      if (advanceApplied > 0) {
+        await advanceBalancesService.deductBalance(customerId, advanceApplied, invId);
       }
 
       // Step 5: Save or update credit balance in DB (split proportionally by services vs products at item level)
@@ -812,6 +972,20 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
       } else {
         setMessage({ type: "success", text: `Invoice ${msgNum} saved locally — will sync when online!` });
       }
+
+      let successMsg = isOnline 
+        ? `Invoice ${msgNum} saved successfully!`
+        : `Invoice ${msgNum} saved locally — will sync when online!`;
+
+      if (advanceApplied > 0 && customerAdvance) {
+        const newAdvanceBalance = Math.round((customerAdvance.balance - advanceApplied) * 100) / 100;
+        if (newAdvanceBalance > 0) {
+          successMsg += ` Advance remaining for ${customerName.trim()}: ₹${newAdvanceBalance}`;
+        } else if (amountToCollect === 0) {
+          successMsg += ` Bill fully covered by advance.`;
+        }
+      }
+      setMessage({ type: "success", text: successMsg });
       setSaved(true);
 
       if (onSuccess) {
@@ -858,6 +1032,12 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
     setIsSplitEdited(false);
     setInvoiceNumberDisplay("Auto-assigned on save");
     setSelectedOfferId("");
+    setBillDiscount(0);
+    setBillDiscountPercent(0);
+    setAmountPaid(0);
+    setAdvanceToAdd(0);
+    setCustomerAdvance(null);
+    setAdvanceApplied(0);
 
     if (onClose) {
       onClose();
@@ -890,7 +1070,8 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
     const grandTotal = totals.grandTotal;
     const discountAmount = totals.totalDiscount;
     const offerDiscount = totals.offerDiscount;
-    const lineDiscount = totals.billDiscount;
+    const billDiscountVal = totals.billDiscount;
+    const lineDiscountVal = totals.lineDiscount || 0;
     const subtotal = totals.subtotal;
 
     const hasDiscountOrOffer = discountAmount > 0;
@@ -898,8 +1079,11 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
     let pricingText = "";
     if (hasDiscountOrOffer) {
       pricingText += `Subtotal: ₹${subtotal}\n`;
-      if (lineDiscount > 0) {
-        pricingText += `Discount: -₹${lineDiscount}\n`;
+      if (lineDiscountVal > 0) {
+        pricingText += `Item Discount: -₹${lineDiscountVal}\n`;
+      }
+      if (billDiscountVal > 0) {
+        pricingText += `Bill Discount: -₹${billDiscountVal}\n`;
       }
       if (selectedOffer && offerDiscount > 0) {
         pricingText += `Offer Applied: ${selectedOffer.code} (-₹${offerDiscount})\n`;
@@ -1085,6 +1269,46 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
             </div>
           </div>
 
+          {/* Customer Advance Balance Banner */}
+          {customerAdvance && customerAdvance.balance > 0 && (
+            <div className="mt-4 rounded-2xl border border-emerald-900 bg-emerald-950/20 p-4 text-sm text-emerald-300 space-y-2">
+              <div className="flex items-center gap-2 font-bold text-emerald-400">
+                <Wallet size={16} />
+                <span>💰 Advance Balance Available: {formatCurrency(customerAdvance.balance)}</span>
+              </div>
+              <div className="flex items-center justify-between flex-wrap gap-2 pl-6">
+                <span>
+                  This customer has a positive advance balance of <b>{formatCurrency(customerAdvance.balance)}</b>.
+                </span>
+                {advanceApplied > 0 ? (
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-emerald-800 bg-emerald-950 px-3 text-xs font-bold text-emerald-400">
+                      Applied: {formatCurrency(advanceApplied)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setAdvanceApplied(0)}
+                      className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-stone-850 border border-stone-705 px-3 text-xs font-bold text-stone-300 hover:bg-stone-800 hover:text-white transition cursor-pointer shadow-sm"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const applied = Math.min(customerAdvance.balance, totals.grandTotal);
+                      setAdvanceApplied(applied);
+                    }}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-bold text-white hover:bg-emerald-500 transition cursor-pointer shadow-sm"
+                  >
+                    Apply Advance to this Bill
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Outstanding Credit Warning Banner */}
           {!loadingCredits && pendingCreditsToShow.length > 0 && (
             <div className="mt-4 rounded-2xl border border-amber-900/40 bg-amber-950/20 p-4 text-sm text-[#D4A935] space-y-2">
@@ -1220,7 +1444,20 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
         </section>
 
         <aside className="space-y-5">
-          <SummaryCard totals={totals} />
+          <SummaryCard
+            totals={totals}
+            billDiscount={billDiscount}
+            billDiscountPercent={billDiscountPercent}
+            onChangeDiscount={(val, percent) => {
+              setBillDiscount(val);
+              setBillDiscountPercent(percent);
+            }}
+            amountPaid={amountPaid}
+            onChangeAmountPaid={setAmountPaid}
+            advanceToAdd={advanceToAdd}
+            onAddAdvance={setAdvanceToAdd}
+            advanceApplied={advanceApplied}
+          />
 
           <section className="rounded-2xl border border-[#2E2B24] bg-[#131210] p-5 shadow-md text-[#A89F8C]">
             <div className="flex items-center justify-between mb-4">

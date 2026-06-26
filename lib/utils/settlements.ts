@@ -46,7 +46,7 @@ export function getInvoicePaymentRatio(inv: any): number {
   const grandTotal = inv.grandTotal || 0;
   if (grandTotal <= 0) return 1;
   const payments = getInvoicePayments(inv);
-  const collected = (payments.cash || 0) + (payments.upi || 0) + (payments.card || 0);
+  const collected = (payments.cash || 0) + (payments.upi || 0) + (payments.card || 0) + (inv.advanceUsed || 0);
   return Math.min(1, Math.max(0, collected / grandTotal));
 }
 

@@ -28,6 +28,10 @@ export interface Invoice {
   totalProducts: number;            // sum of product line amounts  (was missing)
   subtotal: number;                 // totalServices + totalProducts
   totalDiscount: number;            // was stored as "discount"
+  billDiscount?: number;
+  billDiscountPercent?: number;
+  advanceAdded?: number;
+  advanceUsed?: number;
   grandTotal: number;
 
   // ── Offer applied (Phase 4) ─────────────────────────────────────────────

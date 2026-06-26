@@ -129,7 +129,7 @@ export function applyStatsAndInventoryDiff(
       monthlyChanges[monthKey] = { totalRevenue: 0, totalVisits: 0, cash: 0, upi: 0, card: 0 };
     }
     const oldPayments = getInvoicePayments(oldInv);
-    const oldCollected = (oldPayments.cash || 0) + (oldPayments.upi || 0) + (oldPayments.card || 0);
+    const oldCollected = (oldPayments.cash || 0) + (oldPayments.upi || 0) + (oldPayments.card || 0) + (oldInv.advanceUsed || 0);
 
     monthlyChanges[monthKey].totalRevenue -= oldCollected;
     monthlyChanges[monthKey].totalVisits -= 1;
@@ -196,7 +196,7 @@ export function applyStatsAndInventoryDiff(
       monthlyChanges[monthKey] = { totalRevenue: 0, totalVisits: 0, cash: 0, upi: 0, card: 0 };
     }
     const newPayments = getInvoicePayments(newInv);
-    const newCollected = (newPayments.cash || 0) + (newPayments.upi || 0) + (newPayments.card || 0);
+    const newCollected = (newPayments.cash || 0) + (newPayments.upi || 0) + (newPayments.card || 0) + (newInv.advanceUsed || 0);
 
     monthlyChanges[monthKey].totalRevenue += newCollected;
     monthlyChanges[monthKey].totalVisits += 1;
