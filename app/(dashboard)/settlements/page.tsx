@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import * as invoicesService from "@/services/invoices";
 import * as expensesService from "@/services/expenses";
+import * as staffDrawingsService from "@/services/staffDrawings";
 import { getInvoicePayments, getInvoicePaymentRatio, getServiceCommission } from "@/lib/utils/settlements";
 import { useAppData } from "@/context/AppDataContext";
 import { formatCurrency } from "@/components/salon-dashboard/types";
@@ -27,6 +28,8 @@ import {
   Sparkles,
   BarChart3,
   Scissors,
+  Trash2,
+  Plus,
 } from "lucide-react";
 import {
   collection,
@@ -254,32 +257,239 @@ function MetricCard({
   );
 }
 
-function StaffSplitCard({ member }: { member: StaffSplit }) {
+function StaffSplitCard({
+  member,
+  drawings,
+  onRefreshDrawings,
+}: {
+  member: StaffSplit;
+  drawings: staffDrawingsService.StaffDrawing[];
+  onRefreshDrawings: () => void;
+}) {
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(true);
+  const [amount, setAmount] = useState("");
+  const [note, setNote] = useState("");
+  const [date, setDate] = useState(() => toLocalDateString(new Date()));
+  const [isSaving, setIsSaving] = useState(false);
+
+  const totalDrawings = drawings.reduce((sum, d) => sum + (d.amount || 0), 0);
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const parsedAmount = parseFloat(amount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      alert("Please enter a valid positive amount.");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      if (!member.id) throw new Error("Staff ID is missing");
+      const month = date.slice(0, 7);
+      await staffDrawingsService.addDrawing({
+        staffId: member.id,
+        staffName: member.name,
+        amount: parsedAmount,
+        note: note.trim() || undefined,
+        date,
+        month,
+      });
+      setAmount("");
+      setNote("");
+      setIsFormOpen(false);
+      onRefreshDrawings();
+    } catch (err) {
+      console.error("Failed to save drawing:", err);
+      alert("Failed to save drawing.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this drawing?")) return;
+    try {
+      await staffDrawingsService.deleteDrawing(id);
+      onRefreshDrawings();
+    } catch (err) {
+      console.error("Failed to delete drawing:", err);
+      alert("Failed to delete drawing.");
+    }
+  };
+
+  const monthlyColor = member.monthlyShare < 0 ? "text-[#E57373]" : "text-[#60A5FA]";
+
   return (
-    <div className="group rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-5 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-[#B8962E]/30 hover:shadow-[0_8px_30px_rgba(184,150,46,0.06)]">
-      <div className="flex items-center gap-2.5 mb-4">
-        <div className="rounded-lg bg-[#60A5FA]/10 p-2 text-[#60A5FA]">
-          <Scissors size={16} strokeWidth={2.5} />
+    <div className="group rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-5 shadow-sm transition-all duration-300 hover:border-[#B8962E]/30 hover:shadow-[0_8px_30px_rgba(184,150,46,0.06)] flex flex-col justify-between min-h-[160px]">
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2.5">
+            <div className="rounded-lg bg-[#60A5FA]/10 p-2 text-[#60A5FA]">
+              <Scissors size={16} strokeWidth={2.5} />
+            </div>
+            <h4 className="text-sm font-bold text-[#F5F0E8]">{member.name}</h4>
+          </div>
+          <button
+            onClick={() => {
+              setIsFormOpen(!isFormOpen);
+              setDate(toLocalDateString(new Date()));
+            }}
+            className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-[#B8962E] hover:text-[#D4A935] transition-colors"
+          >
+            <Plus size={12} strokeWidth={3} />
+            Drawing
+          </button>
         </div>
-        <h4 className="text-sm font-bold text-[#F5F0E8]">{member.name}</h4>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#6B6358]">
+              Today
+            </span>
+            <p className="mt-1 text-lg font-black text-[#60A5FA]">
+              {formatCurrency(member.todayShare)}
+            </p>
+          </div>
+          <div>
+            <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#6B6358]">
+              This Month
+            </span>
+            <p className={`mt-1 text-lg font-black ${monthlyColor}`}>
+              {formatCurrency(member.monthlyShare)}
+            </p>
+          </div>
+        </div>
+
+        {/* Inline Form */}
+        {isFormOpen && (
+          <form onSubmit={handleSave} className="mt-4 border-t border-[#2E2B24]/60 pt-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[#B8962E]">
+                Add New Drawing
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[9px] font-bold uppercase text-[#6B6358]">Amount</label>
+                <input
+                  type="number"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  placeholder="Amount (₹)"
+                  required
+                  disabled={isSaving}
+                  className="w-full rounded-lg border border-[#2E2B24] bg-[#131210] px-3 py-1.5 text-xs text-[#F5F0E8] focus:border-[#B8962E] focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="text-[9px] font-bold uppercase text-[#6B6358]">Date</label>
+                <input
+                  type="date"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  required
+                  disabled={isSaving}
+                  className="w-full rounded-lg border border-[#2E2B24] bg-[#131210] px-3 py-1.5 text-xs text-[#F5F0E8] focus:border-[#B8962E] focus:outline-none"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-[9px] font-bold uppercase text-[#6B6358]">Note (Optional)</label>
+              <input
+                type="text"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="e.g. Cash advance, travel expense"
+                disabled={isSaving}
+                className="w-full rounded-lg border border-[#2E2B24] bg-[#131210] px-3 py-1.5 text-xs text-[#F5F0E8] focus:border-[#B8962E] focus:outline-none"
+              />
+            </div>
+            <div className="flex gap-2 justify-end pt-1">
+              <button
+                type="button"
+                onClick={() => setIsFormOpen(false)}
+                disabled={isSaving}
+                className="rounded-lg px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-[#6B6358] hover:text-[#F5F0E8] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSaving}
+                className="rounded-lg bg-[#B8962E] px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider text-[#0E0D0B] hover:bg-[#D4A935] transition-all disabled:opacity-50"
+              >
+                {isSaving ? "Saving..." : "Save"}
+              </button>
+            </div>
+          </form>
+        )}
       </div>
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#6B6358]">
-            Today
+
+      {/* Collapsible Drawings Section */}
+      <div className="mt-4 border-t border-[#2E2B24]/40 pt-3">
+        <button
+          onClick={() => setIsCollapsed(!isCollapsed)}
+          className="flex w-full items-center justify-between text-left"
+        >
+          <span className="text-[10px] font-bold uppercase tracking-wider text-[#6B6358] hover:text-[#A89F8C] transition-colors flex items-center gap-1">
+            Drawings this month
+            {drawings.length > 0 && (
+              <span className="rounded-full bg-[#E57373]/10 px-1.5 py-0.5 text-[9px] font-bold text-[#E57373]">
+                {drawings.length}
+              </span>
+            )}
           </span>
-          <p className="mt-1 text-lg font-black text-[#60A5FA]">
-            {formatCurrency(member.todayShare)}
-          </p>
-        </div>
-        <div>
-          <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#6B6358]">
-            This Month
-          </span>
-          <p className="mt-1 text-lg font-black text-[#60A5FA]">
-            {formatCurrency(member.monthlyShare)}
-          </p>
-        </div>
+          <div className="text-[#6B6358]">
+            {isCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+          </div>
+        </button>
+
+        {!isCollapsed && (
+          <div className="mt-3 space-y-2">
+            {drawings.length === 0 ? (
+              <p className="text-[11px] text-[#6B6358] italic py-1">No drawings recorded</p>
+            ) : (
+              <div className="max-h-40 overflow-y-auto pr-1 space-y-2 scrollbar-thin scrollbar-thumb-[#2E2B24]">
+                {drawings.map((d) => (
+                  <div
+                    key={d.id}
+                    className="flex items-start justify-between rounded-lg bg-[#131210]/40 border border-[#2E2B24]/40 p-2 text-[11px]"
+                  >
+                    <div className="space-y-0.5 flex-1 min-w-0 mr-2">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[#A89F8C] font-semibold">
+                          {format(new Date(d.date + "T00:00:00"), "dd MMM")}
+                        </span>
+                        {d.note && (
+                          <span className="text-[#6B6358] truncate max-w-[120px]" title={d.note}>
+                            • {d.note}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="font-extrabold text-[#E57373]">
+                        -{formatCurrency(d.amount)}
+                      </span>
+                      <button
+                        onClick={() => d.id && handleDelete(d.id)}
+                        className="text-[#6B6358] hover:text-[#E57373] transition-colors"
+                        title="Delete drawing"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex justify-between border-t border-[#2E2B24]/40 pt-2 text-[10px] font-extrabold uppercase tracking-wider text-[#A89F8C]">
+              <span>Total Drawings</span>
+              <span className="text-[#E57373]">-{formatCurrency(totalDrawings)}</span>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -754,6 +964,36 @@ export default function SettlementsPage() {
   const [dailyStats, setDailyStats] = useState<Record<string, DailyStat>>({});
   const [dayInvoicesMap, setDayInvoicesMap] = useState<Record<string, Invoice[]>>({});
   const [monthlyStaffShares, setMonthlyStaffShares] = useState<Record<string, number>>({});
+  const [staffDrawings, setStaffDrawings] = useState<Record<string, staffDrawingsService.StaffDrawing[]>>({});
+
+  const fetchDrawings = useCallback(async () => {
+    const loadNow = new Date();
+    const yyyy = loadNow.getFullYear();
+    const mm = String(loadNow.getMonth() + 1).padStart(2, "0");
+    const monthKey = `${yyyy}-${mm}`;
+    try {
+      const q = query(
+        collection(db, "staffDrawings"),
+        where("month", "==", monthKey)
+      );
+      const snap = await getDocs(q);
+      const map: Record<string, staffDrawingsService.StaffDrawing[]> = {};
+      snap.forEach((doc) => {
+        const d = { id: doc.id, ...doc.data() } as staffDrawingsService.StaffDrawing;
+        const sId = d.staffId;
+        if (sId) {
+          if (!map[sId]) map[sId] = [];
+          map[sId].push(d);
+        }
+      });
+      Object.keys(map).forEach((sId) => {
+        map[sId].sort((a, b) => b.date.localeCompare(a.date));
+      });
+      setStaffDrawings(map);
+    } catch (err) {
+      console.error("Failed to fetch staff drawings:", err);
+    }
+  }, []);
   const [monthlyStatsTotals, setMonthlyStatsTotals] = useState({
     ownerShare: 0,
     membershipAmount: 0,
@@ -990,6 +1230,7 @@ export default function SettlementsPage() {
           })
         );
         setMonthlyStaffShares(sharesMap);
+        await fetchDrawings();
 
         const monthlyDailyQuery = query(
           collection(db, "stats"),
@@ -1060,7 +1301,7 @@ export default function SettlementsPage() {
       }
     }
     load();
-  }, [dateFrom, dateTo, staff, todayStr]);
+  }, [dateFrom, dateTo, staff, todayStr, fetchDrawings]);
 
   // ── Derived State ────────────────────────────────────────────────────────
 
@@ -1324,7 +1565,11 @@ export default function SettlementsPage() {
         });
       });
 
-      const monthlyShare = member.id ? monthlyStaffShares[member.id] || 0 : 0;
+      const totalDrawings = (member.id ? staffDrawings[member.id] || [] : []).reduce(
+        (sum, d) => sum + (d.amount || 0),
+        0
+      );
+      const monthlyShare = (member.id ? monthlyStaffShares[member.id] || 0 : 0) - totalDrawings;
 
       return {
         id: member.id,
@@ -1333,7 +1578,7 @@ export default function SettlementsPage() {
         monthlyShare,
       };
     });
-  }, [dayInvoicesMap, staff, monthlyStaffShares, todayStr]);
+  }, [dayInvoicesMap, staff, monthlyStaffShares, todayStr, staffDrawings]);
 
   const todayMetrics = useMemo(() => {
     const details = getDayDetails(todayStr);
@@ -1463,7 +1708,12 @@ export default function SettlementsPage() {
           />
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {staffSplits.map((member) => (
-              <StaffSplitCard key={member.id} member={member} />
+              <StaffSplitCard
+                key={member.id}
+                member={member}
+                drawings={member.id ? staffDrawings[member.id] || [] : []}
+                onRefreshDrawings={fetchDrawings}
+              />
             ))}
           </div>
         </div>
