@@ -78,7 +78,11 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
   const cashPaid = paymentSplit.cash ?? (invoice.paymentMethod === "Cash" ? invoice.grandTotal : 0);
   const upiPaid = paymentSplit.upi ?? (invoice.paymentMethod === "UPI" ? invoice.grandTotal : 0);
   const cardPaid = paymentSplit.card ?? (invoice.paymentMethod === "Card" ? invoice.grandTotal : 0);
-  const totalPaid = (cashPaid || 0) + (upiPaid || 0) + (cardPaid || 0) || invoice.grandTotal;
+  const totalPaid = paymentStatus === "unpaid"
+    ? 0
+    : paymentStatus === "paid"
+      ? ((cashPaid || 0) + (upiPaid || 0) + (cardPaid || 0) || invoice.grandTotal)
+      : ((cashPaid || 0) + (upiPaid || 0) + (cardPaid || 0));
 
   // ── WhatsApp share ────────────────────────────────────────────────────────
   const handleWhatsApp = () => {
