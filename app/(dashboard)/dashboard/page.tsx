@@ -1042,13 +1042,15 @@ export default function DashboardPage() {
       })
       .sort((a, b) => {
         const getTime = (x: any) => {
-          if (x?.toMillis) return x.toMillis();
-          if (x instanceof Date) return x.getTime();
+          const ts = x.invoiceDate || x.createdAt || x.date;
+          if (!ts) return 0;
+          if (ts.toMillis) return ts.toMillis();
+          if (ts instanceof Date) return ts.getTime();
+          if (typeof ts === "string") return new Date(ts).getTime();
+          if (typeof ts.seconds === "number") return ts.seconds * 1000;
           return 0;
         };
-        const primaryDiff = getTime(b.invoiceDate || b.date) - getTime(a.invoiceDate || a.date);
-        if (primaryDiff !== 0) return primaryDiff;
-        return getTime(b.createdAt) - getTime(a.createdAt);
+        return getTime(b) - getTime(a);
       });
   }, [invoices, todayStr]);
 

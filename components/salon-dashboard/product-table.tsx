@@ -154,9 +154,9 @@ export function ProductTable({
                 <p className="text-sm text-[#6B6358] italic text-center py-8">No products in catalog.</p>
               ) : (
                 <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
-                  {productOptions.map((prod) => (
+                  {productOptions.map((prod, index) => (
                     <div
-                      key={prod.name}
+                      key={prod.id ? `${prod.id}-${index}` : `${prod.name}-${index}`}
                       onClick={() => selectProduct(prod)}
                       className="cursor-pointer rounded-2xl border border-[#2E2B24] bg-[#131210] p-4 transition duration-200 hover:-translate-y-0.5 hover:border-[#B8962E] hover:shadow-[0_4px_16px_rgba(184,150,46,0.12)]"
                     >

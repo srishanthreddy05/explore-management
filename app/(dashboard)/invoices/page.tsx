@@ -45,8 +45,13 @@ export default function InvoicesPage() {
     }
     try {
       const start = new Date(dateFrom);
-      start.setHours(0, 0, 0, 0);
       const end = new Date(dateTo);
+
+      if (!dateFrom || !dateTo || isNaN(start.getTime()) || isNaN(end.getTime())) {
+        return;
+      }
+
+      start.setHours(0, 0, 0, 0);
       end.setHours(23, 59, 59, 999);
       let q = query(
         collection(db, "invoices"),
@@ -78,15 +83,15 @@ export default function InvoicesPage() {
       }
 
       nextList.sort((a: any, b: any) => {
-        const dateA = a.invoiceDate || a.date;
-        const dateB = b.invoiceDate || b.date;
-        const timeA = dateA && typeof dateA.toMillis === "function" ? dateA.toMillis() : 0;
-        const timeB = dateB && typeof dateB.toMillis === "function" ? dateB.toMillis() : 0;
-        if (timeB !== timeA) return timeB - timeA;
-
-        const createdA = a.createdAt && typeof a.createdAt.toMillis === "function" ? a.createdAt.toMillis() : 0;
-        const createdB = b.createdAt && typeof b.createdAt.toMillis === "function" ? b.createdAt.toMillis() : 0;
-        return createdB - createdA;
+        const getTimestampMillis = (x: any) => {
+          const ts = x.invoiceDate || x.createdAt || x.date;
+          if (ts && typeof ts.toMillis === "function") return ts.toMillis();
+          if (ts instanceof Date) return ts.getTime();
+          if (typeof ts === "string") return new Date(ts).getTime();
+          if (ts && typeof ts.seconds === "number") return ts.seconds * 1000;
+          return 0;
+        };
+        return getTimestampMillis(b) - getTimestampMillis(a);
       });
 
       setInvoices(nextList);

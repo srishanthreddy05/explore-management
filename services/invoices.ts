@@ -422,15 +422,15 @@ export async function getAll(): Promise<Invoice[]> {
     const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Invoice));
 
     return docs.sort((a, b) => {
-      const dateA = a.invoiceDate || a.date;
-      const dateB = b.invoiceDate || b.date;
-      const timeA = dateA && typeof dateA.toMillis === "function" ? dateA.toMillis() : 0;
-      const timeB = dateB && typeof dateB.toMillis === "function" ? dateB.toMillis() : 0;
-      if (timeB !== timeA) return timeB - timeA;
-
-      const createdA = a.createdAt && typeof a.createdAt.toMillis === "function" ? a.createdAt.toMillis() : 0;
-      const createdB = b.createdAt && typeof b.createdAt.toMillis === "function" ? b.createdAt.toMillis() : 0;
-      return createdB - createdA;
+      const getTimestampMillis = (x: any) => {
+        const ts = x.invoiceDate || x.createdAt || x.date;
+        if (ts && typeof ts.toMillis === "function") return ts.toMillis();
+        if (ts instanceof Date) return ts.getTime();
+        if (typeof ts === "string") return new Date(ts).getTime();
+        if (ts && typeof ts.seconds === "number") return ts.seconds * 1000;
+        return 0;
+      };
+      return getTimestampMillis(b) - getTimestampMillis(a);
     });
   } catch (error) {
     console.error("Error fetching invoices:", error);
@@ -450,15 +450,15 @@ export async function getByDateRange(startDate: Date, endDate: Date): Promise<In
     const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Invoice));
 
     return docs.sort((a, b) => {
-      const dateA = a.invoiceDate || a.date;
-      const dateB = b.invoiceDate || b.date;
-      const timeA = dateA && typeof dateA.toMillis === "function" ? dateA.toMillis() : 0;
-      const timeB = dateB && typeof dateB.toMillis === "function" ? dateB.toMillis() : 0;
-      if (timeB !== timeA) return timeB - timeA;
-
-      const createdA = a.createdAt && typeof a.createdAt.toMillis === "function" ? a.createdAt.toMillis() : 0;
-      const createdB = b.createdAt && typeof b.createdAt.toMillis === "function" ? b.createdAt.toMillis() : 0;
-      return createdB - createdA;
+      const getTimestampMillis = (x: any) => {
+        const ts = x.invoiceDate || x.createdAt || x.date;
+        if (ts && typeof ts.toMillis === "function") return ts.toMillis();
+        if (ts instanceof Date) return ts.getTime();
+        if (typeof ts === "string") return new Date(ts).getTime();
+        if (ts && typeof ts.seconds === "number") return ts.seconds * 1000;
+        return 0;
+      };
+      return getTimestampMillis(b) - getTimestampMillis(a);
     });
   } catch (error) {
     console.error("Error fetching invoices by date range:", error);
@@ -543,11 +543,15 @@ export async function getByCustomerId(customerId: string): Promise<Invoice[]> {
     const snap = await getDocs(q);
     const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Invoice));
     return docs.sort((a, b) => {
-      const dateA = a.invoiceDate || a.date;
-      const dateB = b.invoiceDate || b.date;
-      const timeA = dateA && typeof dateA.toMillis === "function" ? dateA.toMillis() : 0;
-      const timeB = dateB && typeof dateB.toMillis === "function" ? dateB.toMillis() : 0;
-      return timeB - timeA;
+      const getTimestampMillis = (x: any) => {
+        const ts = x.invoiceDate || x.createdAt || x.date;
+        if (ts && typeof ts.toMillis === "function") return ts.toMillis();
+        if (ts instanceof Date) return ts.getTime();
+        if (typeof ts === "string") return new Date(ts).getTime();
+        if (ts && typeof ts.seconds === "number") return ts.seconds * 1000;
+        return 0;
+      };
+      return getTimestampMillis(b) - getTimestampMillis(a);
     });
   } catch (error) {
     console.error(`Error fetching invoices for customer ${customerId}:`, error);
