@@ -343,13 +343,13 @@ function StaffCard({
 }
 
 function InvoiceRow({ invoice }: { invoice: Invoice }) {
-  const staffListStr = Array.from(
+  const uniqueStaffNames = Array.from(
     new Set(
       (invoice.services || [])
         .map((s: any) => s.staffName || s.staff)
         .filter(Boolean)
     )
-  ).join(", ");
+  );
 
   const time = formatTime(invoice.createdAt || invoice.date);
   const customerType = invoice.customerType || "regular";
@@ -373,10 +373,18 @@ function InvoiceRow({ invoice }: { invoice: Invoice }) {
 
   return (
     <tr className="group transition-colors hover:bg-[#1F1A0F]/50">
-      <td className="px-4 py-3.5">
-        <span className="font-mono text-xs font-bold text-[#F5F0E8]">
-          #{invoice.invoiceNumber}
-        </span>
+      <td className="px-4 py-3.5 text-sm font-semibold text-[#F5F0E8] leading-tight">
+        {uniqueStaffNames.length === 0 ? (
+          <span className="italic text-[#6B6358] font-normal">Unassigned</span>
+        ) : (
+          <div className="flex flex-col gap-0.5">
+            {uniqueStaffNames.map((name) => (
+              <span key={name} className="block text-xs text-[#F5F0E8]">
+                {name}
+              </span>
+            ))}
+          </div>
+        )}
       </td>
       <td className="px-4 py-3.5">
         <div className="flex flex-col">
@@ -394,9 +402,6 @@ function InvoiceRow({ invoice }: { invoice: Invoice }) {
         >
           {config.label}
         </span>
-      </td>
-      <td className="px-4 py-3.5 text-sm text-[#A89F8C]">
-        {staffListStr || <span className="italic text-[#6B6358]">Unassigned</span>}
       </td>
       <td className="px-4 py-3.5 text-xs font-medium text-[#6B6358]">{time}</td>
       <td className="px-4 py-3.5 text-right">
@@ -788,6 +793,7 @@ export default function DashboardPage() {
   const [invoicesLoaded, setInvoicesLoaded] = useState(false);
   const staffLoaded = !loadingAppData;
   const [tick, setTick] = useState(0);
+  const [selectedStaffId, setSelectedStaffId] = useState<string>("All");
 
   const [modals, setModals] = useState({
     billing: false,
@@ -1045,6 +1051,21 @@ export default function DashboardPage() {
         return getTime(b.createdAt) - getTime(a.createdAt);
       });
   }, [invoices, todayStr]);
+
+  const filteredTodayInvoices = useMemo(() => {
+    if (selectedStaffId === "All") return todayInvoices;
+
+    const targetStaff = staff.find((s) => s.id === selectedStaffId);
+    if (!targetStaff) return todayInvoices;
+
+    return todayInvoices.filter((inv) => {
+      return (inv.services || []).some((s: any) => 
+        s.staffId === targetStaff.id || 
+        (s.staffName && s.staffName.toLowerCase() === targetStaff.name.toLowerCase()) ||
+        (s.staff && s.staff.toLowerCase() === targetStaff.name.toLowerCase())
+      );
+    });
+  }, [todayInvoices, selectedStaffId, staff]);
 
   const todaySettlement = useMemo<TodaySettlement>(() => {
     const dayObj: TodaySettlement = {
@@ -1407,34 +1428,64 @@ export default function DashboardPage() {
 
           {/* Today's Invoices */}
           <section className="rounded-2xl border border-[#2E2B24] bg-[#1C1A16] shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between border-b border-[#2E2B24] px-6 py-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-[#2E2B24] px-6 py-4 gap-4">
               <div>
                 <h2 className="text-base font-bold tracking-[-0.01em] text-[#F5F0E8]">
                   Today's Invoices
                 </h2>
                 <p className="mt-0.5 text-xs text-[#6B6358]">
-                  {todayInvoices.length} transactions recorded
+                  {filteredTodayInvoices.length} transactions displayed
                 </p>
               </div>
-              <div className="rounded-lg bg-[#131210] px-3 py-1.5 text-xs font-bold text-[#B8962E] border border-[#2E2B24]">
-                {todayStr}
+              <div className="flex items-center gap-3">
+                <div className="rounded-lg bg-[#131210] px-3 py-1.5 text-xs font-bold text-[#B8962E] border border-[#2E2B24]">
+                  {todayStr}
+                </div>
               </div>
             </div>
+
+            {/* Staff Filter Chips */}
+            <div className="flex flex-wrap items-center gap-2 border-b border-[#2E2B24] bg-[#171512]/40 px-6 py-3">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[#6B6358] mr-2">Filter by Staff:</span>
+              <button
+                type="button"
+                onClick={() => setSelectedStaffId("All")}
+                className={`px-3 py-1 rounded-full text-xs font-semibold border transition cursor-pointer ${
+                  selectedStaffId === "All"
+                    ? "bg-[#B8962E] text-[#0E0D0B] border-[#B8962E]"
+                    : "bg-[#131210] border-[#2E2B24] text-[#A89F8C] hover:border-[#B8962E] hover:text-[#B8962E] hover:bg-[#1F1A0F]"
+                }`}
+              >
+                All
+              </button>
+              {staff.filter((s) => s.status === "Active").map((member) => (
+                <button
+                  key={member.id}
+                  type="button"
+                  onClick={() => setSelectedStaffId(member.id!)}
+                  className={`px-3 py-1 rounded-full text-xs font-semibold border transition cursor-pointer ${
+                    selectedStaffId === member.id
+                      ? "bg-[#B8962E] text-[#0E0D0B] border-[#B8962E]"
+                      : "bg-[#131210] border-[#2E2B24] text-[#A89F8C] hover:border-[#B8962E] hover:text-[#B8962E] hover:bg-[#1F1A0F]"
+                  }`}
+                >
+                  {member.name}
+                </button>
+              ))}
+            </div>
+
             <div className="overflow-x-auto">
               <table className="w-full min-w-[600px] text-left">
                 <thead>
                   <tr className="border-b border-[#2E2B24] bg-[#131210]/50">
                     <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-[0.2em] text-[#6B6358]">
-                      Invoice
+                      Staff
                     </th>
                     <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-[0.2em] text-[#6B6358]">
                       Customer
                     </th>
                     <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-[0.2em] text-[#6B6358]">
                       Type
-                    </th>
-                    <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-[0.2em] text-[#6B6358]">
-                      Staff
                     </th>
                     <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-[0.2em] text-[#6B6358]">
                       Time
@@ -1448,20 +1499,20 @@ export default function DashboardPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#242118]">
-                  {todayInvoices.length === 0 ? (
+                  {filteredTodayInvoices.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={7}
+                        colSpan={6}
                         className="px-4 py-12 text-center text-sm text-[#6B6358]"
                       >
                         <div className="flex flex-col items-center gap-2">
                           <Receipt size={32} className="text-[#2E2B24]" />
-                          <span className="italic">No bills recorded today</span>
+                          <span className="italic">No matching bills recorded today</span>
                         </div>
                       </td>
                     </tr>
                   ) : (
-                    todayInvoices.map((inv) => (
+                    filteredTodayInvoices.map((inv) => (
                       <InvoiceRow key={inv.id} invoice={inv} />
                     ))
                   )}

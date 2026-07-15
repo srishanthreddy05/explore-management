@@ -7,6 +7,7 @@ import { Search, Eye, Calendar, Edit2, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { toLocalDateString } from "@/lib/utils/date";
 import { db } from "@/lib/firebase";
+import { useAppData } from "@/context/AppDataContext";
 import {
   collection,
   query,
@@ -19,10 +20,12 @@ import {
 } from "firebase/firestore";
 
 export default function InvoicesPage() {
+  const { staff } = useAppData();
   const [invoices, setInvoices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedStaffId, setSelectedStaffId] = useState<string>("All");
   const [lastDoc, setLastDoc] = useState<any>(null);
   const [hasMore, setHasMore] = useState(false);
 
@@ -120,19 +123,33 @@ export default function InvoicesPage() {
     }
   };
 
-  // Filter & Search Logic (scoping done at Firestore level, filter only search query here)
+  // Filter & Search Logic (scoping done at Firestore level, filter client-side here)
   const filteredInvoices = useMemo(() => {
     return invoices.filter((inv) => {
       const query = searchQuery.toLowerCase().trim();
-      if (!query) return true;
+      let matchesSearch = true;
+      if (query) {
+        const name = (inv.customerName || "").toLowerCase();
+        const mobile = (inv.customerPhone || inv.customerMobile || "");
+        const invNo = (inv.invoiceNo || inv.invoiceNumber || "").toLowerCase();
+        matchesSearch = name.includes(query) || mobile.includes(query) || invNo.includes(query);
+      }
 
-      const name = (inv.customerName || "").toLowerCase();
-      const mobile = (inv.customerPhone || inv.customerMobile || "");
-      const invNo = (inv.invoiceNo || inv.invoiceNumber || "").toLowerCase();
+      let matchesStaff = true;
+      if (selectedStaffId !== "All") {
+        const targetStaff = staff.find((s) => s.id === selectedStaffId);
+        if (targetStaff) {
+          matchesStaff = (inv.services || []).some((s: any) =>
+            s.staffId === targetStaff.id ||
+            (s.staffName && s.staffName.toLowerCase() === targetStaff.name.toLowerCase()) ||
+            (s.staff && s.staff.toLowerCase() === targetStaff.name.toLowerCase())
+          );
+        }
+      }
 
-      return name.includes(query) || mobile.includes(query) || invNo.includes(query);
+      return matchesSearch && matchesStaff;
     });
-  }, [invoices, searchQuery]);
+  }, [invoices, searchQuery, selectedStaffId, staff]);
 
   return (
     <div className="w-full text-[#A89F8C]">
@@ -180,6 +197,36 @@ export default function InvoicesPage() {
         </div>
       </div>
 
+      {/* Staff Filter Chips */}
+      <div className="mb-5 flex flex-wrap items-center gap-2 border border-[#2E2B24] bg-[#1C1A16] px-4 py-3 rounded-2xl shadow-sm animate-in fade-in duration-200">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-[#6B6358] mr-2">Filter by Staff:</span>
+        <button
+          type="button"
+          onClick={() => setSelectedStaffId("All")}
+          className={`px-3 py-1 rounded-full text-xs font-semibold border transition cursor-pointer ${
+            selectedStaffId === "All"
+              ? "bg-[#B8962E] text-[#0E0D0B] border-[#B8962E]"
+              : "bg-[#131210] border-[#2E2B24] text-[#A89F8C] hover:border-[#B8962E] hover:text-[#B8962E] hover:bg-[#1F1A0F]"
+          }`}
+        >
+          All
+        </button>
+        {staff.filter((s) => s.status === "Active").map((member) => (
+          <button
+            key={member.id}
+            type="button"
+            onClick={() => setSelectedStaffId(member.id!)}
+            className={`px-3 py-1 rounded-full text-xs font-semibold border transition cursor-pointer ${
+              selectedStaffId === member.id
+                ? "bg-[#B8962E] text-[#0E0D0B] border-[#B8962E]"
+                : "bg-[#131210] border-[#2E2B24] text-[#A89F8C] hover:border-[#B8962E] hover:text-[#B8962E] hover:bg-[#1F1A0F]"
+            }`}
+          >
+            {member.name}
+          </button>
+        ))}
+      </div>
+
       {loading && invoices.length === 0 ? (
         <div className="flex h-[40vh] items-center justify-center">
           <div className="size-10 animate-spin rounded-full border-4 border-[#B8962E] border-t-transparent" />
@@ -197,7 +244,7 @@ export default function InvoicesPage() {
             <table className="w-full min-w-[1000px] border-collapse text-left text-sm text-[#A89F8C]">
               <thead className="bg-[#0E0D0B] text-[10px] font-bold uppercase tracking-[0.18em] text-[#A89F8C] border-b border-[#2E2B24]">
                 <tr>
-                  <th className="px-6 py-4 font-bold">Invoice Number</th>
+                  <th className="px-6 py-4 font-bold">Staff</th>
                   <th className="px-6 py-4 font-bold">Customer Name</th>
                   <th className="px-6 py-4 font-bold">Mobile Number</th>
                   <th className="px-6 py-4 font-bold">Date</th>
@@ -224,10 +271,28 @@ export default function InvoicesPage() {
 
                   return (
                     <tr key={inv.id} className="hover:bg-[#1C1A16] transition bg-transparent text-[#A89F8C]">
-                      <td className={`px-6 py-4 font-bold ${
-                        inv.customerType === "membership" ? "text-[#B8962E]" : "text-[#F5F0E8]"
-                      }`}>
-                        {inv.invoiceNo || inv.invoiceNumber}
+                      <td className="px-6 py-4 text-xs font-semibold text-[#F5F0E8] leading-tight">
+                        {(() => {
+                          const uniqueStaffNames = Array.from(
+                            new Set(
+                              (inv.services || [])
+                                .map((s: any) => s.staffName || s.staff)
+                                .filter(Boolean)
+                            )
+                          ) as string[];
+                          if (uniqueStaffNames.length === 0) {
+                            return <span className="italic text-[#6B6358] font-normal">Unassigned</span>;
+                          }
+                          return (
+                            <div className="flex flex-col gap-0.5">
+                              {uniqueStaffNames.map((name) => (
+                                <span key={name} className="block">
+                                  {name}
+                                </span>
+                              ))}
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className="px-6 py-4 font-semibold text-[#F5F0E8]">
                         {inv.customerName}
