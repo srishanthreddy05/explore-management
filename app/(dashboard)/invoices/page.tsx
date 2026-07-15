@@ -261,13 +261,16 @@ export default function InvoicesPage() {
                   const upi = inv.paymentSplit?.upi ?? inv.payments?.upi ?? (inv.paymentMethod === "UPI" ? (inv.grandTotal || 0) : 0);
                   const card = inv.paymentSplit?.card ?? inv.payments?.card ?? (inv.paymentMethod === "Card" ? (inv.grandTotal || 0) : 0);
 
-                  const dateObj =
-                    inv.date && typeof inv.date.toDate === "function"
-                      ? inv.date.toDate()
-                      : inv.date
-                        ? new Date(inv.date)
-                        : null;
+                  const dateObj = (() => {
+                    const ts = inv.createdAt || inv.invoiceDate || inv.date;
+                    if (!ts) return null;
+                    if (typeof ts.toDate === "function") return ts.toDate();
+                    if (typeof ts.seconds === "number") return new Date(ts.seconds * 1000);
+                    if (ts instanceof Date) return ts;
+                    return new Date(ts);
+                  })();
                   const dateLabel = dateObj ? dateObj.toLocaleDateString("en-IN") : "—";
+                  const timeLabel = dateObj ? dateObj.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
 
                   return (
                     <tr key={inv.id} className="hover:bg-[#1C1A16] transition bg-transparent text-[#A89F8C]">
@@ -300,8 +303,13 @@ export default function InvoicesPage() {
                       <td className="px-6 py-4 font-medium">
                         {inv.customerPhone || inv.customerMobile}
                       </td>
-                      <td className="px-6 py-4">
-                        {dateLabel}
+                      <td className="px-6 py-4 font-medium text-xs">
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-[#F5F0E8]">{dateLabel}</span>
+                          {timeLabel && (
+                            <span className="text-[10px] text-[#6B6358]">{timeLabel}</span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-4 font-medium text-[#A89F8C]">
                         {formatCurrency(cash)}
