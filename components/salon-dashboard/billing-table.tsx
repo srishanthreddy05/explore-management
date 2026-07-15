@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, Trash2, X } from "lucide-react";
+import { Plus, Trash2, X, Check } from "lucide-react";
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import type { ServiceRow } from "./types";
@@ -29,6 +29,17 @@ export function BillingTable({
   const [mounted, setMounted] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
+  // Redesign flow states
+  const [selectedServices, setSelectedServices] = useState<{ name: string; price: number; category?: string }[]>([]);
+  const [showProductDialog, setShowProductDialog] = useState(false);
+  const [currentProductAssignmentIndex, setCurrentProductAssignmentIndex] = useState(-1);
+  const [assignedProducts, setAssignedProducts] = useState<({ id: string; name: string; noOfServings: number } | null)[]>([]);
+
+  // Staff Assignment redesign states
+  const [showStaffDialog, setShowStaffDialog] = useState(false);
+  const [currentStaffAssignmentIndex, setCurrentStaffAssignmentIndex] = useState(-1);
+  const [assignedStaff, setAssignedStaff] = useState<string[]>([]);
+
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -45,25 +56,126 @@ export function BillingTable({
     onRowsChange(rows.map((row) => (row.id === id ? { ...row, ...patch } : row)));
   };
 
-  const selectService = (svc: { name: string; price: number }) => {
-    const firstStaff = staffOptions[0] || "";
-    onRowsChange([
-      ...rows,
-      {
-        id: Math.max(0, ...rows.map((row) => row.id)) + 1,
-        service: svc.name,
-        staff: firstStaff,
-        price: svc.price,
-        quantity: 1,
-        discount: 0,
-      },
-    ]);
+  const handleSelectService = (svc: { name: string; price: number; category?: string }) => {
+    setSelectedServices((prev) => [...prev, svc]);
+  };
+
+  const handleRemoveServiceByIndex = (indexToRemove: number) => {
+    setSelectedServices((prev) => prev.filter((_, index) => index !== indexToRemove));
+  };
+
+  const handleClearAll = () => {
+    setSelectedServices([]);
+  };
+
+  const handleCancelSelection = () => {
+    setSelectedServices([]);
     setShowModal(false);
   };
 
-  const categories = ["All", ...Array.from(new Set(serviceOptions.map(s => s.category || "General")))];
+  const handleDoneSelection = () => {
+    if (selectedServices.length === 0) {
+      setShowModal(false);
+      return;
+    }
+    setAssignedProducts(new Array(selectedServices.length).fill(null));
+    setAssignedStaff(new Array(selectedServices.length).fill(""));
+    setCurrentProductAssignmentIndex(0);
+    setShowModal(false);
+    setShowProductDialog(true);
+  };
 
-  const filteredServices = serviceOptions.filter(s => {
+  const handleSelectProduct = (product: { id: string; name: string; noOfServings: number } | null) => {
+    setAssignedProducts((prev) => {
+      const next = [...prev];
+      next[currentProductAssignmentIndex] = product;
+      return next;
+    });
+  };
+
+  const handleProductBack = () => {
+    setCurrentProductAssignmentIndex((prev) => Math.max(0, prev - 1));
+  };
+
+  const handleProductNext = () => {
+    if (currentProductAssignmentIndex < selectedServices.length - 1) {
+      setCurrentProductAssignmentIndex((prev) => prev + 1);
+    } else {
+      setShowProductDialog(false);
+      setCurrentStaffAssignmentIndex(0);
+      setShowStaffDialog(true);
+    }
+  };
+
+  const handleSelectStaff = (staffName: string) => {
+    setAssignedStaff((prev) => {
+      const next = [...prev];
+      next[currentStaffAssignmentIndex] = staffName;
+      return next;
+    });
+  };
+
+  const handleStaffBack = () => {
+    if (currentStaffAssignmentIndex > 0) {
+      setCurrentStaffAssignmentIndex((prev) => prev - 1);
+    } else {
+      setShowStaffDialog(false);
+      setCurrentProductAssignmentIndex(selectedServices.length - 1);
+      setShowProductDialog(true);
+    }
+  };
+
+  const handleStaffNext = () => {
+    setCurrentStaffAssignmentIndex((prev) => prev + 1);
+  };
+
+  const handleProductAndStaffFinish = () => {
+    const newRows = selectedServices.map((svc, index) => {
+      const assignedProd = assignedProducts[index];
+      const assignedStf = assignedStaff[index] || "";
+      return {
+        id: Math.max(0, ...rows.map((row) => row.id)) + index + 1,
+        service: svc.name,
+        staff: assignedStf,
+        price: svc.price,
+        quantity: 1,
+        discount: 0,
+        usedProductId: assignedProd?.id || undefined,
+        usedProductName: assignedProd?.name || undefined,
+      };
+    });
+    onRowsChange([...rows, ...newRows]);
+
+    // Close and reset states
+    setShowStaffDialog(false);
+    setSelectedServices([]);
+    setAssignedProducts([]);
+    setAssignedStaff([]);
+    setCurrentProductAssignmentIndex(-1);
+    setCurrentStaffAssignmentIndex(-1);
+  };
+
+  const handleCancelProductDialog = () => {
+    setShowProductDialog(false);
+    setSelectedServices([]);
+    setAssignedProducts([]);
+    setAssignedStaff([]);
+    setCurrentProductAssignmentIndex(-1);
+    setCurrentStaffAssignmentIndex(-1);
+  };
+
+  const handleCancelStaffDialog = () => {
+    setShowStaffDialog(false);
+    setSelectedServices([]);
+    setAssignedProducts([]);
+    setAssignedStaff([]);
+    setCurrentProductAssignmentIndex(-1);
+    setCurrentStaffAssignmentIndex(-1);
+  };
+
+  const categories = ["All", ...Array.from(new Set(serviceOptions.map((s) => s.category || "General")))];
+
+  const filteredServices = serviceOptions.filter((s) => {
     const matchesCategory = selectedCat === "All" || (s.category || "General") === selectedCat;
     const matchesSearch = s.name.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesCategory && matchesSearch;
@@ -71,7 +183,7 @@ export function BillingTable({
 
   // Group services by category and sort categories alphabetically
   const serviceGroups: Record<string, typeof serviceOptions> = {};
-  filteredServices.forEach(s => {
+  filteredServices.forEach((s) => {
     const cat = s.category || "General";
     if (!serviceGroups[cat]) {
       serviceGroups[cat] = [];
@@ -82,7 +194,7 @@ export function BillingTable({
   const sortedCategories = Object.keys(serviceGroups).sort((a, b) => a.localeCompare(b));
 
   // Sort services alphabetically within each category group
-  sortedCategories.forEach(cat => {
+  sortedCategories.forEach((cat) => {
     serviceGroups[cat].sort((a, b) => a.name.localeCompare(b.name));
   });
 
@@ -93,7 +205,10 @@ export function BillingTable({
         <button
           type="button"
           disabled={disabled}
-          onClick={() => setShowModal(true)}
+          onClick={() => {
+            setSelectedServices([]);
+            setShowModal(true);
+          }}
           className="inline-flex h-10 items-center gap-2 rounded-2xl border border-[#2E2B24] bg-[#131210] px-4 text-sm font-semibold text-[#A89F8C] transition hover:-translate-y-0.5 hover:border-[#B8962E] hover:text-[#B8962E] hover:bg-[#1F1A0F] disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
         >
           <Plus size={17} />
@@ -127,6 +242,7 @@ export function BillingTable({
                     onChange={(event) => updateRow(row.id, { staff: event.target.value })}
                     className="h-10 w-full rounded-xl border border-[#2E2B24] bg-[#131210] px-2.5 text-[#F5F0E8] outline-none transition focus:border-[#B8962E] disabled:bg-[#0E0D0B] disabled:text-[#6B6358] text-xs font-semibold cursor-pointer appearance-none"
                   >
+                    <option value="" className="bg-[#131210] text-[#F5F0E8]">Select Staff</option>
                     {staffOptions.length === 0 && !row.isCreditSettle && <option value="">No Options</option>}
                     {(row.isCreditSettle || row.staff === "System") && (
                       <option value="System" className="bg-[#131210] text-[#F5F0E8]">
@@ -151,10 +267,10 @@ export function BillingTable({
                     disabled={disabled || row.isCreditSettle}
                     onChange={(event) => {
                       const val = event.target.value;
-                      const matched = serviceProductOptions.find(p => p.id === val);
+                      const matched = serviceProductOptions.find((p) => p.id === val);
                       updateRow(row.id, {
                         usedProductId: val || undefined,
-                        usedProductName: matched?.name || undefined
+                        usedProductName: matched?.name || undefined,
                       });
                     }}
                     className="h-10 w-full rounded-xl border border-[#2E2B24] bg-[#131210] px-2.5 text-[#F5F0E8] outline-none transition focus:border-[#B8962E] disabled:bg-[#0E0D0B] disabled:text-[#6B6358] text-xs font-semibold cursor-pointer appearance-none"
@@ -212,10 +328,10 @@ export function BillingTable({
       {/* Select Service Modal Overlay */}
       {showModal && mounted && createPortal(
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowModal(false)} />
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm" onClick={handleCancelSelection} />
           <div className="relative w-full max-w-2xl rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-6 shadow-2xl text-[#F5F0E8] flex flex-col max-h-[85vh]">
             <button
-              onClick={() => setShowModal(false)}
+              onClick={handleCancelSelection}
               className="absolute top-4 right-4 text-[#A89F8C] hover:text-[#B8962E] transition"
             >
               <X size={20} />
@@ -236,14 +352,15 @@ export function BillingTable({
 
             {/* Category Filter Chips */}
             <div className="flex flex-wrap gap-2 mb-4">
-              {categories.map(cat => (
+              {categories.map((cat) => (
                 <button
                   key={cat}
                   onClick={() => setSelectedCat(cat)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition cursor-pointer ${selectedCat === cat
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition cursor-pointer ${
+                    selectedCat === cat
                       ? "bg-[#B8962E] text-[#0E0D0B] border-[#B8962E]"
                       : "bg-[#131210] border-[#2E2B24] text-[#A89F8C] hover:border-[#B8962E] hover:text-[#B8962E] hover:bg-[#1F1A0F]"
-                    }`}
+                  }`}
                 >
                   {cat}
                 </button>
@@ -255,7 +372,7 @@ export function BillingTable({
               {sortedCategories.length === 0 ? (
                 <p className="text-sm text-[#6B6358] italic text-center py-8">No services found matching the criteria.</p>
               ) : (
-                sortedCategories.map(catName => (
+                sortedCategories.map((catName) => (
                   <div key={catName} className="space-y-3">
                     {/* Visual Category Header/Divider */}
                     <div className="flex items-center gap-3">
@@ -266,19 +383,306 @@ export function BillingTable({
                     </div>
 
                     <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
-                      {serviceGroups[catName].map(svc => (
-                        <div
-                          key={svc.name}
-                          onClick={() => selectService(svc)}
-                          className="cursor-pointer rounded-2xl border border-[#2E2B24] bg-[#131210] p-4 transition duration-200 hover:-translate-y-0.5 hover:border-[#B8962E] hover:shadow-[0_4px_16px_rgba(184,150,46,0.12)]"
-                        >
-                          <h3 className="text-sm font-bold text-[#F5F0E8] truncate" title={svc.name}>{svc.name}</h3>
-                          <p className="mt-1 text-sm font-bold text-[#B8962E]">{formatCurrency(svc.price)}</p>
-                        </div>
-                      ))}
+                      {serviceGroups[catName].map((svc) => {
+                        const selectionCount = selectedServices.filter((s) => s.name === svc.name).length;
+                        const isSelected = selectionCount > 0;
+                        return (
+                          <div
+                            key={svc.name}
+                            onClick={() => handleSelectService(svc)}
+                            className={`relative cursor-pointer rounded-2xl border p-4 transition duration-200 hover:-translate-y-0.5 ${
+                              isSelected
+                                ? "border-[#B8962E] bg-[#1F1A0F] shadow-[0_4px_16px_rgba(184,150,46,0.18)]"
+                                : "border-[#2E2B24] bg-[#131210] hover:border-[#B8962E] hover:shadow-[0_4px_16px_rgba(184,150,46,0.12)]"
+                            }`}
+                          >
+                            <h3 className="text-sm font-bold text-[#F5F0E8] pr-10 truncate" title={svc.name}>
+                              {svc.name}
+                            </h3>
+                            <p className="mt-1 text-sm font-bold text-[#B8962E]">
+                              {formatCurrency(svc.price)}
+                            </p>
+                            {isSelected && (
+                              <div className="absolute top-4 right-4 flex items-center gap-1.5 bg-[#B8962E] text-[#0E0D0B] text-[10px] font-black rounded-full px-2 py-0.5 shadow-md">
+                                <Check size={10} strokeWidth={4} />
+                                <span>{selectionCount}</span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 ))
+              )}
+            </div>
+
+            {/* Selected Counter & Chips */}
+            {selectedServices.length > 0 && (
+              <div className="mt-4 border-t border-[#2E2B24] pt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-[#B8962E]">
+                    Selected Services ({selectedServices.length}):
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-1.5 max-h-[100px] overflow-y-auto pr-1">
+                  {selectedServices.map((svc, index) => (
+                    <span
+                      key={`${svc.name}-${index}`}
+                      onClick={() => handleRemoveServiceByIndex(index)}
+                      className="inline-flex items-center gap-1 rounded-lg bg-[#2A2310] border border-[#4A3A10] px-2.5 py-1 text-xs font-semibold text-[#D4A935] hover:bg-[#3E3318] cursor-pointer transition"
+                    >
+                      {svc.name}
+                      <X size={12} className="text-[#B8962E] hover:text-[#D4A935]" />
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Bottom Controls */}
+            <div className="mt-6 flex items-center justify-between gap-3 border-t border-[#2E2B24] pt-4">
+              <button
+                type="button"
+                onClick={handleCancelSelection}
+                className="inline-flex h-10 items-center justify-center rounded-xl border border-[#2E2B24] bg-[#131210] px-4 text-sm font-semibold text-[#A89F8C] hover:border-[#B8962E] hover:text-[#B8962E] hover:bg-[#1F1A0F] transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <div className="flex items-center gap-2">
+                {selectedServices.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleClearAll}
+                    className="inline-flex h-10 items-center justify-center rounded-xl border border-red-950 bg-red-950/20 px-4 text-sm font-semibold text-red-400 hover:bg-red-950/40 hover:text-red-300 transition cursor-pointer"
+                  >
+                    Clear All
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={handleDoneSelection}
+                  className="inline-flex h-10 items-center justify-center rounded-xl bg-[#B8962E] px-5 text-sm font-extrabold tracking-wide uppercase text-[#0E0D0B] hover:bg-[#D4A935] shadow-[0_4px_16px_rgba(184,150,46,0.3)] transition cursor-pointer"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Guided Used Products dialog */}
+      {showProductDialog && mounted && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm" onClick={handleCancelProductDialog} />
+          <div className="relative w-full max-w-lg rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-6 shadow-2xl text-[#F5F0E8] flex flex-col max-h-[85vh]">
+            <button
+              onClick={handleCancelProductDialog}
+              className="absolute top-4 right-4 text-[#A89F8C] hover:text-[#B8962E] transition"
+            >
+              <X size={20} />
+            </button>
+
+            <div className="mb-4">
+              <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#B8962E]">
+                Product Assignment ({currentProductAssignmentIndex + 1} of {selectedServices.length})
+              </span>
+              <h2 className="text-lg font-bold text-[#F5F0E8] mt-1">
+                Assign Used Product for:
+              </h2>
+              <div className="mt-2 rounded-xl bg-[#131210] p-4 border border-[#2E2B24]">
+                <p className="text-base font-extrabold text-[#F5F0E8]">
+                  {selectedServices[currentProductAssignmentIndex]?.name}
+                </p>
+                <p className="text-xs font-semibold text-[#B8962E] mt-0.5">
+                  Base Price: {formatCurrency(selectedServices[currentProductAssignmentIndex]?.price || 0)}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-3 pr-1 py-2">
+              <p className="text-xs font-semibold text-[#6B6358] uppercase tracking-wider mb-2">Select Used Product</p>
+              
+              {/* Option for No Product */}
+              <div
+                onClick={() => handleSelectProduct(null)}
+                className={`flex items-center justify-between cursor-pointer rounded-xl border p-4 transition ${
+                  assignedProducts[currentProductAssignmentIndex] === null
+                    ? "border-[#B8962E] bg-[#1F1A0F]"
+                    : "border-[#2E2B24] bg-[#131210] hover:border-[#B8962E]"
+                }`}
+              >
+                <span className="text-sm font-bold text-[#F5F0E8]">No Product</span>
+                <div className={`size-4 rounded-full border-2 flex items-center justify-center ${
+                  assignedProducts[currentProductAssignmentIndex] === null
+                    ? "border-[#B8962E]"
+                    : "border-[#6B6358]"
+                }`}>
+                  {assignedProducts[currentProductAssignmentIndex] === null && (
+                    <div className="size-2 rounded-full bg-[#B8962E]" />
+                  )}
+                </div>
+              </div>
+
+              {/* Options from serviceProductOptions */}
+              {serviceProductOptions.map((option) => {
+                const isSelected = assignedProducts[currentProductAssignmentIndex]?.id === option.id;
+                const isOutOfStock = option.noOfServings <= 0;
+
+                return (
+                  <div
+                    key={option.id}
+                    onClick={() => !isOutOfStock && handleSelectProduct(option)}
+                    className={`flex items-center justify-between border p-4 rounded-xl transition ${
+                      isOutOfStock
+                        ? "opacity-50 cursor-not-allowed border-[#2E2B24] bg-[#0E0D0B]"
+                        : "cursor-pointer hover:border-[#B8962E]"
+                    } ${
+                      isSelected
+                        ? "border-[#B8962E] bg-[#1F1A0F]"
+                        : isOutOfStock
+                          ? ""
+                          : "border-[#2E2B24] bg-[#131210]"
+                    }`}
+                  >
+                    <div>
+                      <span className="text-sm font-bold text-[#F5F0E8]">{option.name}</span>
+                      <span className={`block text-xs mt-0.5 ${isOutOfStock ? "text-[#E57373] font-semibold" : "text-[#6B6358]"}`}>
+                        {isOutOfStock ? "Out of Stock" : `${option.noOfServings} servings left`}
+                      </span>
+                    </div>
+                    <div className={`size-4 rounded-full border-2 flex items-center justify-center ${
+                      isSelected
+                        ? "border-[#B8962E]"
+                        : "border-[#6B6358]"
+                    }`}>
+                      {isSelected && (
+                        <div className="size-2 rounded-full bg-[#B8962E]" />
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="mt-6 flex items-center justify-between gap-3 border-t border-[#2E2B24] pt-4">
+              <button
+                type="button"
+                disabled={currentProductAssignmentIndex === 0}
+                onClick={handleProductBack}
+                className="inline-flex h-10 items-center justify-center rounded-xl border border-[#2E2B24] bg-[#131210] px-4 text-sm font-semibold text-[#A89F8C] hover:border-[#B8962E] hover:text-[#B8962E] hover:bg-[#1F1A0F] disabled:opacity-30 disabled:pointer-events-none transition cursor-pointer"
+              >
+                Back
+              </button>
+              
+              <button
+                type="button"
+                onClick={handleProductNext}
+                className="inline-flex h-10 items-center justify-center rounded-xl bg-[#B8962E] px-5 text-sm font-extrabold tracking-wide uppercase text-[#0E0D0B] hover:bg-[#D4A935] shadow-[0_4px_16px_rgba(184,150,46,0.3)] transition cursor-pointer"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Guided Staff Assignment dialog */}
+      {showStaffDialog && mounted && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm" onClick={handleCancelStaffDialog} />
+          <div className="relative w-full max-w-lg rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-6 shadow-2xl text-[#F5F0E8] flex flex-col max-h-[85vh]">
+            <button
+              onClick={handleCancelStaffDialog}
+              className="absolute top-4 right-4 text-[#A89F8C] hover:text-[#B8962E] transition"
+            >
+              <X size={20} />
+            </button>
+
+            <div className="mb-4">
+              <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#B8962E]">
+                Staff Assignment ({currentStaffAssignmentIndex + 1} of {selectedServices.length})
+              </span>
+              <h2 className="text-lg font-bold text-[#F5F0E8] mt-1">
+                Assign Staff member for:
+              </h2>
+              <div className="mt-2 rounded-xl bg-[#131210] p-4 border border-[#2E2B24]">
+                <p className="text-base font-extrabold text-[#F5F0E8]">
+                  {selectedServices[currentStaffAssignmentIndex]?.name}
+                </p>
+                <p className="text-xs font-semibold text-[#B8962E] mt-0.5">
+                  Base Price: {formatCurrency(selectedServices[currentStaffAssignmentIndex]?.price || 0)}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-3 pr-1 py-2">
+              <p className="text-xs font-semibold text-[#6B6358] uppercase tracking-wider mb-2">Select Staff member</p>
+              
+              {staffOptions.length === 0 ? (
+                <p className="text-sm text-[#6B6358] italic py-4">No active staff members on duty.</p>
+              ) : (
+                <div className="space-y-3">
+                  {staffOptions.map((staffName) => {
+                    const isSelected = assignedStaff[currentStaffAssignmentIndex] === staffName;
+
+                    return (
+                      <div
+                        key={staffName}
+                        onClick={() => handleSelectStaff(staffName)}
+                        className={`flex items-center justify-between cursor-pointer border p-4 rounded-xl transition ${
+                          isSelected
+                            ? "border-[#B8962E] bg-[#1F1A0F]"
+                            : "border-[#2E2B24] bg-[#131210] hover:border-[#B8962E]"
+                        }`}
+                      >
+                        <span className="text-sm font-bold text-[#F5F0E8]">{staffName}</span>
+                        <div className={`size-4 rounded-full border-2 flex items-center justify-center ${
+                          isSelected
+                            ? "border-[#B8962E]"
+                            : "border-[#6B6358]"
+                        }`}>
+                          {isSelected && (
+                            <div className="size-2 rounded-full bg-[#B8962E]" />
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-6 flex items-center justify-between gap-3 border-t border-[#2E2B24] pt-4">
+              <button
+                type="button"
+                onClick={handleStaffBack}
+                className="inline-flex h-10 items-center justify-center rounded-xl border border-[#2E2B24] bg-[#131210] px-4 text-sm font-semibold text-[#A89F8C] hover:border-[#B8962E] hover:text-[#B8962E] hover:bg-[#1F1A0F] transition cursor-pointer"
+              >
+                Back
+              </button>
+              
+              {currentStaffAssignmentIndex < selectedServices.length - 1 ? (
+                <button
+                  type="button"
+                  disabled={!assignedStaff[currentStaffAssignmentIndex]}
+                  onClick={handleStaffNext}
+                  className="inline-flex h-10 items-center justify-center rounded-xl bg-[#B8962E] px-5 text-sm font-extrabold tracking-wide uppercase text-[#0E0D0B] hover:bg-[#D4A935] shadow-[0_4px_16px_rgba(184,150,46,0.3)] transition disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+                >
+                  Next
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={!assignedStaff[currentStaffAssignmentIndex]}
+                  onClick={handleProductAndStaffFinish}
+                  className="inline-flex h-10 items-center justify-center rounded-xl bg-emerald-600 px-5 text-sm font-extrabold tracking-wide uppercase text-white hover:bg-emerald-500 shadow-[0_4px_16px_rgba(16,185,129,0.3)] transition disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+                >
+                  Finish
+                </button>
               )}
             </div>
           </div>
