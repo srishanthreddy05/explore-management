@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import * as invoicesService from "@/services/invoices";
 import { formatCurrency } from "@/components/salon-dashboard/types";
-import { Search, Eye, Calendar, Edit2 } from "lucide-react";
+import { Search, Eye, Calendar, Edit2, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { toLocalDateString } from "@/lib/utils/date";
 import { db } from "@/lib/firebase";
@@ -106,6 +106,19 @@ export default function InvoicesPage() {
   useEffect(() => {
     loadInvoices(false);
   }, [dateFrom, dateTo]);
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm("Are you sure you want to delete this invoice? This will revert stats and product quantities.")) {
+      return;
+    }
+    try {
+      await invoicesService.delete(id);
+      setInvoices((prev) => prev.filter((inv) => inv.id !== id));
+    } catch (error) {
+      alert("Failed to delete invoice. Please try again.");
+      console.error(error);
+    }
+  };
 
   // Filter & Search Logic (scoping done at Firestore level, filter only search query here)
   const filteredInvoices = useMemo(() => {
@@ -253,6 +266,13 @@ export default function InvoicesPage() {
                             <Edit2 size={14} />
                             Edit
                           </Link>
+                          <button
+                            onClick={() => handleDelete(inv.id)}
+                            className="inline-flex h-9 items-center justify-center gap-1 rounded-xl border border-red-950/50 bg-red-950/20 px-3 text-xs font-semibold text-red-400 hover:text-red-300 hover:bg-red-950/40 hover:border-red-900/50 transition cursor-pointer"
+                          >
+                            <Trash2 size={14} />
+                            Delete
+                          </button>
                         </div>
                       </td>
                     </tr>

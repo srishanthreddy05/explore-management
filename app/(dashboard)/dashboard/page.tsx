@@ -412,12 +412,6 @@ function InvoiceRow({ invoice }: { invoice: Invoice }) {
           >
             View
           </Link>
-          <Link
-            href={`/billing?edit=${invoice.id}`}
-            className="inline-flex h-8 items-center justify-center rounded-lg border border-[#B8962E]/30 bg-[#B8962E]/10 px-3 text-xs font-semibold text-[#B8962E] transition hover:bg-[#B8962E]/20"
-          >
-            Edit
-          </Link>
         </div>
       </td>
     </tr>
@@ -1349,39 +1343,6 @@ export default function DashboardPage() {
       <div className="grid gap-8 lg:grid-cols-[1.6fr_1fr]">
         {/* Left Column */}
         <div className="space-y-8">
-          {/* Stats Grid */}
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            <StatCard
-              title="Today's Collection"
-              value={formatCurrency(stats.todayRevenue)}
-              icon={TrendingUp}
-              accent="gold"
-            >
-              <PaymentBreakdown
-                cash={stats.cashToday}
-                upi={stats.upiToday}
-                card={stats.cardToday}
-                advance={stats.advanceToday}
-              />
-            </StatCard>
-
-            <StatCard
-              title="Monthly Revenue"
-              value={formatCurrency(stats.monthlyRevenue)}
-              subtitle="Total sales in current month"
-              icon={CreditCard}
-              accent="green"
-            />
-
-            <StatCard
-              title="Today's Visits"
-              value={stats.todayVisits}
-              subtitle="Unique customers served today"
-              icon={CalendarDays}
-              accent="blue"
-            />
-          </div>
-
           {/* Quick Actions */}
           <section className="rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-6 shadow-sm">
             <div className="mb-5 flex items-center justify-between">
@@ -1508,6 +1469,39 @@ export default function DashboardPage() {
               </table>
             </div>
           </section>
+
+          {/* Stats Grid */}
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <StatCard
+              title="Today's Collection"
+              value={formatCurrency(stats.todayRevenue)}
+              icon={TrendingUp}
+              accent="gold"
+            >
+              <PaymentBreakdown
+                cash={stats.cashToday}
+                upi={stats.upiToday}
+                card={stats.cardToday}
+                advance={stats.advanceToday}
+              />
+            </StatCard>
+
+            <StatCard
+              title="Monthly Revenue"
+              value={formatCurrency(stats.monthlyRevenue)}
+              subtitle="Total sales in current month"
+              icon={CreditCard}
+              accent="green"
+            />
+
+            <StatCard
+              title="Today's Visits"
+              value={stats.todayVisits}
+              subtitle="Unique customers served today"
+              icon={CalendarDays}
+              accent="blue"
+            />
+          </div>
         </div>
 
         {/* Right Column — Staff */}
