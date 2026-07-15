@@ -264,39 +264,74 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
           </div>
 
           {/* Services Rendered Table */}
-          {invoice.services && invoice.services.length > 0 && (
+          {(() => {
+            const visibleServices = (invoice.services || []).filter((s: any) => s.serviceId !== "membership_fee");
+            if (visibleServices.length === 0) return null;
+            return (
+              <section className="mt-6">
+                <h2 className="text-lg font-bold text-[#F5F0E8] mb-3">Services</h2>
+                <div className="overflow-x-auto rounded-2xl border border-[#2E2B24] bg-[#131210]">
+                  <table className="w-full min-w-[600px] border-collapse text-left text-sm">
+                    <thead className="bg-[#0E0D0B] text-[10px] font-bold uppercase tracking-[0.18em] text-[#A89F8C] border-b border-[#2E2B24]">
+                      <tr>
+                        <th className="px-4 py-4 font-semibold">Service</th>
+                        <th className="px-4 py-4 font-semibold">Staff</th>
+                        <th className="px-4 py-4 font-semibold">Price</th>
+                        <th className="px-4 py-4 font-semibold">Discount</th>
+                        <th className="px-4 py-4 font-semibold text-right">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#2E2B24]">
+                      {visibleServices.map((item: any, idx: number) => {
+                        const name = item.serviceName || item.service;
+                        const staffName = item.staffName || item.staff;
+                        const amount = item.amount ?? Math.max((item.price || 0) - (item.discount || 0), 0);
+                        return (
+                          <tr key={idx} className="bg-transparent transition hover:bg-[#1C1A16]">
+                            <td className="px-4 py-3 font-semibold text-[#F5F0E8]">{name}</td>
+                            <td className="px-4 py-3 text-[#F5F0E8]">{staffName}</td>
+                            <td className="px-4 py-3 text-[#A89F8C]">{formatCurrency(item.price)}</td>
+                            <td className="px-4 py-3 text-[#B8962E] font-medium">- {formatCurrency(item.discount || 0)}</td>
+                            <td className="px-4 py-3 font-semibold text-[#F5F0E8] text-right">
+                              {formatCurrency(amount)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            );
+          })()}
+
+          {/* Purchased Membership Details */}
+          {invoice.membership && (
             <section className="mt-6">
-              <h2 className="text-lg font-bold text-[#F5F0E8] mb-3">Services</h2>
-              <div className="overflow-x-auto rounded-2xl border border-[#2E2B24] bg-[#131210]">
-                <table className="w-full min-w-[600px] border-collapse text-left text-sm">
-                  <thead className="bg-[#0E0D0B] text-[10px] font-bold uppercase tracking-[0.18em] text-[#A89F8C] border-b border-[#2E2B24]">
-                    <tr>
-                      <th className="px-4 py-4 font-semibold">Service</th>
-                      <th className="px-4 py-4 font-semibold">Staff</th>
-                      <th className="px-4 py-4 font-semibold">Price</th>
-                      <th className="px-4 py-4 font-semibold">Discount</th>
-                      <th className="px-4 py-4 font-semibold text-right">Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#2E2B24]">
-                    {invoice.services.map((item: any, idx: number) => {
-                      const name = item.serviceName || item.service;
-                      const staffName = item.staffName || item.staff;
-                      const amount = item.amount ?? Math.max((item.price || 0) - (item.discount || 0), 0);
-                      return (
-                        <tr key={idx} className="bg-transparent transition hover:bg-[#1C1A16]">
-                          <td className="px-4 py-3 font-semibold text-[#F5F0E8]">{name}</td>
-                          <td className="px-4 py-3 text-[#F5F0E8]">{staffName}</td>
-                          <td className="px-4 py-3 text-[#A89F8C]">{formatCurrency(item.price)}</td>
-                          <td className="px-4 py-3 text-[#B8962E] font-medium">- {formatCurrency(item.discount || 0)}</td>
-                          <td className="px-4 py-3 font-semibold text-[#F5F0E8] text-right">
-                            {formatCurrency(amount)}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+              <h2 className="text-lg font-bold text-[#F5F0E8] mb-3">Membership</h2>
+              <div className="rounded-2xl border border-[#2E2B24] bg-[#131210] p-5 shadow-md text-[#A89F8C]">
+                <div className="grid gap-5 sm:grid-cols-3">
+                  <div>
+                    <span className="text-xs font-semibold text-[#A89F8C] uppercase tracking-wider block">Membership Amount</span>
+                    <p className="mt-1 text-lg font-bold text-[#B8962E]">{formatCurrency(invoice.membership.membershipAmount)}</p>
+                  </div>
+                  <div>
+                    <span className="text-xs font-semibold text-[#A89F8C] uppercase tracking-wider block">Duration</span>
+                    <p className="mt-1 text-sm font-bold text-[#F5F0E8]">{invoice.membership.membershipDuration} Month{invoice.membership.membershipDuration > 1 ? "s" : ""}</p>
+                  </div>
+                  <div>
+                    <span className="text-xs font-semibold text-[#A89F8C] uppercase tracking-wider block">Start Date</span>
+                    <p className="mt-1 text-sm font-bold text-[#F5F0E8]">
+                      {invoice.membership.membershipStart
+                        ? new Date(invoice.membership.membershipStart).toLocaleDateString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          })
+                        : "—"}
+                    </p>
+                  </div>
+                </div>
               </div>
             </section>
           )}

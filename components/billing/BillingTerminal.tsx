@@ -88,6 +88,22 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
   const [customerAdvance, setCustomerAdvance] = useState<any>(null);
   const [advanceApplied, setAdvanceApplied] = useState<number>(0);
 
+  // Membership states
+  const [addMembership, setAddMembership] = useState(false);
+  const [membershipAmount, setMembershipAmount] = useState("");
+  const [membershipDuration, setMembershipDuration] = useState("");
+  const [membershipStart, setMembershipStart] = useState(toLocalDateString(new Date()));
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [membershipConfirmed, setMembershipConfirmed] = useState(false);
+  const [showMembershipWarning, setShowMembershipWarning] = useState(false);
+  const [warningExpiryDate, setWarningExpiryDate] = useState("");
+
+  const calculateMembershipEnd = (start: string, months: number): string => {
+    const d = new Date(start);
+    d.setMonth(d.getMonth() + months);
+    return d.toISOString();
+  };
+
   useEffect(() => {
     if (editInvoiceId) {
       const fetchInvoiceForEdit = async () => {
@@ -103,18 +119,27 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
             
             setDateString(toLocalDateString(inv.date));
 
-            // Populate services
-            const mappedServices: ServiceRow[] = (inv.services || []).map((s: any, idx: number) => ({
-              id: idx + 1,
-              service: s.serviceName || s.service || "",
-              staff: s.staffName || s.staff || "",
-              price: s.price ?? 0,
-              quantity: 1,
-              discount: s.discount ?? 0,
-              usedProductId: s.usedProductId || undefined,
-              usedProductName: s.usedProductName || undefined,
-              usedProductCost: s.usedProductCost || undefined,
-            }));
+            if (inv.membership) {
+              setAddMembership(true);
+              setMembershipAmount(inv.membership.membershipAmount?.toString() || "");
+              setMembershipDuration(inv.membership.membershipDuration?.toString() || "");
+              setMembershipStart(toLocalDateString(inv.membership.membershipStart ? new Date(inv.membership.membershipStart) : new Date()));
+            }
+
+            // Populate services (excluding membership fee row)
+            const mappedServices: ServiceRow[] = (inv.services || [])
+              .filter((s: any) => s.serviceId !== "membership_fee")
+              .map((s: any, idx: number) => ({
+                id: idx + 1,
+                service: s.serviceName || s.service || "",
+                staff: s.staffName || s.staff || "",
+                price: s.price ?? 0,
+                quantity: 1,
+                discount: s.discount ?? 0,
+                usedProductId: s.usedProductId || undefined,
+                usedProductName: s.usedProductName || undefined,
+                usedProductCost: s.usedProductCost || undefined,
+              }));
             setServices(mappedServices);
 
             // Populate products
@@ -165,10 +190,12 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
           const client = await customerService.getByPhone(customerMobile.trim());
           if (!active) return;
           if (client) {
+            setSelectedCustomer(client);
             setClientStatus(client.customerType as "regular" | "membership");
             setFoundCustomerId(client.id ?? null);
             if (!customerName) setCustomerName(client.name);
           } else {
+            setSelectedCustomer(null);
             setClientStatus("new");
             setFoundCustomerId(null);
           }
@@ -178,6 +205,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
       };
       check();
     } else {
+      setSelectedCustomer(null);
       setClientStatus(null);
       setFoundCustomerId(null);
     }
@@ -393,11 +421,13 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
   const selectedOffer = eligibleOffers.find((o) => o.id === selectedOfferId) || null;
 
   const totals = useMemo(() => {
-    const serviceTotal = services.reduce((sum, s) => sum + Math.max(Number(s.price) || 0, 0), 0);
+    const rawServiceTotal = services.reduce((sum, s) => sum + Math.max(Number(s.price) || 0, 0), 0);
+    const memAmount = addMembership ? (parseFloat(membershipAmount) || 0) : 0;
+    const serviceTotal = rawServiceTotal + memAmount;
     const productTotal = products.reduce((sum, p) => sum + Math.max((Number(p.price) || 0) * (Number(p.quantity) || 1), 0), 0);
     
-    // billDiscount applies ONLY to serviceTotal
-    const discountedServiceTotal = Math.max(serviceTotal - billDiscount, 0);
+    // billDiscount applies ONLY to rawServiceTotal
+    const discountedServiceTotal = Math.max(rawServiceTotal - billDiscount, 0) + memAmount;
     const subtotal = discountedServiceTotal + productTotal;
 
     const lineDiscount =
@@ -454,7 +484,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
       grandTotal,
       gst: 0,
     };
-  }, [services, products, selectedOffer, servicesList, productsList, billDiscount]);
+  }, [services, products, selectedOffer, servicesList, productsList, billDiscount, addMembership, membershipAmount]);
 
   // Cap bill discount if serviceTotal decreases below it
   useEffect(() => {
@@ -549,13 +579,54 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose, services, products, customerName, customerMobile, cashAmount, upiAmount, cardAmount, selectedOfferId]);
 
-  const handleSaveBill = async () => {
+  const hasActiveMembership = useMemo(() => {
+    return (
+      selectedCustomer &&
+      selectedCustomer.customerType === "membership" &&
+      selectedCustomer.membershipEnd &&
+      new Date(selectedCustomer.membershipEnd) > new Date()
+    );
+  }, [selectedCustomer]);
+
+  const handleConfirmReplaceMembership = () => {
+    setShowMembershipWarning(false);
+    setMembershipConfirmed(true);
+    handleSaveBill(true);
+  };
+
+  const handleSaveBill = async (isMembershipConfirmed = false) => {
     if (!customerName.trim() || !customerMobile.trim()) {
       setMessage({ type: "error", text: "Please enter customer name and mobile number." });
       return;
     }
-    if (services.length === 0 && products.length === 0) {
-      setMessage({ type: "error", text: "Please add at least one service or product." });
+    const memAmount = addMembership ? (parseFloat(membershipAmount) || 0) : 0;
+    if (services.length === 0 && products.length === 0 && memAmount === 0) {
+      setMessage({ type: "error", text: "Please add at least one service, product, or membership." });
+      return;
+    }
+
+    if (addMembership) {
+      if (memAmount <= 0) {
+        setMessage({ type: "error", text: "Please enter a valid membership amount." });
+        return;
+      }
+      if (!membershipDuration || parseInt(membershipDuration) <= 0) {
+        setMessage({ type: "error", text: "Please enter a valid membership duration in months." });
+        return;
+      }
+      if (!membershipStart) {
+        setMessage({ type: "error", text: "Please enter a valid membership start date." });
+        return;
+      }
+    }
+
+    // Existing active membership warning check
+    if (addMembership && hasActiveMembership && !isMembershipConfirmed && !membershipConfirmed && selectedCustomer) {
+      const expiryDateStr = selectedCustomer.membershipEnd
+        ? new Date(selectedCustomer.membershipEnd).toLocaleDateString()
+        : "—";
+      setWarningExpiryDate(expiryDateStr);
+      setShowMembershipWarning(true);
       return;
     }
 
@@ -568,7 +639,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
       // Step 1: Resolve or create customer
       let customerId = foundCustomerId;
       let resolvedCustomerType: "regular" | "membership" | "new" = 
-        clientStatus ?? "new";
+        addMembership ? "membership" : (clientStatus ?? "new");
 
       const isGuestPhone = customerMobile.trim() === GUEST_PHONE;
       const isGuestName = customerName.trim() === GUEST_NAME || 
@@ -593,9 +664,15 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
         customerId = await customerService.create({
           name: customerName.trim(),
           phone: customerMobile.trim(),
-          customerType: "regular",
+          customerType: addMembership ? "membership" : "regular",
+          ...(addMembership ? {
+            membershipAmount: memAmount,
+            membershipDuration: parseInt(membershipDuration) || 0,
+            membershipStart: new Date(membershipStart).toISOString(),
+            membershipEnd: calculateMembershipEnd(membershipStart, parseInt(membershipDuration) || 0),
+          } : {})
         });
-        resolvedCustomerType = "regular";
+        resolvedCustomerType = addMembership ? "membership" : "regular";
       }
 
       if (!customerId) {
@@ -732,6 +809,31 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
         };
       });
 
+      if (addMembership && memAmount > 0) {
+        enrichedServices.push({
+          serviceId: "membership_fee",
+          serviceName: "Membership Fee",
+          staffId: "system",
+          staffName: "System",
+          price: memAmount,
+          discount: 0,
+          amount: memAmount,
+          usedProductId: null,
+          usedProductName: null,
+          usedProductCost: 0,
+          staffRole: "Owner",
+          stylistShare: 0,
+          ownerShare: memAmount,
+          isCreditSettle: false,
+          creditBalanceId: null,
+          originalBillDate: null,
+          originalInvoiceNumber: null,
+          collectionDate: dateString,
+          collectionMethod: null,
+          collectedBy: null,
+        } as any);
+      }
+
       const enrichedProducts = products.map((row: any) => {
         return {
           productId: row.productId || "",
@@ -808,6 +910,12 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
           },
           paymentMethod: invoicePaymentMethod,
           paymentStatus: invoicePaymentStatus,
+          membership: addMembership ? {
+            membershipAmount: memAmount,
+            membershipDuration: parseInt(membershipDuration) || 0,
+            membershipStart: new Date(membershipStart).toISOString(),
+            membershipEnd: calculateMembershipEnd(membershipStart, parseInt(membershipDuration) || 0),
+          } : null
         });
       } else {
         const invoicePaymentStatus = markAsCredit
@@ -856,6 +964,12 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
           },
           paymentMethod: invoicePaymentMethod,
           paymentStatus: invoicePaymentStatus,
+          membership: addMembership ? {
+            membershipAmount: memAmount,
+            membershipDuration: parseInt(membershipDuration) || 0,
+            membershipStart: new Date(membershipStart).toISOString(),
+            membershipEnd: calculateMembershipEnd(membershipStart, parseInt(membershipDuration) || 0),
+          } : null
         });
       }
 
@@ -865,6 +979,17 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
       }
       if (advanceApplied > 0) {
         await advanceBalancesService.deductBalance(customerId, advanceApplied, invId);
+      }
+
+      if (addMembership) {
+        await customerService.update(customerId, {
+          customerType: "membership",
+          membershipAmount: memAmount,
+          membershipDuration: parseInt(membershipDuration) || 0,
+          membershipStart: new Date(membershipStart).toISOString(),
+          membershipEnd: calculateMembershipEnd(membershipStart, parseInt(membershipDuration) || 0),
+          membershipInvoiceId: invId
+        } as any);
       }
 
       // Step 5: Save or update credit balance in DB (split proportionally by services vs products at item level)
@@ -1387,6 +1512,65 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
             disabled={saved}
           />
 
+          {/* Membership Sale Section */}
+          <section className="mt-6 rounded-2xl border border-[#2E2B24] bg-[#131210] p-5 shadow-sm text-[#A89F8C]">
+            <label className="flex items-center gap-2 cursor-pointer select-none text-sm font-semibold text-[#F5F0E8] hover:text-[#B8962E] transition">
+              <input
+                type="checkbox"
+                checked={addMembership}
+                disabled={saved}
+                onChange={(e) => setAddMembership(e.target.checked)}
+                className="size-4 rounded border-[#2E2B24] bg-[#0E0D0B] text-[#B8962E] focus:ring-0 cursor-pointer accent-[#B8962E]"
+              />
+              <span>Add Membership</span>
+            </label>
+
+            {addMembership && (
+              <div className="mt-4 pt-4 border-t border-[#2E2B24] grid gap-4 sm:grid-cols-3">
+                <label className="block">
+                  <span className="text-xs font-semibold text-[#A89F8C] uppercase tracking-wider">Membership Amount (₹)</span>
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="e.g. 5000"
+                    value={membershipAmount}
+                    disabled={saved}
+                    onChange={(e) => setMembershipAmount(e.target.value)}
+                    className="mt-1.5 h-10 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-3 text-xs text-[#F5F0E8] outline-none focus:border-[#B8962E] focus:ring-1 focus:ring-[#B8962E] placeholder-[#6B6358] disabled:bg-stone-900 disabled:text-[#6B6358] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="text-xs font-semibold text-[#A89F8C] uppercase tracking-wider">Duration (Months)</span>
+                  <select
+                    value={membershipDuration}
+                    disabled={saved}
+                    onChange={(e) => setMembershipDuration(e.target.value)}
+                    className="mt-1.5 h-10 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-3 text-xs text-[#F5F0E8] outline-none focus:border-[#B8962E] focus:ring-1 focus:ring-[#B8962E] disabled:bg-stone-900 disabled:text-[#6B6358]"
+                  >
+                    <option value="">Select duration...</option>
+                    {[1, 3, 6, 12, 24].map((m) => (
+                      <option key={m} value={m}>
+                        {m} Month{m > 1 ? "s" : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="block">
+                  <span className="text-xs font-semibold text-[#A89F8C] uppercase tracking-wider">Start Date</span>
+                  <input
+                    type="date"
+                    value={membershipStart}
+                    disabled={saved}
+                    onChange={(e) => setMembershipStart(e.target.value)}
+                    className="mt-1.5 h-10 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-3 text-xs text-[#F5F0E8] outline-none focus:border-[#B8962E] focus:ring-1 focus:ring-[#B8962E] disabled:bg-stone-900 disabled:text-[#6B6358]"
+                  />
+                </label>
+              </div>
+            )}
+          </section>
+
           <ProductTable
             rows={products}
             onRowsChange={setProducts}
@@ -1575,6 +1759,37 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
           </section>
         </aside>
       </div>
+      {showMembershipWarning && (
+        <div className="fixed inset-0 z-[10100] flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/85 backdrop-blur-sm" />
+          <div className="relative w-full max-w-md rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-6 shadow-2xl text-[#F5F0E8] text-center">
+            <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-[#2A2310] text-[#D4A935] mb-4">
+              <AlertCircle size={24} />
+            </div>
+            <h3 className="text-lg font-bold mb-2">Active Membership Exists</h3>
+            <p className="text-sm text-[#A89F8C] mb-6 leading-relaxed">
+              This customer already has an active membership.<br />
+              <span className="font-bold text-[#B8962E]">Expiry Date: {warningExpiryDate}</span>
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={handleConfirmReplaceMembership}
+                className="w-full h-10 rounded-xl bg-[#B8962E] text-[#0E0D0B] font-bold text-sm hover:bg-[#D4A935] transition cursor-pointer"
+              >
+                Replace Existing Membership
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowMembershipWarning(false)}
+                className="w-full h-10 rounded-xl border border-[#2E2B24] hover:bg-[#1C1A16] text-[#A89F8C] font-semibold text-sm transition cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

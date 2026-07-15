@@ -61,4 +61,11 @@ export interface Invoice {
   dateKey?: string;
   timeKey?: string;
   createdAt: Timestamp;
+
+  membership?: {
+    membershipAmount: number;
+    membershipDuration: number;
+    membershipStart: string;
+    membershipEnd: string;
+  } | null;
 }
