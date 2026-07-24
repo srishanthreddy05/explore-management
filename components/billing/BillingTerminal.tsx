@@ -353,6 +353,114 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
     return allCustomerPendingCredits.filter((c) => !collectedCredits.includes(c.id || ""));
   }, [allCustomerPendingCredits, collectedCredits]);
 
+  const groupedCredits = useMemo(() => {
+    const groups: Record<string, {
+      invoiceId: string;
+      invoiceNumber: string;
+      invoiceDate: string;
+      remainingAmount: number;
+      createdAt: string;
+      credits: CreditBalance[];
+    }> = {};
+
+    pendingCreditsToShow.forEach((credit) => {
+      const invId = credit.originalInvoiceId || credit.invoiceId || "";
+      const invNum = credit.originalInvoiceNumber || credit.invoiceNumber || "";
+      let invDate = credit.originalBillDate || "";
+      if (!invDate && credit.createdAt) {
+        invDate = credit.createdAt.split("T")[0];
+      }
+
+      const key = `${invId}_${invNum}_${invDate}`;
+      const amount = credit.remainingAmount !== undefined ? credit.remainingAmount : (credit.amount ?? 0);
+
+      if (!groups[key]) {
+        groups[key] = {
+          invoiceId: invId,
+          invoiceNumber: invNum,
+          invoiceDate: invDate,
+          remainingAmount: 0,
+          createdAt: credit.createdAt || "",
+          credits: [],
+        };
+      }
+      groups[key].remainingAmount += amount;
+      groups[key].credits.push(credit);
+    });
+
+    return Object.values(groups);
+  }, [pendingCreditsToShow]);
+
+  const handleCollectGroup = (credits: CreditBalance[]) => {
+    credits.forEach(handleCollectCredit);
+  };
+
+  const collectedCreditsGrouped = useMemo(() => {
+    const groups: Record<string, {
+      invoiceNumber: string;
+      originalBillDate: string;
+      createdAt: string;
+      totalOutstanding: number;
+      amountCollecting: number;
+      credits: CreditBalance[];
+    }> = {};
+
+    allCustomerPendingCredits.forEach((credit) => {
+      if (collectedCredits.includes(credit.id || "")) {
+        const invNum = credit.originalInvoiceNumber || credit.invoiceNumber || "";
+        const invDate = credit.originalBillDate || "";
+        const invId = credit.originalInvoiceId || credit.invoiceId || "";
+        const key = `${invId}_${invNum}_${invDate}`;
+        const amount = credit.remainingAmount !== undefined ? credit.remainingAmount : (credit.amount ?? 0);
+
+        if (!groups[key]) {
+          groups[key] = {
+            invoiceNumber: invNum,
+            originalBillDate: invDate,
+            createdAt: credit.createdAt || "",
+            totalOutstanding: 0,
+            amountCollecting: 0,
+            credits: [],
+          };
+        }
+        groups[key].totalOutstanding += amount;
+        groups[key].amountCollecting += amount;
+        groups[key].credits.push(credit);
+      }
+    });
+
+    return Object.values(groups);
+  }, [allCustomerPendingCredits, collectedCredits]);
+
+  const visibleServices = useMemo(() => {
+    return services.filter((s: any) => !s.isCreditSettle);
+  }, [services]);
+
+  const visibleProducts = useMemo(() => {
+    return products.filter((p: any) => !p.isCreditSettle);
+  }, [products]);
+
+  const handleServicesChange = (newVisibleServices: ServiceRow[]) => {
+    setServices((prev) => {
+      const hidden = prev.filter((s: any) => s.isCreditSettle);
+      return [...hidden, ...newVisibleServices];
+    });
+  };
+
+  const handleProductsChange = (newVisibleProducts: ProductRow[]) => {
+    setProducts((prev) => {
+      const hidden = prev.filter((p: any) => p.isCreditSettle);
+      return [...hidden, ...newVisibleProducts];
+    });
+  };
+
+  const handleRemoveCollectedGroup = (groupCredits: CreditBalance[]) => {
+    const idsToRemove = groupCredits.map((c) => c.id).filter(Boolean) as string[];
+    setCollectedCredits((prev) => prev.filter((id) => !idsToRemove.includes(id)));
+    setServices((prev) => prev.filter((s: any) => !s.creditBalanceId || !idsToRemove.includes(s.creditBalanceId)));
+    setProducts((prev) => prev.filter((p: any) => !p.creditBalanceId || !idsToRemove.includes(p.creditBalanceId)));
+  };
+
   // Keep collectedCredits synced if the cashier deletes the Credit Settle row from either table
   useEffect(() => {
     const activeServiceCreditIds = services
@@ -1568,22 +1676,22 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
           )}
 
           {/* Outstanding Credit Warning Banner */}
-          {!loadingCredits && pendingCreditsToShow.length > 0 && (
+          {!loadingCredits && groupedCredits.length > 0 && (
             <div className="mt-4 rounded-2xl border border-amber-900/40 bg-amber-950/20 p-4 text-sm text-[#D4A935] space-y-2">
               <div className="flex items-center gap-2 font-bold text-amber-500">
                 <AlertCircle size={16} />
                 <span>Outstanding Credit Warning</span>
               </div>
               <div className="space-y-1.5 pl-6">
-                {pendingCreditsToShow.length === 1 ? (
+                {groupedCredits.length === 1 ? (
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <span>
-                      Customer has outstanding credit of <b>{formatCurrency(pendingCreditsToShow[0].remainingAmount !== undefined ? pendingCreditsToShow[0].remainingAmount : (pendingCreditsToShow[0].amount ?? 0))}</b> since{" "}
-                      <b>{new Date(pendingCreditsToShow[0].createdAt).toLocaleDateString()}</b> — Invoice #{pendingCreditsToShow[0].invoiceNumber}
+                      Customer has outstanding credit of <b>{formatCurrency(groupedCredits[0].remainingAmount)}</b> since{" "}
+                      <b>{new Date(groupedCredits[0].createdAt || groupedCredits[0].invoiceDate).toLocaleDateString()}</b> — Invoice #{groupedCredits[0].invoiceNumber}
                     </span>
                     <button
                       type="button"
-                      onClick={() => handleCollectCredit(pendingCreditsToShow[0])}
+                      onClick={() => handleCollectGroup(groupedCredits[0].credits)}
                       className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#B8962E] px-3 text-xs font-bold text-[#0E0D0B] hover:bg-[#D4A935] transition cursor-pointer shadow-sm"
                     >
                       <Wallet size={12} />
@@ -1594,7 +1702,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
                   <div>
                     <div className="flex items-center justify-between flex-wrap gap-2 font-semibold">
                       <span>
-                        Total Outstanding Credit: <b>{formatCurrency(pendingCreditsToShow.reduce((sum, c) => sum + (c.remainingAmount !== undefined ? c.remainingAmount : (c.amount ?? 0)), 0))}</b> ({pendingCreditsToShow.length} invoices)
+                        Total Outstanding Credit: <b>{formatCurrency(groupedCredits.reduce((sum, g) => sum + g.remainingAmount, 0))}</b> ({groupedCredits.length} invoices)
                       </span>
                       <button
                         type="button"
@@ -1602,24 +1710,31 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
                         className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#B8962E] px-3 text-xs font-bold text-[#0E0D0B] hover:bg-[#D4A935] transition cursor-pointer shadow-sm animate-pulse"
                       >
                         <Wallet size={12} />
-                        Collect All ({formatCurrency(pendingCreditsToShow.reduce((sum, c) => sum + (c.remainingAmount !== undefined ? c.remainingAmount : (c.amount ?? 0)), 0))})
+                        Collect All ({formatCurrency(groupedCredits.reduce((sum, g) => sum + g.remainingAmount, 0))})
                       </button>
                     </div>
                     <ul className="mt-2 space-y-1.5 border-t border-amber-900/20 pt-2 text-xs text-stone-400">
-                      {pendingCreditsToShow.map((credit) => (
-                        <li key={credit.id} className="flex items-center justify-between">
-                          <span>
-                            • {formatCurrency(credit.remainingAmount !== undefined ? credit.remainingAmount : (credit.amount ?? 0))} since {new Date(credit.createdAt).toLocaleDateString()} — {credit.invoiceNumber}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => handleCollectCredit(credit)}
-                            className="text-[10px] font-bold text-[#B8962E] hover:text-[#D4A935] underline cursor-pointer"
-                          >
-                            Collect
-                          </button>
-                        </li>
-                      ))}
+                      {groupedCredits.map((group) => {
+                        const dateStr = group.createdAt
+                          ? new Date(group.createdAt).toLocaleDateString()
+                          : group.invoiceDate
+                            ? new Date(group.invoiceDate).toLocaleDateString()
+                            : "—";
+                        return (
+                          <li key={group.invoiceId || group.invoiceNumber} className="flex items-center justify-between">
+                            <span>
+                              • {formatCurrency(group.remainingAmount)} since {dateStr} — {group.invoiceNumber}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleCollectGroup(group.credits)}
+                              className="text-[10px] font-bold text-[#B8962E] hover:text-[#D4A935] underline cursor-pointer"
+                            >
+                              Collect
+                            </button>
+                          </li>
+                        );
+                      })}
                     </ul>
                   </div>
                 )}
@@ -1628,13 +1743,65 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
           )}
 
           <BillingTable
-            rows={services}
-            onRowsChange={setServices}
+            rows={visibleServices}
+            onRowsChange={handleServicesChange}
             serviceOptions={mappedServicesList}
             staffOptions={staffOptions}
             serviceProductOptions={serviceProductOptions}
             disabled={saved}
           />
+
+          {/* Credit Settlement Section */}
+          {collectedCreditsGrouped.length > 0 && (
+            <section className="mt-6 rounded-2xl border border-[#2E2B24] bg-[#131210] p-5 shadow-sm text-[#A89F8C]">
+              <div className="flex items-center gap-2 mb-4 font-bold text-amber-500">
+                <Wallet size={16} />
+                <h2 className="text-sm uppercase tracking-wider">Credit Settlement</h2>
+              </div>
+              <div className="space-y-4">
+                {collectedCreditsGrouped.map((group) => {
+                  const dateStr = group.createdAt
+                    ? new Date(group.createdAt).toLocaleDateString()
+                    : group.originalBillDate
+                      ? new Date(group.originalBillDate).toLocaleDateString()
+                      : "—";
+
+                  return (
+                    <div
+                      key={group.invoiceNumber}
+                      className="rounded-xl border border-[#2E2B24] bg-[#0E0D0B] p-4 flex flex-col md:flex-row md:items-center justify-between gap-4"
+                    >
+                      <div className="grid gap-x-6 gap-y-2 grid-cols-2 md:grid-cols-4 flex-1">
+                        <div>
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-[#6B6358]">Invoice</span>
+                          <p className="text-sm font-semibold text-[#F5F0E8] mt-0.5">{group.invoiceNumber}</p>
+                        </div>
+                        <div>
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-[#6B6358]">Credit From</span>
+                          <p className="text-sm font-semibold text-[#F5F0E8] mt-0.5">{dateStr}</p>
+                        </div>
+                        <div>
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-[#6B6358]">Outstanding Credit</span>
+                          <p className="text-sm font-semibold text-amber-500 mt-0.5">{formatCurrency(group.totalOutstanding)}</p>
+                        </div>
+                        <div>
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-[#6B6358]">Amount Collecting</span>
+                          <p className="text-sm font-extrabold text-emerald-400 mt-0.5">{formatCurrency(group.amountCollecting)}</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveCollectedGroup(group.credits)}
+                        className="self-end md:self-auto rounded-xl border border-red-950 bg-red-950/20 px-4 py-2 text-xs font-semibold text-red-400 hover:bg-red-950/40 hover:text-red-300 transition cursor-pointer shadow-sm"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
 
           {/* Membership Sale Section */}
           <section className="mt-6 rounded-2xl border border-[#2E2B24] bg-[#131210] p-5 shadow-sm text-[#A89F8C]">
@@ -1696,8 +1863,8 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
           </section>
 
           <ProductTable
-            rows={products}
-            onRowsChange={setProducts}
+            rows={visibleProducts}
+            onRowsChange={handleProductsChange}
             productOptions={mappedProductsList}
             disabled={saved}
           />
