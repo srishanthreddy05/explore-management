@@ -314,4 +314,27 @@ export async function checkAndExpireMemberships(): Promise<Customer[]> {
   }
 }
 
+export async function searchByPhonePrefix(phonePrefix: string): Promise<Customer[]> {
+  try {
+    const q = query(
+      collection(db, COLLECTION_NAME),
+      where("phone", ">=", phonePrefix),
+      where("phone", "<=", phonePrefix + "\uf8ff"),
+      orderBy("phone", "asc")
+    );
+    const querySnapshot = await getDocs(q);
+    const customers: Customer[] = [];
+    querySnapshot.forEach((doc) => {
+      customers.push({
+        id: doc.id,
+        ...doc.data(),
+      } as Customer);
+    });
+    return customers;
+  } catch (error) {
+    console.error(`Error searching customers by phone prefix (${phonePrefix}) from Firestore:`, error);
+    throw error;
+  }
+}
+
 export { deleteCustomer as delete };

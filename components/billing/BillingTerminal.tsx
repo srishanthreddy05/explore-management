@@ -55,6 +55,13 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
   const [clientStatus, setClientStatus] = useState<"regular" | "membership" | "new" | null>(null);
   const [foundCustomerId, setFoundCustomerId] = useState<string | null>(null);
 
+  // Customer autocomplete states & refs
+  const [suggestions, setSuggestions] = useState<Customer[]>([]);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState(-1);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const isSelectingRef = useRef(false);
+
   const [invoiceNumberDisplay, setInvoiceNumberDisplay] = useState("Auto-assigned on save");
 
   const [dateString, setDateString] = useState(toLocalDateString(new Date()));
@@ -211,6 +218,91 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
     }
     return () => { active = false; };
   }, [customerMobile]);
+
+  // Click outside listener to close dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  // Debounced prefix search for autocomplete dropdown
+  useEffect(() => {
+    if (isSelectingRef.current) {
+      isSelectingRef.current = false;
+      return;
+    }
+
+    const trimmed = customerMobile.trim();
+    if (trimmed === GUEST_PHONE || trimmed.length < 4) {
+      setSuggestions([]);
+      setShowDropdown(false);
+      setSelectedIndex(-1);
+      return;
+    }
+
+    let active = true;
+    const delayDebounceFn = setTimeout(async () => {
+      try {
+        const results = await customerService.searchByPhonePrefix(trimmed);
+        if (!active) return;
+        if (results && results.length > 0) {
+          setSuggestions(results.slice(0, 8));
+          setShowDropdown(true);
+        } else {
+          setSuggestions([]);
+          setShowDropdown(false);
+        }
+        setSelectedIndex(-1);
+      } catch (err) {
+        console.error("Failed to query customer phone prefix:", err);
+      }
+    }, 250);
+
+    return () => {
+      active = false;
+      clearTimeout(delayDebounceFn);
+    };
+  }, [customerMobile]);
+
+  const handleSelectCustomer = (customer: Customer) => {
+    isSelectingRef.current = true;
+    setCustomerMobile(customer.phone);
+    setCustomerName(customer.name);
+    setFoundCustomerId(customer.id ?? null);
+    setSelectedCustomer(customer);
+    setClientStatus(customer.customerType as "regular" | "membership");
+    setShowDropdown(false);
+    setSuggestions([]);
+    setSelectedIndex(-1);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showDropdown || suggestions.length === 0) return;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setSelectedIndex((prev) => (prev + 1) % suggestions.length);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setSelectedIndex((prev) => (prev - 1 + suggestions.length) % suggestions.length);
+    } else if (e.key === "Enter") {
+      if (selectedIndex >= 0 && selectedIndex < suggestions.length) {
+        e.preventDefault();
+        handleSelectCustomer(suggestions[selectedIndex]);
+      }
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setShowDropdown(false);
+      setSelectedIndex(-1);
+    }
+  };
 
   // Fetch pending credit balances and advance balances when customer is selected
   useEffect(() => {
@@ -1152,6 +1244,9 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
     setCustomerMobile("");
     setClientStatus(null);
     setFoundCustomerId(null);
+    setSuggestions([]);
+    setShowDropdown(false);
+    setSelectedIndex(-1);
     setMessage(null);
     setSaved(false);
     setCashAmount("");
@@ -1341,22 +1436,51 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
                   type="button"
                   disabled={saved}
                   title="Customer didn't share number — use guest number"
-                  onClick={() => setCustomerMobile(GUEST_PHONE)}
+                  onClick={() => {
+                    isSelectingRef.current = true;
+                    setCustomerMobile(GUEST_PHONE);
+                  }}
                   className="flex items-center gap-1 rounded-lg border border-[#2E2B24] bg-[#131210] px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.1em] text-[#A89F8C] hover:border-[#B8962E] hover:text-[#B8962E] hover:bg-[#1F1A0F] transition disabled:opacity-50 disabled:pointer-events-none"
                 >
                   <UserX size={11} />
                   Guest #
                 </button>
               </div>
-              <input
-                required
-                type="text"
-                value={customerMobile}
-                disabled={saved}
-                onChange={(e) => setCustomerMobile(e.target.value)}
-                placeholder="Type phone number..."
-                className="mt-2 h-12 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-4 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E] focus:ring-1 focus:ring-[#B8962E] placeholder-[#6B6358] disabled:bg-stone-900 disabled:text-[#6B6358]"
-              />
+              <div ref={dropdownRef} className="relative mt-2">
+                <input
+                  required
+                  type="text"
+                  value={customerMobile}
+                  disabled={saved}
+                  onChange={(e) => setCustomerMobile(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  onFocus={() => {
+                    if (suggestions.length > 0) {
+                      setShowDropdown(true);
+                    }
+                  }}
+                  placeholder="Type phone number..."
+                  className="h-12 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-4 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E] focus:ring-1 focus:ring-[#B8962E] placeholder-[#6B6358] disabled:bg-stone-900 disabled:text-[#6B6358]"
+                />
+                {showDropdown && suggestions.length > 0 && (
+                  <ul className="absolute left-0 right-0 top-full z-50 mt-1 max-h-60 overflow-y-auto rounded-xl border border-[#2E2B24] bg-[#131210] py-1.5 shadow-lg select-none">
+                    {suggestions.map((customer, idx) => (
+                      <li
+                        key={customer.id}
+                        onClick={() => handleSelectCustomer(customer)}
+                        className={`flex items-center justify-between px-4 py-2.5 text-sm cursor-pointer transition ${
+                          idx === selectedIndex
+                            ? "bg-[#1F1A0F] text-[#B8962E]"
+                            : "text-[#A89F8C] hover:bg-[#1F1A0F] hover:text-[#B8962E]"
+                        }`}
+                      >
+                        <span className="font-mono">{customer.phone}</span>
+                        <span className="font-medium truncate max-w-[180px]">{customer.name}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
               {clientStatus && (
                 <div className="mt-2 flex justify-start">
                   <span
