@@ -409,6 +409,32 @@ function InvoiceRow({ invoice }: { invoice: Invoice }) {
           {formatCurrency(invoice.grandTotal)}
         </span>
       </td>
+      <td className="px-4 py-3.5 text-left">
+        {(() => {
+          const payments = getInvoicePayments(invoice);
+          const advance = invoice.advanceUsed || 0;
+          const collected = payments.cash + payments.upi + payments.card + advance;
+          const credit = Math.max(0, invoice.grandTotal - collected);
+
+          const breakdownItems = [
+            { label: "Cash", value: payments.cash },
+            { label: "UPI", value: payments.upi },
+            { label: "Card", value: payments.card },
+            { label: "Advance", value: advance },
+            { label: "Credit", value: credit },
+          ].filter((item) => item.value > 0.01);
+
+          return (
+            <div className="flex flex-col gap-0.5 max-w-[150px]">
+              {breakdownItems.map((item) => (
+                <div key={item.label} className="text-xs font-semibold leading-normal text-[#A89F8C]">
+                  <span className="text-[#6B6358]">{item.label}</span> - <span className="text-[#F5F0E8] font-bold">{formatCurrency(item.value)}</span>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
+      </td>
       <td className="px-4 py-3.5 text-right">
         <div className="flex justify-end gap-2 opacity-0 transition-opacity group-hover:opacity-100">
           <Link
@@ -1495,6 +1521,9 @@ export default function DashboardPage() {
                     <th className="px-4 py-3 text-right text-[10px] font-bold uppercase tracking-[0.2em] text-[#6B6358]">
                       Amount
                     </th>
+                    <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.2em] text-[#6B6358]">
+                      Payment Breakdown
+                    </th>
                     <th className="px-4 py-3 text-right text-[10px] font-bold uppercase tracking-[0.2em] text-[#6B6358]">
                       Actions
                     </th>
@@ -1504,7 +1533,7 @@ export default function DashboardPage() {
                   {filteredTodayInvoices.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={6}
+                        colSpan={7}
                         className="px-4 py-12 text-center text-sm text-[#6B6358]"
                       >
                         <div className="flex flex-col items-center gap-2">
