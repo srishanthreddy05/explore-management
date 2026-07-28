@@ -20,6 +20,7 @@ export default function PaymentsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<any | null>(null);
   const [collectAmount, setCollectAmount] = useState<number | "">("");
+  const [collectMethod, setCollectMethod] = useState<"cash" | "upi" | "card">("upi");
   const [collecting, setCollecting] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
@@ -84,6 +85,7 @@ export default function PaymentsPage() {
   const handleOpenCollect = (inv: any) => {
     setSelectedInvoice(inv);
     setCollectAmount(inv.balanceDue); // Default to full remaining balance
+    setCollectMethod("upi");
     setModalOpen(true);
     setMessage(null);
   };
@@ -103,15 +105,17 @@ export default function PaymentsPage() {
 
     setCollecting(true);
     try {
-      const nextReceived = (selectedInvoice.receivedAmount ?? 0) + amount;
-      const nextBalance = Math.max(selectedInvoice.balanceDue - amount, 0);
-      const nextStatus = nextBalance === 0 ? "paid" : "partial";
+      const paymentSplit = {
+        cash: collectMethod === "cash" ? amount : 0,
+        upi: collectMethod === "upi" ? amount : 0,
+        card: collectMethod === "card" ? amount : 0,
+      };
 
-      await invoicesService.update(selectedInvoice.id, {
-        receivedAmount: nextReceived,
-        balanceDue: nextBalance,
-        paymentStatus: nextStatus,
-      });
+      await invoicesService.collectCreditPayment(
+        selectedInvoice.id,
+        amount,
+        paymentSplit
+      );
 
       setMessage({
         type: "success",
@@ -308,6 +312,26 @@ export default function PaymentsPage() {
                   className="mt-2 h-11 w-full rounded-xl border border-[#2E2B24] bg-[#131210] px-4 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E]"
                 />
               </label>
+
+              <div className="space-y-1.5">
+                <span className="text-sm font-semibold text-[#A89F8C]">Payment Method</span>
+                <div className="grid grid-cols-3 gap-2 mt-2">
+                  {(["cash", "upi", "card"] as const).map((method) => (
+                    <button
+                      key={method}
+                      type="button"
+                      onClick={() => setCollectMethod(method)}
+                      className={`h-10 rounded-xl border text-xs font-bold uppercase tracking-wider transition ${
+                        collectMethod === method
+                          ? "border-[#B8962E] bg-[#B8962E]/10 text-[#D4A935]"
+                          : "border-[#2E2B24] bg-[#131210] text-[#A89F8C] hover:border-[#B8962E]/50 hover:text-[#F5F0E8]"
+                      }`}
+                    >
+                      {method === "cash" ? "💵 Cash" : method === "upi" ? "📱 UPI" : "💳 Card"}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
               <div className="flex gap-3 justify-end pt-2">
                 <button

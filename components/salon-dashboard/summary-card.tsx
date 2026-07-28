@@ -20,6 +20,10 @@ interface SummaryCardProps {
 
   // Feature 3: Advance balance application fields
   advanceApplied: number;
+
+  // Collected credits
+  totalCollectedCreditsAmount?: number;
+  amountToCollect?: number; // passed in from parent so both use the same value
 }
 
 export function SummaryCard({
@@ -32,6 +36,8 @@ export function SummaryCard({
   advanceToAdd,
   onAddAdvance,
   advanceApplied,
+  totalCollectedCreditsAmount = 0,
+  amountToCollect: amountToCollectProp,
 }: SummaryCardProps) {
   const handlePercentChange = (val: number | "") => {
     if (val === "") {
@@ -63,10 +69,11 @@ export function SummaryCard({
     0
   );
 
-  const amountToCollect = Math.max(0, grandTotal - advanceApplied);
+  // Total amount customer must pay = grand total + collected credits - advance
+  const totalAmountToCollect = amountToCollectProp ?? Math.max(0, grandTotal + totalCollectedCreditsAmount - advanceApplied);
 
-  // Overpayment calculations
-  const change = Math.max(0, (Number(amountPaid) || 0) - amountToCollect);
+  // Overpayment calculations — compare against FULL amount (invoice + credits)
+  const change = Math.max(0, (Number(amountPaid) || 0) - totalAmountToCollect);
   const isAdvanceSelected = change > 0 && advanceToAdd === change;
   const isChangeSelected = change > 0 && advanceToAdd === 0;
 
@@ -184,17 +191,41 @@ export function SummaryCard({
         </p>
       </div>
 
-      {/* Amount to Collect */}
-      {advanceApplied > 0 && (
+      {/* Collected Credits line */}
+      {totalCollectedCreditsAmount > 0 && (
+        <div className="mt-3 flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50/40 px-4 py-3">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-amber-700">Collected Credits</p>
+            <p className="text-xs text-amber-600 mt-0.5">Outstanding balance collected</p>
+          </div>
+          <p className="text-lg font-extrabold text-amber-700">+{formatCurrency(totalCollectedCreditsAmount)}</p>
+        </div>
+      )}
+
+      {/* Total Amount To Collect — only shown when credits are involved */}
+      {totalCollectedCreditsAmount > 0 && (
+        <div className="mt-3 rounded-2xl border-2 border-[#B8962E] bg-[#B8962E]/5 p-4">
+          <p className="text-[10px] uppercase tracking-[0.25em] text-[#8B6914] font-bold">Total Amount To Collect</p>
+          <p className="mt-1.5 text-3xl font-black tracking-tight text-[#5C4209]">
+            {formatCurrency(totalAmountToCollect)}
+          </p>
+          <p className="mt-1 text-[10px] text-[#8B6914] font-semibold">
+            Invoice ₹{grandTotal.toFixed(2)} + Credits ₹{totalCollectedCreditsAmount.toFixed(2)}{advanceApplied > 0 ? ` − Advance ₹${advanceApplied.toFixed(2)}` : ""}
+          </p>
+        </div>
+      )}
+
+      {/* Amount to Collect (advance-only case, no credits) */}
+      {advanceApplied > 0 && totalCollectedCreditsAmount === 0 && (
         <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50/30 p-4">
           <p className="text-xs uppercase tracking-[0.28em] text-emerald-700 font-bold">Amount to Collect</p>
-          {amountToCollect === 0 ? (
+          {totalAmountToCollect === 0 ? (
             <p className="mt-2 text-lg font-bold text-emerald-800">
               Fully covered by advance
             </p>
           ) : (
             <p className="mt-2 text-4xl font-bold tracking-tight text-emerald-900">
-              {formatCurrency(amountToCollect)}
+              {formatCurrency(totalAmountToCollect)}
             </p>
           )}
         </div>
@@ -208,7 +239,7 @@ export function SummaryCard({
             <span className="text-sm font-bold text-stone-400 pointer-events-none">₹</span>
             <ClearableNumberInput
               min="0"
-              placeholder={amountToCollect > 0 ? amountToCollect.toFixed(2) : "0.00"}
+              placeholder={totalAmountToCollect > 0 ? totalAmountToCollect.toFixed(2) : "0.00"}
               value={amountPaid}
               onChange={(val) => {
                 onChangeAmountPaid?.(val);

@@ -68,4 +68,16 @@ export interface Invoice {
     membershipStart: string;
     membershipEnd: string;
   } | null;
+
+  collectedCredits?: Array<{
+    originalInvoiceId: string;
+    originalInvoiceNumber: string;
+    collectedAmount: number;
+    paymentSplit?: {
+      cash: number;
+      upi: number;
+      card: number;
+    };
+    collectedAt: string;
+  }>;
 }

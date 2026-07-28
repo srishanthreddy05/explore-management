@@ -643,4 +643,99 @@ async function deleteInvoice(id: string): Promise<void> {
   }
 }
 
+export async function collectCreditPayment(
+  originalInvoiceId: string,
+  collectedAmount: number,
+  paymentSplit: { cash: number; upi: number; card: number }
+): Promise<void> {
+  try {
+    // 1. Fetch pending credit balance documents for this invoice
+    const q = query(
+      collection(db, "credit_balances"),
+      where("originalInvoiceId", "==", originalInvoiceId),
+      where("status", "==", "pending")
+    );
+    const creditsSnap = await getDocs(q);
+
+    // 2. Perform the update in a Firestore Transaction
+    await runTransaction(db, async (tx) => {
+      // 2a. Get original invoice
+      const invoiceRef = doc(db, COLLECTION, originalInvoiceId);
+      const invoiceSnap = await tx.get(invoiceRef);
+      if (!invoiceSnap.exists()) {
+        throw new Error(`Original invoice ${originalInvoiceId} not found`);
+      }
+      const oldInv = { id: originalInvoiceId, ...invoiceSnap.data() } as Invoice;
+
+      // 2b. Get the credit balance docs inside the transaction
+      const creditSnaps: any[] = [];
+      for (const creditDoc of creditsSnap.docs) {
+        const creditRef = doc(db, "credit_balances", creditDoc.id);
+        const creditSnap = await tx.get(creditRef);
+        if (creditSnap.exists()) {
+          creditSnaps.push({ ref: creditRef, snap: creditSnap });
+        }
+      }
+
+      // 2c. Update credit balances
+      let amountToDistribute = collectedAmount;
+      for (const { ref, snap } of creditSnaps) {
+        if (amountToDistribute <= 0) break;
+        const data = snap.data();
+        const currentRemaining = data.remainingAmount !== undefined ? data.remainingAmount : (data.amount ?? 0);
+        const deduct = Math.min(amountToDistribute, currentRemaining);
+        const newRemaining = Math.max(0, currentRemaining - deduct);
+        amountToDistribute -= deduct;
+
+        const isFullySettled = newRemaining <= 0;
+        
+        tx.update(ref, {
+          remainingAmount: newRemaining,
+          status: isFullySettled ? "settled" : "pending",
+          collectionStatus: isFullySettled ? "settled" : "partial",
+          collectedAmount: (data.collectedAmount ?? 0) + deduct,
+          settledAt: isFullySettled ? new Date().toISOString() : null,
+          updatedAt: new Date().toISOString(),
+        });
+      }
+
+      // 2d. Update the original invoice payment fields
+      const currentReceived = oldInv.receivedAmount ?? 0;
+      const currentBalance = oldInv.balanceDue ?? (oldInv.grandTotal - currentReceived);
+      const nextReceived = currentReceived + collectedAmount;
+      const nextBalance = Math.max(0, currentBalance - collectedAmount);
+      const nextStatus = nextBalance <= 0 ? "paid" : "partial";
+
+      const currentSplit = oldInv.paymentSplit || { cash: 0, upi: 0, card: 0 };
+      const updatedSplit = {
+        cash: (currentSplit.cash || 0) + (paymentSplit.cash || 0),
+        upi: (currentSplit.upi || 0) + (paymentSplit.upi || 0),
+        card: (currentSplit.card || 0) + (paymentSplit.card || 0),
+      };
+
+      const newInv = {
+        ...oldInv,
+        receivedAmount: nextReceived,
+        balanceDue: nextBalance,
+        paymentStatus: nextStatus,
+        paymentSplit: updatedSplit,
+      };
+
+      // 2e. Update daily/monthly statistics
+      applyStatsAndInventoryDiff(tx, oldInv, newInv);
+
+      // 2f. Write update to invoice
+      tx.update(invoiceRef, {
+        receivedAmount: nextReceived,
+        balanceDue: nextBalance,
+        paymentStatus: nextStatus,
+        paymentSplit: updatedSplit,
+      });
+    });
+  } catch (error) {
+    console.error("Error in collectCreditPayment transaction:", error);
+    throw error;
+  }
+}
+
 export { deleteInvoice as delete };

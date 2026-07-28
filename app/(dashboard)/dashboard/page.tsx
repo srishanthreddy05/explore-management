@@ -1115,27 +1115,34 @@ export default function DashboardPage() {
 
       const ratio = getInvoicePaymentRatio(inv);
 
+      // Read credit collections from the invoice.collectedCredits metadata array
+      const invCollectedCredits: any[] = (inv as any).collectedCredits || [];
+      invCollectedCredits.forEach((cc: any) => {
+        const amount = cc.collectedAmount || 0;
+        dayObj.collectedCredits.push({
+          originalBillDate: cc.collectedAt || todayStr,
+          originalInvoiceNumber: cc.originalInvoiceNumber || "",
+          collectionDate: todayStr,
+          collectionMethod: cc.paymentSplit
+            ? (cc.paymentSplit.cash > 0 && cc.paymentSplit.upi === 0 && cc.paymentSplit.card === 0 ? "CASH"
+              : cc.paymentSplit.upi > 0 && cc.paymentSplit.cash === 0 && cc.paymentSplit.card === 0 ? "UPI"
+              : cc.paymentSplit.card > 0 && cc.paymentSplit.cash === 0 && cc.paymentSplit.upi === 0 ? "CARD"
+              : "SPLIT")
+            : inv.paymentMethod || "UPI",
+          collectedBy: "System",
+          amount,
+          staffName: "System",
+          staffId: "system",
+          serviceOrProductName: `Credit Collected (Inv #${cc.originalInvoiceNumber || "?"})`,
+          type: "credit",
+        });
+        dayObj.ownerDirectRevenue += amount;
+        dayObj.totalOwnerShare += amount;
+      });
+
       (inv.products || []).forEach((p: any) => {
         const base = p.amount ?? Math.max((p.price || 0) * (p.quantity || 1) - (p.discount || 0), 0);
         const amount = base * discountFactor;
-
-        if (p.isCreditSettle) {
-          dayObj.collectedCredits.push({
-            originalBillDate: p.originalBillDate || "",
-            originalInvoiceNumber: p.originalInvoiceNumber || "",
-            collectionDate: p.collectionDate || todayStr,
-            collectionMethod: p.collectionMethod || inv.paymentMethod || "UPI",
-            collectedBy: p.collectedBy || "System",
-            amount: amount * ratio,
-            staffName: "System",
-            staffId: "system",
-            serviceOrProductName: p.productName || p.product || "Credit Settle (Product)",
-            type: "product",
-          });
-          dayObj.ownerDirectRevenue += amount * ratio;
-          dayObj.totalOwnerShare += amount * ratio;
-          return;
-        }
 
         dayObj.retailProductsRevenue += amount * ratio;
         dayObj.totalOwnerShare += amount * ratio;
@@ -1156,66 +1163,6 @@ export default function DashboardPage() {
         if (s.serviceId === "membership_fee") {
           dayObj.totalMembershipAmount += amount * ratio;
           dayObj.totalOwnerShare += amount * ratio;
-          return;
-        }
-
-        if (s.isCreditSettle) {
-          dayObj.collectedCredits.push({
-            originalBillDate: s.originalBillDate || "",
-            originalInvoiceNumber: s.originalInvoiceNumber || "",
-            collectionDate: s.collectionDate || todayStr,
-            collectionMethod: s.collectionMethod || inv.paymentMethod || "UPI",
-            collectedBy: s.collectedBy || "System",
-            amount: amount * ratio,
-            staffName,
-            staffId,
-            serviceOrProductName: s.serviceName || s.service || "Credit Settle",
-            type: "service",
-          });
-
-          const key = staffId !== "unassigned" ? staffId : staffName;
-          if (!dayObj.staffDetails[key]) {
-            dayObj.staffDetails[key] = {
-              staffId,
-              name: staffName,
-              role,
-              serviceRevenue: 0,
-              productCost: 0,
-              staffShare: 0,
-              ownerShareContribution: 0,
-              collectedCredits: [],
-              collectedCreditsShare: 0,
-            };
-          }
-          const sd = dayObj.staffDetails[key];
-          if (!sd.collectedCredits) {
-            sd.collectedCredits = [];
-            sd.collectedCreditsShare = 0;
-          }
-
-          sd.collectedCredits.push({
-            originalBillDate: s.originalBillDate || "",
-            originalInvoiceNumber: s.originalInvoiceNumber || "",
-            collectionDate: s.collectionDate || todayStr,
-            collectionMethod: s.collectionMethod || inv.paymentMethod || "UPI",
-            collectedBy: s.collectedBy || "System",
-            amount: amount * ratio,
-            serviceOrProductName: s.serviceName || s.service || "Credit Settle",
-            type: "service",
-          });
-
-          if (role === "Owner") {
-            dayObj.ownerDirectRevenue += amount * ratio;
-            dayObj.totalOwnerShare += amount * ratio;
-            sd.ownerShareContribution += amount * ratio;
-          } else {
-            const staffShare = 0.5 * amount; // no product cost for credit settle
-            const ownerShare = 0.5 * amount;
-            dayObj.totalOwnerShare += ownerShare * ratio;
-            dayObj.staffRevenueContribution += 0.5 * amount * ratio;
-            sd.collectedCreditsShare = (sd.collectedCreditsShare || 0) + staffShare * ratio;
-            sd.ownerShareContribution += ownerShare * ratio;
-          }
           return;
         }
 
