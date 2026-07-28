@@ -6,63 +6,41 @@ import { Wallet, Sparkles, User, Calendar } from "lucide-react";
 import { formatCurrency } from "@/components/salon-dashboard/types";
 import { db } from "@/lib/firebase";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
+import type { CreditBalance } from "@/types/creditBalance";
 import Link from "next/link";
 
 export default function CreditTracker() {
-  const [pendingCredits, setPendingCredits] = useState<any[]>([]);
+  const [pendingCredits, setPendingCredits] = useState<CreditBalance[]>([]);
   const [loading, setLoading] = useState(true);
   const [isOpen, setIsOpen] = useState(false);
   const [dropdownPos, setDropdownPos] = useState({ top: 0, right: 0 });
   const buttonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    // Real-time Firestore listener for unpaid/partially paid invoices
+    // NEW ARCHITECTURE: Real-time listener on credit_balances where status == "pending"
+    // One document per invoice — no grouping needed.
     const q = query(
-      collection(db, "invoices"),
-      where("paymentStatus", "in", ["unpaid", "partial"])
+      collection(db, "credit_balances"),
+      where("status", "==", "pending")
     );
 
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
-        const list: any[] = [];
+        const list: CreditBalance[] = [];
         snapshot.forEach((doc) => {
-          const invoice = doc.data();
-          const paymentSplit = invoice.paymentSplit || {};
-          const paymentStatus = invoice.paymentStatus || "paid";
-
-          const cashPaid = paymentSplit.cash ?? (invoice.paymentMethod === "Cash" ? invoice.grandTotal : 0);
-          const upiPaid = paymentSplit.upi ?? (invoice.paymentMethod === "UPI" ? invoice.grandTotal : 0);
-          const cardPaid = paymentSplit.card ?? (invoice.paymentMethod === "Card" ? invoice.grandTotal : 0);
-          
-          const totalPaid = paymentStatus === "unpaid"
-            ? 0
-            : paymentStatus === "paid"
-              ? ((cashPaid || 0) + (upiPaid || 0) + (cardPaid || 0) || invoice.grandTotal)
-              : ((cashPaid || 0) + (upiPaid || 0) + (cardPaid || 0));
-
-          const outstanding = invoice.grandTotal - totalPaid;
-
-          if (outstanding > 0) {
-            list.push({
-              id: doc.id,
-              ...invoice,
-              totalPaid,
-              outstanding,
-            });
+          const data = doc.data() as Omit<CreditBalance, "id">;
+          // Only include records that still have a positive remaining amount
+          if ((data.remainingAmount ?? 0) > 0) {
+            list.push({ id: doc.id, ...data });
           }
         });
-        
-        // Sort by invoice date descending client-side
+
+        // Sort by original bill date descending
         list.sort((a, b) => {
-          const getVal = (x: any) => {
-            const ts = x.invoiceDate || x.createdAt || x.date;
-            if (!ts) return 0;
-            if (ts.toMillis) return ts.toMillis();
-            if (ts instanceof Date) return ts.getTime();
-            if (typeof ts === "string") return new Date(ts).getTime();
-            if (typeof ts.seconds === "number") return ts.seconds * 1000;
-            return 0;
+          const getVal = (x: CreditBalance) => {
+            const d = x.originalBillDate || x.createdAt || "";
+            return d ? new Date(d).getTime() : 0;
           };
           return getVal(b) - getVal(a);
         });
@@ -71,7 +49,7 @@ export default function CreditTracker() {
         setLoading(false);
       },
       (error) => {
-        console.error("Error listening to unpaid invoices:", error);
+        console.error("Error listening to credit_balances:", error);
         setLoading(false);
       }
     );
@@ -168,16 +146,13 @@ export default function CreditTracker() {
                   <p className="text-[10px] text-stone-400 mt-0.5">All customer payments are settled.</p>
                 </div>
               ) : (
-                pendingCredits.map((invoice) => {
-                  const paymentStatus = invoice.paymentStatus || "paid";
-                  const dateObj =
-                    invoice.invoiceDate && typeof invoice.invoiceDate.toDate === "function"
-                      ? invoice.invoiceDate.toDate()
-                      : invoice.createdAt && typeof invoice.createdAt.toDate === "function"
-                        ? invoice.createdAt.toDate()
-                        : invoice.date && typeof invoice.date.toDate === "function"
-                          ? invoice.date.toDate()
-                          : null;
+                pendingCredits.map((credit) => {
+                  // Parse the original bill date
+                  const dateObj = credit.originalBillDate
+                    ? new Date(credit.originalBillDate)
+                    : credit.createdAt
+                      ? new Date(credit.createdAt)
+                      : null;
                   const creditDate = dateObj
                     ? dateObj.toLocaleDateString(undefined, {
                         month: "short",
@@ -186,9 +161,16 @@ export default function CreditTracker() {
                       })
                     : "—";
 
+                  // collectionStatus badge
+                  const statusLabel = credit.collectionStatus === "partial" ? "PARTIAL" : "UNPAID";
+                  const statusClass =
+                    credit.collectionStatus === "partial"
+                      ? "bg-amber-50 text-amber-700 border-amber-100"
+                      : "bg-red-50 text-red-700 border-red-100";
+
                   return (
                     <div
-                      key={invoice.id}
+                      key={credit.id}
                       className="flex flex-col gap-2.5 p-3.5 bg-stone-50 border border-stone-150 rounded-2xl text-xs text-stone-700"
                     >
                       {/* Top Row: Customer Name & Status */}
@@ -198,17 +180,13 @@ export default function CreditTracker() {
                             <User size={13} />
                           </div>
                           <span className="font-bold text-stone-900 truncate block">
-                            {invoice.customerName}
+                            {credit.customerName}
                           </span>
                         </div>
                         <span
-                          className={`inline-block rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-wider border select-none shrink-0 ${
-                            paymentStatus === "unpaid"
-                              ? "bg-red-50 text-red-700 border-red-100"
-                              : "bg-amber-50 text-amber-700 border-amber-100"
-                          }`}
+                          className={`inline-block rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-wider border select-none shrink-0 ${statusClass}`}
                         >
-                          {paymentStatus === "unpaid" ? "UNPAID" : "PARTIAL"}
+                          {statusLabel}
                         </span>
                       </div>
 
@@ -216,7 +194,7 @@ export default function CreditTracker() {
                       <div className="flex items-center justify-between text-[11px] text-stone-500 font-medium px-0.5">
                         <div className="flex items-center gap-1">
                           <span className="text-[10px] bg-stone-200/60 px-1.5 py-0.5 rounded font-bold text-stone-700">
-                            {invoice.invoiceNumber || invoice.invoiceNo}
+                            {credit.originalInvoiceNumber || credit.invoiceNumber || "—"}
                           </span>
                         </div>
                         <div className="flex items-center gap-1">
@@ -225,32 +203,32 @@ export default function CreditTracker() {
                         </div>
                       </div>
 
-                      {/* Financials Row */}
+                      {/* Financials Row — reads remainingAmount directly, no recalculation */}
                       <div className="grid grid-cols-3 gap-2.5 bg-white border border-stone-100 p-2.5 rounded-xl text-center text-[10px] text-stone-500 font-semibold shadow-sm">
                         <div className="flex flex-col gap-0.5">
                           <span className="text-stone-400">Total</span>
                           <span className="font-bold text-stone-800 text-[11px]">
-                            {formatCurrency(invoice.grandTotal)}
+                            {formatCurrency(credit.creditAmount)}
                           </span>
                         </div>
                         <div className="flex flex-col gap-0.5 border-x border-stone-100">
                           <span className="text-stone-400">Paid</span>
                           <span className="font-bold text-stone-800 text-[11px]">
-                            {formatCurrency(invoice.totalPaid)}
+                            {formatCurrency(credit.creditAmount - credit.remainingAmount)}
                           </span>
                         </div>
                         <div className="flex flex-col gap-0.5">
                           <span className="text-amber-700 font-bold">Due</span>
                           <span className="font-black text-amber-700 text-[11px]">
-                            {formatCurrency(invoice.outstanding)}
+                            {formatCurrency(credit.remainingAmount)}
                           </span>
                         </div>
                       </div>
 
-                      {/* Action Button */}
+                      {/* Action Button — links to the original invoice for collection */}
                       <div className="flex justify-end mt-0.5">
                         <Link
-                          href={`/billing?edit=${invoice.id}`}
+                          href={`/billing?edit=${credit.originalInvoiceId || credit.invoiceId}`}
                           onClick={() => setIsOpen(false)}
                           className="inline-flex h-9 w-full items-center justify-center rounded-xl bg-[#B8962E] hover:bg-[#D4A935] px-4 text-xs font-black uppercase tracking-wider text-[#0E0D0B] shadow-sm hover:shadow transition shrink-0 cursor-pointer"
                         >

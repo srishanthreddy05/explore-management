@@ -244,7 +244,7 @@ export async function checkAndExpireMemberships(): Promise<Customer[]> {
     );
     const snap = await getDocs(q);
     const expiredCustomers: Customer[] = [];
-    
+
     if (!snap.empty) {
       const batch = writeBatch(db);
       let expiredCount = 0;
@@ -252,7 +252,7 @@ export async function checkAndExpireMemberships(): Promise<Customer[]> {
       for (const docSnap of snap.docs) {
         const id = docSnap.id;
         const data = docSnap.data() as Customer;
-        
+
         // 1. Queue customer update in batch
         const docRef = doc(db, COLLECTION_NAME, id);
         batch.update(docRef, {
@@ -262,7 +262,7 @@ export async function checkAndExpireMemberships(): Promise<Customer[]> {
           membershipStart: null,
           membershipEnd: null,
         });
-        
+
         // 2. Queue notification in batch
         const notifRef = doc(collection(db, "notifications"));
         batch.set(notifRef, {
@@ -272,7 +272,7 @@ export async function checkAndExpireMemberships(): Promise<Customer[]> {
           read: false,
           createdAt: new Date().toISOString(),
         });
-        
+
         expiredCustomers.push({
           id,
           ...data,
@@ -301,12 +301,12 @@ export async function checkAndExpireMemberships(): Promise<Customer[]> {
 
       await batch.commit();
     }
-    
+
     if (typeof window !== "undefined") {
       const todayStr = new Date().toISOString().split("T")[0];
       localStorage.setItem("lastMembershipExpiryCheck", todayStr);
     }
-    
+
     return expiredCustomers;
   } catch (error) {
     console.error("Error checking and expiring memberships:", error);
@@ -333,6 +333,35 @@ export async function searchByPhonePrefix(phonePrefix: string): Promise<Customer
     return customers;
   } catch (error) {
     console.error(`Error searching customers by phone prefix (${phonePrefix}) from Firestore:`, error);
+    throw error;
+  }
+}
+
+export async function searchByNamePrefix(namePrefix: string): Promise<Customer[]> {
+  try {
+    // Names are always stored in Title Case (see create/update above), so
+    // normalize the search prefix the same way before doing the range query.
+    // This lets us query the existing "name" field directly — no extra
+    // "nameLower" field or data migration required.
+    const normalizedPrefix = toTitleCase(namePrefix);
+
+    const q = query(
+      collection(db, COLLECTION_NAME),
+      where("name", ">=", normalizedPrefix),
+      where("name", "<=", normalizedPrefix + "\uf8ff"),
+      orderBy("name", "asc")
+    );
+    const querySnapshot = await getDocs(q);
+    const customers: Customer[] = [];
+    querySnapshot.forEach((doc) => {
+      customers.push({
+        id: doc.id,
+        ...doc.data(),
+      } as Customer);
+    });
+    return customers;
+  } catch (error) {
+    console.error(`Error searching customers by name prefix (${namePrefix}) from Firestore:`, error);
     throw error;
   }
 }

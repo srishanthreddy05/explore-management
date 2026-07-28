@@ -55,12 +55,19 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
   const [clientStatus, setClientStatus] = useState<"regular" | "membership" | "new" | null>(null);
   const [foundCustomerId, setFoundCustomerId] = useState<string | null>(null);
 
-  // Customer autocomplete states & refs
+  // Customer autocomplete states & refs (phone search)
   const [suggestions, setSuggestions] = useState<Customer[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const isSelectingRef = useRef(false);
+
+  // Customer autocomplete states & refs (name search)
+  const [nameSuggestions, setNameSuggestions] = useState<Customer[]>([]);
+  const [showNameDropdown, setShowNameDropdown] = useState(false);
+  const [selectedNameIndex, setSelectedNameIndex] = useState(-1);
+  const nameDropdownRef = useRef<HTMLDivElement>(null);
+  const isSelectingNameRef = useRef(false);
 
   const [invoiceNumberDisplay, setInvoiceNumberDisplay] = useState("Auto-assigned on save");
 
@@ -123,7 +130,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
             setClientStatus(inv.customerType || null);
             setFoundCustomerId(inv.customerId || null);
             setInvoiceNumberDisplay(inv.invoiceNumber || "");
-            
+
             setDateString(toLocalDateString(inv.date));
 
             if (inv.membership) {
@@ -165,7 +172,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
             setCashAmount(payments.cash !== undefined ? payments.cash : "");
             setUpiAmount(payments.upi !== undefined ? payments.upi : "");
             setCardAmount(payments.card !== undefined ? payments.card : "");
-            
+
             const isSplit = (payments.cash > 0 && (payments.upi > 0 || payments.card > 0)) || (payments.upi > 0 && payments.card > 0);
             setIsSplitEdited(isSplit || inv.paymentMethod === "Split");
             setIsAmountPaidEdited(true);
@@ -219,11 +226,14 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
     return () => { active = false; };
   }, [customerMobile]);
 
-  // Click outside listener to close dropdown
+  // Click outside listener to close dropdowns (phone + name)
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setShowDropdown(false);
+      }
+      if (nameDropdownRef.current && !nameDropdownRef.current.contains(event.target as Node)) {
+        setShowNameDropdown(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -232,7 +242,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
     };
   }, []);
 
-  // Debounced prefix search for autocomplete dropdown
+  // Debounced prefix search for phone autocomplete dropdown
   useEffect(() => {
     if (isSelectingRef.current) {
       isSelectingRef.current = false;
@@ -271,8 +281,48 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
     };
   }, [customerMobile]);
 
+  // Debounced prefix search for name autocomplete dropdown
+  useEffect(() => {
+    if (isSelectingNameRef.current) {
+      isSelectingNameRef.current = false;
+      return;
+    }
+
+    const trimmed = customerName.trim();
+    if (trimmed.length < 2 || trimmed === GUEST_NAME) {
+      setNameSuggestions([]);
+      setShowNameDropdown(false);
+      setSelectedNameIndex(-1);
+      return;
+    }
+
+    let active = true;
+    const delayDebounceFn = setTimeout(async () => {
+      try {
+        const results = await customerService.searchByNamePrefix(trimmed);
+        if (!active) return;
+        if (results && results.length > 0) {
+          setNameSuggestions(results.slice(0, 8));
+          setShowNameDropdown(true);
+        } else {
+          setNameSuggestions([]);
+          setShowNameDropdown(false);
+        }
+        setSelectedNameIndex(-1);
+      } catch (err) {
+        console.error("Failed to query customer name prefix:", err);
+      }
+    }, 250);
+
+    return () => {
+      active = false;
+      clearTimeout(delayDebounceFn);
+    };
+  }, [customerName]);
+
   const handleSelectCustomer = (customer: Customer) => {
     isSelectingRef.current = true;
+    isSelectingNameRef.current = true;
     setCustomerMobile(customer.phone);
     setCustomerName(customer.name);
     setFoundCustomerId(customer.id ?? null);
@@ -281,6 +331,9 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
     setShowDropdown(false);
     setSuggestions([]);
     setSelectedIndex(-1);
+    setShowNameDropdown(false);
+    setNameSuggestions([]);
+    setSelectedNameIndex(-1);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -301,6 +354,27 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
       e.preventDefault();
       setShowDropdown(false);
       setSelectedIndex(-1);
+    }
+  };
+
+  const handleNameKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showNameDropdown || nameSuggestions.length === 0) return;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setSelectedNameIndex((prev) => (prev + 1) % nameSuggestions.length);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setSelectedNameIndex((prev) => (prev - 1 + nameSuggestions.length) % nameSuggestions.length);
+    } else if (e.key === "Enter") {
+      if (selectedNameIndex >= 0 && selectedNameIndex < nameSuggestions.length) {
+        e.preventDefault();
+        handleSelectCustomer(nameSuggestions[selectedNameIndex]);
+      }
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setShowNameDropdown(false);
+      setSelectedNameIndex(-1);
     }
   };
 
@@ -545,7 +619,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
     const memAmount = addMembership ? (parseFloat(membershipAmount) || 0) : 0;
     const serviceTotal = rawServiceTotal + memAmount;
     const productTotal = products.reduce((sum, p) => sum + Math.max((Number(p.price) || 0) * (Number(p.quantity) || 1), 0), 0);
-    
+
     // billDiscount applies ONLY to rawServiceTotal
     const discountedServiceTotal = Math.max(rawServiceTotal - billDiscount, 0) + memAmount;
     const subtotal = discountedServiceTotal + productTotal;
@@ -669,7 +743,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
   const totalPaid = cashVal + upiVal + cardVal;
   const paymentDiff = amountToCollect - totalPaid;
   const change = Math.max(0, (Number(amountPaid) || 0) - amountToCollect);
-  
+
   // Reset advanceToAdd if change becomes 0
   useEffect(() => {
     if (change === 0) {
@@ -686,9 +760,9 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
 
   // Sync amountPaid with totalPaid if splits are edited and totalPaid exceeds amountToCollect
   useEffect(() => {
-    const totalPaid = (cashAmount === "" ? 0 : Number(cashAmount)) + 
-                      (upiAmount === "" ? 0 : Number(upiAmount)) + 
-                      (cardAmount === "" ? 0 : Number(cardAmount));
+    const totalPaid = (cashAmount === "" ? 0 : Number(cashAmount)) +
+      (upiAmount === "" ? 0 : Number(upiAmount)) +
+      (cardAmount === "" ? 0 : Number(cardAmount));
     if (totalPaid > amountToCollect) {
       setAmountPaid(totalPaid);
       setIsAmountPaidEdited(true);
@@ -784,11 +858,11 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
 
       // Step 1: Resolve or create customer
       let customerId = foundCustomerId;
-      let resolvedCustomerType: "regular" | "membership" | "new" = 
+      let resolvedCustomerType: "regular" | "membership" | "new" =
         addMembership ? "membership" : (clientStatus ?? "new");
 
       const isGuestPhone = customerMobile.trim() === GUEST_PHONE;
-      const isGuestName = customerName.trim() === GUEST_NAME || 
+      const isGuestName = customerName.trim() === GUEST_NAME ||
         customerName.trim() === "";
 
       if (isGuestPhone || isGuestName) {
@@ -864,7 +938,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
           allocated.cash = Math.round(totalSplit.cash * factor * 100) / 100;
           allocated.upi = Math.round(totalSplit.upi * factor * 100) / 100;
           allocated.card = Math.round(totalSplit.card * factor * 100) / 100;
-          
+
           const allocatedTotal = allocated.cash + allocated.upi + allocated.card;
           const diff = Math.round((targetAmount - allocatedTotal) * 100) / 100;
           if (diff !== 0) {
@@ -921,18 +995,18 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
 
       const newInvoiceTotal = totals.grandTotal - advanceApplied;
       const invoicePaymentMethod = savedCash === newInvoiceTotal && newInvoiceTotal > 0
-        ? "Cash" 
+        ? "Cash"
         : savedUpi === newInvoiceTotal && newInvoiceTotal > 0
-          ? "UPI" 
+          ? "UPI"
           : savedCard === newInvoiceTotal && newInvoiceTotal > 0
-            ? "Card" 
+            ? "Card"
             : "Split";
 
       const rawServiceTotal = services
         .reduce((sum, s) => sum + Math.max((Number(s.price) || 0) - (Number(s.discount) || 0), 0), 0);
-      
-      const serviceBillDiscountFactor = rawServiceTotal > 0 
-        ? Math.max(rawServiceTotal - billDiscount, 0) / rawServiceTotal 
+
+      const serviceBillDiscountFactor = rawServiceTotal > 0
+        ? Math.max(rawServiceTotal - billDiscount, 0) / rawServiceTotal
         : 1;
 
       const enrichedServices = services.map((row: any) => {
@@ -1044,13 +1118,13 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
 
           appliedOffer: selectedOffer
             ? {
-                offerId: selectedOffer.id ?? "",
-                code: selectedOffer.code,
-                name: selectedOffer.name,
-                discountType: selectedOffer.discountType,
-                discountValue: selectedOffer.discountValue,
-                discountAmount: totals.offerDiscount,
-              }
+              offerId: selectedOffer.id ?? "",
+              code: selectedOffer.code,
+              name: selectedOffer.name,
+              discountType: selectedOffer.discountType,
+              discountValue: selectedOffer.discountValue,
+              discountAmount: totals.offerDiscount,
+            }
             : null as any,
 
           advanceAdded: advanceToAdd,
@@ -1213,7 +1287,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
         setMessage({ type: "success", text: `Invoice ${msgNum} saved locally — will sync when online!` });
       }
 
-      let successMsg = isOnline 
+      let successMsg = isOnline
         ? `Invoice ${msgNum} saved successfully!`
         : `Invoice ${msgNum} saved locally — will sync when online!`;
 
@@ -1267,6 +1341,9 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
     setSuggestions([]);
     setShowDropdown(false);
     setSelectedIndex(-1);
+    setNameSuggestions([]);
+    setShowNameDropdown(false);
+    setSelectedNameIndex(-1);
     setMessage(null);
     setSaved(false);
     setCashAmount("");
@@ -1488,11 +1565,10 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
                       <li
                         key={customer.id}
                         onClick={() => handleSelectCustomer(customer)}
-                        className={`flex items-center justify-between px-4 py-2.5 text-sm cursor-pointer transition ${
-                          idx === selectedIndex
+                        className={`flex items-center justify-between px-4 py-2.5 text-sm cursor-pointer transition ${idx === selectedIndex
                             ? "bg-[#1F1A0F] text-[#B8962E]"
                             : "text-[#A89F8C] hover:bg-[#1F1A0F] hover:text-[#B8962E]"
-                        }`}
+                          }`}
                       >
                         <span className="font-mono">{customer.phone}</span>
                         <span className="font-medium truncate max-w-[180px]">{customer.name}</span>
@@ -1535,15 +1611,40 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
                   Guest Name
                 </button>
               </div>
-              <input
-                required
-                type="text"
-                value={customerName}
-                disabled={saved}
-                onChange={(e) => setCustomerName(e.target.value)}
-                placeholder="Enter customer name..."
-                className="mt-2 h-12 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-4 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E] focus:ring-1 focus:ring-[#B8962E] placeholder-[#6B6358] disabled:bg-stone-900 disabled:text-[#6B6358]"
-              />
+              <div ref={nameDropdownRef} className="relative mt-2">
+                <input
+                  required
+                  type="text"
+                  value={customerName}
+                  disabled={saved}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  onKeyDown={handleNameKeyDown}
+                  onFocus={() => {
+                    if (nameSuggestions.length > 0) {
+                      setShowNameDropdown(true);
+                    }
+                  }}
+                  placeholder="Enter customer name..."
+                  className="h-12 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-4 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E] focus:ring-1 focus:ring-[#B8962E] placeholder-[#6B6358] disabled:bg-stone-900 disabled:text-[#6B6358]"
+                />
+                {showNameDropdown && nameSuggestions.length > 0 && (
+                  <ul className="absolute left-0 right-0 top-full z-50 mt-1 max-h-60 overflow-y-auto rounded-xl border border-[#2E2B24] bg-[#131210] py-1.5 shadow-lg select-none">
+                    {nameSuggestions.map((customer, idx) => (
+                      <li
+                        key={customer.id}
+                        onClick={() => handleSelectCustomer(customer)}
+                        className={`flex items-center justify-between px-4 py-2.5 text-sm cursor-pointer transition ${idx === selectedNameIndex
+                            ? "bg-[#1F1A0F] text-[#B8962E]"
+                            : "text-[#A89F8C] hover:bg-[#1F1A0F] hover:text-[#B8962E]"
+                          }`}
+                      >
+                        <span className="font-medium truncate max-w-[180px]">{customer.name}</span>
+                        <span className="font-mono">{customer.phone}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </div>
           </div>
 
