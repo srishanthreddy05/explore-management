@@ -109,3 +109,12 @@ textarea:focus {
   color: #F5F0E8;
   outline: none;
 }
+
+/* Make the native month picker/calendar icon visible on dark backgrounds */
+input[type="month"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(2);
+}
+
+input[type="month"]::-moz-focus-inner {
+  border: 0;
+}

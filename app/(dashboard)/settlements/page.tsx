@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import * as invoicesService from "@/services/invoices";
 import * as expensesService from "@/services/expenses";
 import * as staffDrawingsService from "@/services/staffDrawings";
@@ -147,6 +147,7 @@ function MetricCard({
   icon: Icon,
   variant = "default",
   isHorizontal = false,
+  periodLabel = "This Month",
 }: {
   title: string;
   today: number;
@@ -154,6 +155,7 @@ function MetricCard({
   icon: React.ElementType;
   variant?: "default" | "danger" | "owner";
   isHorizontal?: boolean;
+  periodLabel?: string;
 }) {
   const variants = {
     default: {
@@ -211,7 +213,7 @@ function MetricCard({
             </div>
             <div className="sm:border-l sm:border-[#2E2B24] sm:pl-12">
               <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#6B6358]">
-                This Month
+                {periodLabel}
               </span>
               <p className={`mt-1 text-2xl font-black ${v.monthlyColor}`}>
                 {formatCurrency(monthly)}
@@ -246,7 +248,7 @@ function MetricCard({
         </div>
         <div>
           <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#6B6358]">
-            This Month
+            {periodLabel}
           </span>
           <p className={`mt-1 text-lg font-black ${v.monthlyColor}`}>
             {formatCurrency(monthly)}
@@ -257,14 +259,171 @@ function MetricCard({
   );
 }
 
+function MonthPicker({
+  selectedMonth,
+  onApplyRange,
+}: {
+  selectedMonth: string; // YYYY-MM
+  onApplyRange: (from: string, to: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [month, setMonth] = useState(selectedMonth);
+  const [pendingYear, setPendingYear] = useState<number>(() => Number(selectedMonth.split("-")[0] || new Date().getFullYear()));
+  const [pendingMonthIndex, setPendingMonthIndex] = useState<number>(() => Number(selectedMonth.split("-")[1] || (new Date().getMonth() + 1)) - 1);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+
+  useEffect(() => setMonth(selectedMonth), [selectedMonth]);
+  useEffect(() => {
+    // sync pending selection when selectedMonth prop changes
+    const parts = selectedMonth.split("-");
+    const y = Number(parts[0]) || new Date().getFullYear();
+    const m = Number(parts[1]) || new Date().getMonth() + 1;
+    setPendingYear(y);
+    setPendingMonthIndex(m - 1);
+    setMonth(selectedMonth);
+  }, [selectedMonth]);
+
+  const apply = () => {
+    const y = pendingYear;
+    const m = pendingMonthIndex + 1;
+    const monthStr = `${y}-${String(m).padStart(2, "0")}`;
+    const first = `${monthStr}-01`;
+    const lastDay = new Date(y, m, 0).getDate();
+    const last = `${monthStr}-${String(lastDay).padStart(2, "0")}`;
+    // update visible label
+    setMonth(monthStr);
+    onApplyRange(first, last);
+    setOpen(false);
+  };
+
+  const label = (() => {
+    try {
+      const parts = month.split("-");
+      const d = new Date(Number(parts[0]), Number(parts[1]) - 1, 1);
+      return format(d, "MMM, yyyy");
+    } catch {
+      return month;
+    }
+  })();
+  const months = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ];
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <button
+        onClick={() => setOpen((s) => !s)}
+        className="flex items-center gap-3 rounded-xl border border-[#2E2B24] bg-[#131210] px-4 py-2 shadow-sm hover:shadow-md transition"
+        aria-expanded={open}
+      >
+        <Calendar size={16} className="text-[#F5F0E8]" />
+        <div className="text-left">
+          <div className="text-sm font-semibold text-[#F5F0E8]">{label}</div>
+          <div className="text-[10px] text-[#6B6358]">month</div>
+        </div>
+        <div className="ml-2 text-[#6B6358]">▾</div>
+      </button>
+
+      {open && (
+        <div className="absolute right-0 mt-2 w-[300px] rounded-lg border border-[#2E2B24] bg-[#0E0D0B] p-4 shadow-xl z-50">
+          <div className="mb-3 flex items-center justify-between">
+            <div className="text-[10px] text-[#6B6358]">Select Month</div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPendingYear((y) => y - 1)}
+                className="rounded-md px-2 py-1 text-xs text-[#6B6358] hover:text-[#F5F0E8]"
+                aria-label="Previous year"
+              >
+                ◀
+              </button>
+              <div className="text-sm font-semibold text-[#F5F0E8]">{pendingYear}</div>
+              <button
+                onClick={() => setPendingYear((y) => y + 1)}
+                className="rounded-md px-2 py-1 text-xs text-[#6B6358] hover:text-[#F5F0E8]"
+                aria-label="Next year"
+              >
+                ▶
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2">
+            {months.map((m, i) => {
+              const isSelected = i === pendingMonthIndex;
+              return (
+                <button
+                  key={m}
+                  onClick={() => setPendingMonthIndex(i)}
+                  className={`rounded-md py-2 text-sm font-semibold transition ${
+                    isSelected
+                      ? "bg-[#B8962E] text-[#0E0D0B]"
+                      : "bg-[#131210] text-[#F5F0E8] hover:bg-[#1C1A16]"
+                  }`}
+                  aria-pressed={isSelected}
+                >
+                  {m}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-4 flex justify-end gap-2">
+            <button
+              onClick={() => {
+                // Cancel: restore displayed month to previously applied value
+                const parts = selectedMonth.split("-");
+                const y = Number(parts[0]) || new Date().getFullYear();
+                const m = Number(parts[1]) || new Date().getMonth() + 1;
+                setPendingYear(y);
+                setPendingMonthIndex(m - 1);
+                setMonth(selectedMonth);
+                setOpen(false);
+              }}
+              className="rounded-md px-3 py-1 text-xs text-[#6B6358] hover:text-[#F5F0E8]"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={apply}
+              className="rounded-md bg-[#B8962E] px-3 py-1 text-xs font-extrabold text-[#0E0D0B] hover:bg-[#D4A935]"
+            >
+              Apply
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function StaffSplitCard({
   member,
   drawings,
   onRefreshDrawings,
+  periodLabel = "This Month",
 }: {
   member: StaffSplit;
   drawings: staffDrawingsService.StaffDrawing[];
   onRefreshDrawings: () => void;
+  periodLabel?: string;
 }) {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(true);
@@ -353,7 +512,7 @@ function StaffSplitCard({
           </div>
           <div>
             <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#6B6358]">
-              This Month
+              {periodLabel}
             </span>
             <p className={`mt-1 text-lg font-black ${monthlyColor}`}>
               {formatCurrency(member.monthlyShare)}
@@ -369,7 +528,7 @@ function StaffSplitCard({
                 Add New Drawing
               </span>
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-[9px] font-bold uppercase text-[#6B6358]">Amount</label>
                 <input
@@ -428,12 +587,12 @@ function StaffSplitCard({
 
       {/* Collapsible Drawings Section */}
       <div className="mt-4 border-t border-[#2E2B24]/40 pt-3">
-        <button
+          <button
           onClick={() => setIsCollapsed(!isCollapsed)}
           className="flex w-full items-center justify-between text-left"
         >
           <span className="text-[10px] font-bold uppercase tracking-wider text-[#6B6358] hover:text-[#A89F8C] transition-colors flex items-center gap-1">
-            Drawings this month
+            {periodLabel === "This Month" ? "Drawings this month" : `Drawings (${periodLabel})`}
             {drawings.length > 0 && (
               <span className="rounded-full bg-[#E57373]/10 px-1.5 py-0.5 text-[9px] font-bold text-[#E57373]">
                 {drawings.length}
@@ -966,15 +1125,42 @@ export default function SettlementsPage() {
   const [monthlyStaffShares, setMonthlyStaffShares] = useState<Record<string, number>>({});
   const [staffDrawings, setStaffDrawings] = useState<Record<string, staffDrawingsService.StaffDrawing[]>>({});
 
-  const fetchDrawings = useCallback(async () => {
-    const loadNow = new Date();
-    const yyyy = loadNow.getFullYear();
-    const mm = String(loadNow.getMonth() + 1).padStart(2, "0");
-    const monthKey = `${yyyy}-${mm}`;
+  const now = new Date();
+  const [dateFrom, setDateFrom] = useState(
+    toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1))
+  );
+  const [dateTo, setDateTo] = useState(toLocalDateString(now));
+  // Temporary input states to avoid fetching while typing
+  const [dateInputFrom, setDateInputFrom] = useState(dateFrom);
+  const [dateInputTo, setDateInputTo] = useState(dateTo);
+  const applyDateRange = useCallback((from?: string, to?: string) => {
+    const f = from ?? dateInputFrom;
+    const t = to ?? dateInputTo;
+    if (!f || !t) return;
+    // simple validation
+    const sf = new Date(f + "T00:00:00");
+    const st = new Date(t + "T23:59:59");
+    if (isNaN(sf.getTime()) || isNaN(st.getTime())) return;
+    setDateFrom(f);
+    setDateTo(t);
+  }, [dateInputFrom, dateInputTo]);
+  const todayStr = useMemo(() => toLocalDateString(new Date()), []);
+  const isFullCurrentMonth = useMemo(() => {
+    const firstOfMonth = toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1));
+    const lastOfMonth = toLocalDateString(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+    return dateFrom === firstOfMonth && dateTo === lastOfMonth;
+  }, [dateFrom, dateTo, now]);
+  const periodLabel = isFullCurrentMonth ? "This Month" : "Selected Period";
+
+  const fetchDrawings = useCallback(async (from?: string, to?: string) => {
     try {
+      // default to current date range
+      const start = from || dateFrom;
+      const end = to || dateTo;
       const q = query(
         collection(db, "staffDrawings"),
-        where("month", "==", monthKey)
+        where("date", ">=", start),
+        where("date", "<=", end)
       );
       const snap = await getDocs(q);
       const map: Record<string, staffDrawingsService.StaffDrawing[]> = {};
@@ -993,7 +1179,7 @@ export default function SettlementsPage() {
     } catch (err) {
       console.error("Failed to fetch staff drawings:", err);
     }
-  }, []);
+  }, [dateFrom, dateTo]);
   const [monthlyStatsTotals, setMonthlyStatsTotals] = useState({
     ownerShare: 0,
     membershipAmount: 0,
@@ -1003,14 +1189,9 @@ export default function SettlementsPage() {
   const [loadingDays, setLoadingDays] = useState<Record<string, boolean>>({});
   const [syncing, setSyncing] = useState(false);
   const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [monthlyExpenses, setMonthlyExpenses] = useState<Expense[]>([]);
+  
 
-  const now = new Date();
-  const [dateFrom, setDateFrom] = useState(
-    toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1))
-  );
-  const [dateTo, setDateTo] = useState(toLocalDateString(now));
-  const todayStr = useMemo(() => toLocalDateString(new Date()), []);
+  
 
   // ── Sync Handler ───────────────────────────────────────────────────────
 
@@ -1191,66 +1372,52 @@ export default function SettlementsPage() {
           console.error("Failed to load today's invoices:", err);
         }
 
-        const loadNow = new Date();
-        const yyyy = loadNow.getFullYear();
-        const mm = String(loadNow.getMonth() + 1).padStart(2, "0");
-        const monthKey = `${yyyy}-${mm}`;
+        // Compute staff shares from invoices inside selected range
+        try {
+          const invQuery = query(
+            collection(db, "invoices"),
+            where("dateKey", ">=", dateFrom),
+            where("dateKey", "<=", dateTo)
+          );
+          const invSnap = await getDocs(invQuery);
+          const staffAgg: Record<string, { revenue: number; productCost: number }> = {};
+          invSnap.forEach((doc) => {
+            const inv = doc.data() as any;
+            const discountFactor = inv.subtotal > 0 ? inv.grandTotal / inv.subtotal : 1;
+            const services = inv.services || [];
+            services.forEach((s: any) => {
+              const staffId = s.staffId || "unassigned";
+              const serviceBaseAmount = s.amount ?? Math.max((s.price || 0) - (s.discount || 0), 0);
+              const amount = serviceBaseAmount * discountFactor;
+              const cost = s.usedProductCost || 0;
+              if (!staffAgg[staffId]) staffAgg[staffId] = { revenue: 0, productCost: 0 };
+              staffAgg[staffId].revenue += amount;
+              staffAgg[staffId].productCost += cost;
+            });
+          });
+          const sharesMap: Record<string, number> = {};
+          Object.entries(staffAgg).forEach(([sId, v]) => {
+            sharesMap[sId] = 0.5 * v.revenue - v.productCost;
+          });
+          setMonthlyStaffShares(sharesMap);
+        } catch (err) {
+          console.error("Failed to compute staff shares from invoices:", err);
+          setMonthlyStaffShares({});
+        }
 
-        const stylistStaff = staff.filter(
-          (st) =>
-            st.role !== "Owner" && st.id !== "system" && st.name !== "System"
-        );
+        // Fetch drawings for the selected range
+        await fetchDrawings(dateFrom, dateTo);
 
-        const sharesMap: Record<string, number> = {};
-        await Promise.all(
-          stylistStaff.map(async (member) => {
-            if (!member.id) return;
-            try {
-              const staffDocRef = doc(
-                db,
-                "stats",
-                `staff_${member.id}_${monthKey}`
-              );
-              const snap = await getDoc(staffDocRef);
-              if (snap.exists()) {
-                const data = snap.data();
-                const revenue = data.revenue || 0;
-                const productCost = data.productCost || 0;
-                sharesMap[member.id] = 0.5 * revenue - productCost;
-              } else {
-                sharesMap[member.id] = 0;
-              }
-            } catch (err) {
-              console.error(
-                `Error loading monthly share for staff ${member.id}:`,
-                err
-              );
-              sharesMap[member.id] = 0;
-            }
-          })
-        );
-        setMonthlyStaffShares(sharesMap);
-        await fetchDrawings();
-
-        const monthlyDailyQuery = query(
-          collection(db, "stats"),
-          where("dateKey", ">=", `${monthKey}-01`),
-          where("dateKey", "<=", `${monthKey}-31`)
-        );
-        const monthlyDailySnap = await getDocs(monthlyDailyQuery);
+        // Compute aggregated totals for the selected range from daily stats map
         let mOwnerShare = 0;
         let mMembershipAmount = 0;
         let mRetailProductsRevenue = 0;
         let mProductsReturned = 0;
-
-        monthlyDailySnap.forEach((d) => {
-          const data = d.data();
-          if (data.dateKey && data.dateKey.startsWith(monthKey)) {
-            mOwnerShare += data.ownerShare || 0;
-            mMembershipAmount += data.totalMembershipAmount || 0;
-            mRetailProductsRevenue += data.retailProductsRevenue || 0;
-            mProductsReturned += data.productCost || 0;
-          }
+        Object.values(statsMap).forEach((data: any) => {
+          mOwnerShare += data.ownerShare || 0;
+          mMembershipAmount += data.totalMembershipAmount || 0;
+          mRetailProductsRevenue += data.retailProductsRevenue || 0;
+          mProductsReturned += data.productCost || 0;
         });
 
         setMonthlyStatsTotals({
@@ -1271,29 +1438,7 @@ export default function SettlementsPage() {
           console.error("Failed to load range expenses:", err);
         }
 
-        try {
-          const startOfMonth = new Date(
-            loadNow.getFullYear(),
-            loadNow.getMonth(),
-            1
-          );
-          const endOfMonth = new Date(
-            loadNow.getFullYear(),
-            loadNow.getMonth() + 1,
-            0,
-            23,
-            59,
-            59,
-            999
-          );
-          const monthlyExpensesData = await expensesService.getByDateRange(
-            startOfMonth,
-            endOfMonth
-          );
-          setMonthlyExpenses(monthlyExpensesData);
-        } catch (err) {
-          console.error("Failed to load monthly expenses:", err);
-        }
+        // no monthly expenses fetch — use selected-range expenses (above)
       } catch (err) {
         console.error("Failed to load settlements data:", err);
       } finally {
@@ -1316,17 +1461,17 @@ export default function SettlementsPage() {
   }, [expenses]);
 
   const todayDailyExpenses = useMemo(() => {
-    const todayStr = toLocalDateString(new Date());
-    return monthlyExpenses
-      .filter((e) => e.type === "daily" && e.date === todayStr)
+    const todayStrLocal = toLocalDateString(new Date());
+    return expenses
+      .filter((e) => e.type === "daily" && e.date === todayStrLocal)
       .reduce((sum, e) => sum + e.amount, 0);
-  }, [monthlyExpenses]);
+  }, [expenses]);
 
-  const monthDailyExpenses = useMemo(() => {
-    return monthlyExpenses
+  const selectedPeriodDailyExpenses = useMemo(() => {
+    return expenses
       .filter((e) => e.type === "daily")
       .reduce((sum, e) => sum + e.amount, 0);
-  }, [monthlyExpenses]);
+  }, [expenses]);
 
   const dateList = useMemo(() => {
     const dates: string[] = [];
@@ -1605,27 +1750,15 @@ export default function SettlementsPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
-          {/* Date Selector */}
-          <div className="flex items-center gap-2 rounded-xl border border-[#2E2B24] bg-[#131210] px-3 py-2">
-            <Calendar size={14} className="text-[#6B6358]" />
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              className="h-8 rounded-lg border border-[#2E2B24] bg-[#131210] px-2.5 text-xs font-semibold text-[#F5F0E8] outline-none focus:border-[#B8962E] transition"
+          <div className="flex items-center gap-3">
+            <MonthPicker
+              selectedMonth={dateInputFrom.slice(0, 7)}
+              onApplyRange={(from, to) => {
+                setDateInputFrom(from);
+                setDateInputTo(to);
+                applyDateRange(from, to);
+              }}
             />
-            <span className="text-[10px] font-bold text-[#6B6358] uppercase tracking-wider">
-              to
-            </span>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              className="h-8 rounded-lg border border-[#2E2B24] bg-[#131210] px-2.5 text-xs font-semibold text-[#F5F0E8] outline-none focus:border-[#B8962E] transition"
-            />
-          </div>
-
           <button
             onClick={handleSyncStats}
             disabled={syncing}
@@ -1652,10 +1785,11 @@ export default function SettlementsPage() {
           <MetricCard
             title="Owner Settlement"
             today={todayMetrics.ownerShare - todayDailyExpenses}
-            monthly={monthlyStatsTotals.ownerShare - monthDailyExpenses}
+            monthly={monthlyStatsTotals.ownerShare - selectedPeriodDailyExpenses}
             icon={ShieldCheck}
             variant="owner"
             isHorizontal={true}
+            periodLabel={periodLabel}
           />
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {staffSplits.map((member) => (
@@ -1663,7 +1797,8 @@ export default function SettlementsPage() {
                 key={member.id}
                 member={member}
                 drawings={member.id ? staffDrawings[member.id] || [] : []}
-                onRefreshDrawings={fetchDrawings}
+                onRefreshDrawings={() => fetchDrawings(dateFrom, dateTo)}
+                periodLabel={periodLabel}
               />
             ))}
           </div>
@@ -1684,25 +1819,29 @@ export default function SettlementsPage() {
             today={todayMetrics.membershipAmount}
             monthly={monthlyStatsTotals.membershipAmount}
             icon={PiggyBank}
+            periodLabel={periodLabel}
           />
           <MetricCard
             title="Retail Product Sales"
             today={todayMetrics.retailProductsRevenue}
             monthly={monthlyStatsTotals.retailProductsRevenue}
             icon={Package}
+            periodLabel={periodLabel}
           />
           <MetricCard
             title="Products Returned"
             today={todayMetrics.productsReturned}
             monthly={monthlyStatsTotals.productsReturned}
             icon={Package}
+            periodLabel={periodLabel}
           />
           <MetricCard
             title="Daily Expenses"
             today={todayDailyExpenses}
-            monthly={monthDailyExpenses}
+            monthly={selectedPeriodDailyExpenses}
             icon={TrendingUp}
             variant="danger"
+            periodLabel={periodLabel}
           />
         </div>
       </section>
