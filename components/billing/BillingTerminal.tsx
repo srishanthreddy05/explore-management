@@ -112,6 +112,40 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
   const [showMembershipWarning, setShowMembershipWarning] = useState(false);
   const [warningExpiryDate, setWarningExpiryDate] = useState("");
 
+  // Edit Audit States
+  const [initialFormSnapshot, setInitialFormSnapshot] = useState<string | null>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editStaffId, setEditStaffId] = useState("");
+  const [editReason, setEditReason] = useState("");
+  const [pendingUpdatePayload, setPendingUpdatePayload] = useState<any>(null);
+  const [originalEditHistory, setOriginalEditHistory] = useState<any[]>([]);
+
+  const getFormSnapshot = () => {
+    return JSON.stringify({
+      customerName,
+      customerMobile,
+      dateString,
+      services,
+      products,
+      cashAmount,
+      upiAmount,
+      cardAmount,
+      markAsCredit,
+      selectedOfferId,
+      billDiscount,
+      addMembership,
+      membershipAmount,
+      membershipDuration,
+      membershipStart
+    });
+  };
+
+  const resetPaymentAmounts = () => {
+    setCashAmount("");
+    setUpiAmount("");
+    setCardAmount("");
+  };
+
   const calculateMembershipEnd = (start: string, months: number): string => {
     const d = new Date(start);
     d.setMonth(d.getMonth() + months);
@@ -182,6 +216,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
             }
             setBillDiscount(inv.billDiscount || 0);
             setBillDiscountPercent(inv.billDiscountPercent || 0);
+            setOriginalEditHistory(inv.editHistory || []);
           }
         } catch (error) {
           console.error("Failed to fetch invoice for edit:", error);
@@ -193,6 +228,16 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
       fetchInvoiceForEdit();
     }
   }, [editInvoiceId]);
+
+  useEffect(() => {
+    if (editInvoiceId && !loadingInvoice && !initialFormSnapshot) {
+      // Small timeout to ensure state has flushed
+      const t = setTimeout(() => {
+        setInitialFormSnapshot(getFormSnapshot());
+      }, 100);
+      return () => clearTimeout(t);
+    }
+  }, [loadingInvoice, editInvoiceId, initialFormSnapshot]);
 
   // Customer lookup by phone
   useEffect(() => {
@@ -515,10 +560,41 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
   }, [products]);
 
   const handleServicesChange = (newVisibleServices: ServiceRow[]) => {
+    let totalsChanged = services.length !== newVisibleServices.length;
+    if (!totalsChanged) {
+      for (let i = 0; i < services.length; i++) {
+        if (
+          services[i].price !== newVisibleServices[i].price ||
+          services[i].discount !== newVisibleServices[i].discount
+        ) {
+          totalsChanged = true;
+          break;
+        }
+      }
+    }
+    if (totalsChanged) {
+      resetPaymentAmounts();
+    }
     setServices(newVisibleServices);
   };
 
   const handleProductsChange = (newVisibleProducts: ProductRow[]) => {
+    let totalsChanged = products.length !== newVisibleProducts.length;
+    if (!totalsChanged) {
+      for (let i = 0; i < products.length; i++) {
+        if (
+          products[i].price !== newVisibleProducts[i].price ||
+          products[i].quantity !== newVisibleProducts[i].quantity ||
+          products[i].discount !== newVisibleProducts[i].discount
+        ) {
+          totalsChanged = true;
+          break;
+        }
+      }
+    }
+    if (totalsChanged) {
+      resetPaymentAmounts();
+    }
     setProducts(newVisibleProducts);
   };
 
@@ -825,6 +901,11 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
       return;
     }
 
+    if (services.some((s) => !s.staff || s.staff.trim() === "")) {
+      setMessage({ type: "error", text: "Please select staff for all services." });
+      return;
+    }
+
     if (addMembership) {
       if (memAmount <= 0) {
         setMessage({ type: "error", text: "Please enter a valid membership amount." });
@@ -1096,7 +1177,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
           ? ((totalPaid + advanceApplied) === 0 ? "unpaid" : "partial")
           : "paid";
 
-        await invoicesService.update(editInvoiceId, {
+        const updatePayload: any = {
           customerId,
           customerName: customerName.trim(),
           customerPhone: customerMobile.trim(),
@@ -1149,7 +1230,41 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
             membershipStart: new Date(membershipStart).toISOString(),
             membershipEnd: calculateMembershipEnd(membershipStart, parseInt(membershipDuration) || 0),
           } : null
-        });
+        };
+
+        const currentSnapshot = getFormSnapshot();
+        if (currentSnapshot === initialFormSnapshot) {
+          setMessage({ type: "success", text: "No changes made to invoice." });
+          setSaved(true);
+          setSaving(false);
+          if (onSuccess) {
+            setTimeout(() => {
+              onSuccess();
+            }, 1000);
+          }
+          return;
+        }
+
+        if (!pendingUpdatePayload) {
+          setPendingUpdatePayload(updatePayload);
+          setShowEditModal(true);
+          setSaving(false);
+          return;
+        }
+
+        // If we reach here, pendingUpdatePayload is set AND the modal was confirmed
+        const staffNameStr = staffList.find(s => s.id === editStaffId)?.name || "Unknown";
+        updatePayload.editHistory = [
+          ...originalEditHistory,
+          {
+            editedAt: new Date().toISOString(),
+            editedByStaffId: editStaffId,
+            editedByStaffName: staffNameStr,
+            reason: editReason.trim()
+          }
+        ];
+
+        await invoicesService.update(editInvoiceId, updatePayload);
       } else {
         const invoicePaymentStatus = markAsCredit
           ? ((totalPaid + advanceApplied) === 0 ? "unpaid" : "partial")
@@ -1946,6 +2061,9 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
             billDiscount={billDiscount}
             billDiscountPercent={billDiscountPercent}
             onChangeDiscount={(val, percent) => {
+              if (billDiscount !== val || billDiscountPercent !== percent) {
+                resetPaymentAmounts();
+              }
               setBillDiscount(val);
               setBillDiscountPercent(percent);
             }}
@@ -2081,6 +2199,68 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
           </section>
         </aside>
       </div>
+      {showEditModal && (
+        <div className="fixed inset-0 z-[10100] flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/85 backdrop-blur-sm" />
+          <div className="relative w-full max-w-md rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-6 shadow-2xl text-[#F5F0E8]">
+            <h3 className="text-xl font-bold mb-4 text-center">Confirm Invoice Edit</h3>
+            <p className="text-sm text-[#A89F8C] mb-6 text-center">
+              Please provide a reason for editing this invoice and select your name.
+            </p>
+            <div className="space-y-4">
+              <label className="block">
+                <span className="text-sm font-semibold text-[#A89F8C]">Who is editing this invoice?</span>
+                <select
+                  value={editStaffId}
+                  onChange={(e) => setEditStaffId(e.target.value)}
+                  className="mt-1.5 h-10 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-3 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E] transition"
+                >
+                  <option value="">Select Staff ▼</option>
+                  {staffList.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="text-sm font-semibold text-[#A89F8C]">Reason for editing:</span>
+                <textarea
+                  value={editReason}
+                  onChange={(e) => setEditReason(e.target.value)}
+                  placeholder="e.g. Corrected service amount..."
+                  className="mt-1.5 min-h-[80px] w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] p-3 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E] transition resize-y"
+                />
+              </label>
+            </div>
+            <div className="mt-6 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowEditModal(false);
+                  setPendingUpdatePayload(null);
+                }}
+                className="h-11 flex-1 rounded-xl border border-[#2E2B24] bg-[#131210] font-semibold text-[#A89F8C] transition hover:bg-[#1C1A16] hover:text-[#F5F0E8]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!editStaffId || !editReason.trim()}
+                onClick={async () => {
+                  if (!editStaffId) return alert("Please select who is editing this invoice.");
+                  if (!editReason.trim()) return alert("Please provide a reason for editing this invoice.");
+                  setShowEditModal(false);
+                  setSaving(true);
+                  // Call handleSaveBill again; it will bypass modal since pendingUpdatePayload is set
+                  await handleSaveBill();
+                }}
+                className="h-11 flex-1 rounded-xl bg-[#B8962E] font-bold text-[#0E0D0B] transition hover:bg-[#D4A935] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Save Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {showMembershipWarning && (
         <div className="fixed inset-0 z-[10100] flex items-center justify-center p-4">
           <div className="fixed inset-0 bg-black/85 backdrop-blur-sm" />

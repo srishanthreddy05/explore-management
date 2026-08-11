@@ -80,4 +80,12 @@ export interface Invoice {
     };
     collectedAt: string;
   }>;
+
+  // ── Audit ─────────────────────────────────────────────────────────────────
+  editHistory?: Array<{
+    editedAt: string;
+    editedByStaffId: string;
+    editedByStaffName: string;
+    reason: string;
+  }>;
 }

@@ -5,11 +5,14 @@ import * as invoicesService from "@/services/invoices";
 import { formatCurrency } from "@/components/salon-dashboard/types";
 import { ChevronLeft, Receipt, Send, Tag, Edit2 } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 
-export default function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
+function InvoiceDetailContent({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const returnTo = searchParams.get("returnTo") || "/invoices";
   const [invoice, setInvoice] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -22,7 +25,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
           setInvoice(data);
         } else {
           alert("Invoice not found!");
-          router.push("/invoices");
+          router.push(returnTo);
         }
       } catch (error) {
         console.error("Failed to load invoice details:", error);
@@ -159,7 +162,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-3">
           <Link
-            href="/invoices"
+            href={returnTo}
             className="grid size-10 place-items-center rounded-xl border border-[#2E2B24] bg-[#131210] text-[#A89F8C] hover:text-[#B8962E] hover:border-[#B8962E] transition"
           >
             <ChevronLeft size={18} />
@@ -172,7 +175,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
         {/* Action Buttons */}
         <div className="flex items-center gap-3">
           <Link
-            href={`/billing?edit=${invoice.id}`}
+            href={`/billing?edit=${invoice.id}&returnTo=${encodeURIComponent(returnTo)}`}
             className="inline-flex h-11 items-center gap-2 rounded-xl border border-[#2E2B24] bg-[#131210] px-5 text-sm font-semibold text-[#B8962E] hover:text-[#D4A935] hover:border-[#B8962E] transition shadow-md"
           >
             <Edit2 size={16} />
@@ -372,6 +375,35 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
               </div>
             </section>
           )}
+
+          {/* Edit History */}
+          {invoice.editHistory && invoice.editHistory.length > 0 && (
+            <section className="mt-8 border-t border-[#2E2B24] pt-6">
+              <h2 className="text-lg font-bold text-[#F5F0E8] mb-4 flex items-center gap-2">
+                <span className="text-[#D4A935]">⚠</span> Invoice Edit History
+              </h2>
+              <div className="space-y-4">
+                {[...invoice.editHistory].reverse().map((edit: any, idx: number) => {
+                  const d = new Date(edit.editedAt);
+                  return (
+                    <div key={idx} className="rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-4 shadow-sm text-sm">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-semibold text-[#F5F0E8]">Edited by: {edit.editedByStaffName}</span>
+                        <span className="text-[#A89F8C] text-xs font-medium">
+                          {d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })},{" "}
+                          {d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true })}
+                        </span>
+                      </div>
+                      <div className="mt-2 text-[#F5F0E8] bg-[#0E0D0B] rounded-xl p-3 border border-[#2E2B24]">
+                        <span className="text-[#A89F8C] font-semibold text-xs uppercase tracking-wider block mb-1">Reason:</span>
+                        <p>{edit.reason}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
         </section>
 
         {/* Right Column: Totals Summary, Offer if applied, Payment split info */}
@@ -498,5 +530,13 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
         </aside>
       </div>
     </div>
+  );
+}
+
+export default function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  return (
+    <Suspense fallback={<div className="flex h-[40vh] items-center justify-center"><div className="size-10 animate-spin rounded-full border-4 border-black border-t-transparent" /></div>}>
+      <InvoiceDetailContent params={params} />
+    </Suspense>
   );
 }

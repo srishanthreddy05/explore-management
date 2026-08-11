@@ -29,14 +29,7 @@ export function BillingTable({
   const [mounted, setMounted] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Redesign flow states
   const [selectedServices, setSelectedServices] = useState<{ name: string; price: number; category?: string }[]>([]);
-  const [showProductDialog, setShowProductDialog] = useState(false);
-  const [assignedProducts, setAssignedProducts] = useState<({ id: string; name: string; noOfServings: number } | null)[]>([]);
-
-  // Staff Assignment redesign states
-  const [showStaffDialog, setShowStaffDialog] = useState(false);
-  const [assignedStaff, setAssignedStaff] = useState<string[]>([]);
 
   useEffect(() => {
     setMounted(true);
@@ -76,79 +69,23 @@ export function BillingTable({
       setShowModal(false);
       return;
     }
-    setAssignedProducts(new Array(selectedServices.length).fill(null));
-    setAssignedStaff(new Array(selectedServices.length).fill(""));
-    setShowModal(false);
-    setShowStaffDialog(true);
-  };
-
-  const handleSelectProduct = (index: number, product: { id: string; name: string; noOfServings: number } | null) => {
-    setAssignedProducts((prev) => {
-      const next = [...prev];
-      next[index] = product;
-      return next;
-    });
-  };
-
-  const handleProductBack = () => {
-    setShowProductDialog(false);
-    setShowStaffDialog(true);
-  };
-
-  const handleSelectStaff = (index: number, staffName: string) => {
-    setAssignedStaff((prev) => {
-      const next = [...prev];
-      next[index] = staffName;
-      return next;
-    });
-  };
-
-  const handleStaffBack = () => {
-    setShowStaffDialog(false);
-    setShowModal(true);
-  };
-
-  const handleStaffContinue = () => {
-    setShowStaffDialog(false);
-    setShowProductDialog(true);
-  };
-
-  const handleProductAndStaffFinish = () => {
     const newRows = selectedServices.map((svc, index) => {
-      const assignedProd = assignedProducts[index];
-      const assignedStf = assignedStaff[index] || "";
       return {
         id: Math.max(0, ...rows.map((row) => row.id)) + index + 1,
         service: svc.name,
-        staff: assignedStf,
+        staff: "",
         price: svc.price,
         quantity: 1,
         discount: 0,
-        usedProductId: assignedProd?.id || undefined,
-        usedProductName: assignedProd?.name || undefined,
+        usedProductId: undefined,
+        usedProductName: undefined,
       };
     });
     onRowsChange([...rows, ...newRows]);
 
     // Close and reset states
-    setShowProductDialog(false);
     setSelectedServices([]);
-    setAssignedProducts([]);
-    setAssignedStaff([]);
-  };
-
-  const handleCancelProductDialog = () => {
-    setShowProductDialog(false);
-    setSelectedServices([]);
-    setAssignedProducts([]);
-    setAssignedStaff([]);
-  };
-
-  const handleCancelStaffDialog = () => {
-    setShowStaffDialog(false);
-    setSelectedServices([]);
-    setAssignedProducts([]);
-    setAssignedStaff([]);
+    setShowModal(false);
   };
 
   const categories = ["All", ...Array.from(new Set(serviceOptions.map((s) => s.category || "General")))];
@@ -445,215 +382,6 @@ export function BillingTable({
                   Done
                 </button>
               </div>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
-
-      {/* Guided Staff Assignment dialog */}
-      {showStaffDialog && mounted && createPortal(
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm" onClick={handleCancelStaffDialog} />
-          <div className="relative w-full max-w-2xl rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-6 shadow-2xl text-[#F5F0E8] flex flex-col max-h-[85vh]">
-            <button
-              onClick={handleCancelStaffDialog}
-              className="absolute top-4 right-4 text-[#A89F8C] hover:text-[#B8962E] transition"
-            >
-              <X size={20} />
-            </button>
-
-            <div className="mb-4">
-              <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#B8962E]">
-                Staff Assignment
-              </span>
-              <h2 className="text-lg font-bold text-[#F5F0E8] mt-1">
-                Assign staff to all selected services
-              </h2>
-            </div>
-
-            <div className="flex-1 overflow-y-auto space-y-6 pr-1 py-2 divide-y divide-[#2E2B24]">
-              {selectedServices.map((svc, serviceIndex) => (
-                <div key={serviceIndex} className={serviceIndex > 0 ? "pt-6" : ""}>
-                  <div className="flex flex-col">
-                    <p className="text-base font-extrabold text-[#F5F0E8]">
-                      {svc.name}
-                    </p>
-                    <p className="text-xs font-semibold text-[#B8962E] mt-0.5">
-                      Base Price: {formatCurrency(svc.price)}
-                    </p>
-                  </div>
-
-                  <div className="mt-3">
-                    <p className="text-xs font-semibold text-[#6B6358] uppercase tracking-wider mb-2">Select Staff</p>
-                    {staffOptions.length === 0 ? (
-                      <p className="text-sm text-[#6B6358] italic py-2">No active staff members on duty.</p>
-                    ) : (
-                      <div className="flex flex-wrap gap-2.5">
-                        {staffOptions.map((staffName) => {
-                          const isSelected = assignedStaff[serviceIndex] === staffName;
-                          return (
-                            <div
-                              key={staffName}
-                              onClick={() => handleSelectStaff(serviceIndex, staffName)}
-                              className={`flex items-center gap-2 cursor-pointer border px-4 py-2.5 rounded-xl transition select-none ${
-                                isSelected
-                                  ? "border-[#B8962E] bg-[#1F1A0F] text-[#B8962E]"
-                                  : "border-[#2E2B24] bg-[#131210] text-[#A89F8C] hover:border-[#B8962E] hover:text-[#F5F0E8]"
-                              }`}
-                            >
-                              <div className={`size-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                                isSelected ? "border-[#B8962E]" : "border-[#6B6358]"
-                              }`}>
-                                {isSelected && (
-                                  <div className="size-2 rounded-full bg-[#B8962E]" />
-                                )}
-                              </div>
-                              <span className="text-sm font-semibold">{staffName}</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-6 flex items-center justify-between gap-3 border-t border-[#2E2B24] pt-4">
-              <button
-                type="button"
-                onClick={handleStaffBack}
-                className="inline-flex h-10 items-center justify-center rounded-xl border border-[#2E2B24] bg-[#131210] px-4 text-sm font-semibold text-[#A89F8C] hover:border-[#B8962E] hover:text-[#B8962E] hover:bg-[#1F1A0F] transition cursor-pointer"
-              >
-                Back
-              </button>
-
-              <button
-                type="button"
-                disabled={assignedStaff.some(s => !s) || assignedStaff.length !== selectedServices.length}
-                onClick={handleStaffContinue}
-                className="inline-flex h-10 items-center justify-center rounded-xl bg-[#B8962E] px-5 text-sm font-extrabold tracking-wide uppercase text-[#0E0D0B] hover:bg-[#D4A935] shadow-[0_4px_16px_rgba(184,150,46,0.3)] disabled:opacity-30 disabled:pointer-events-none transition cursor-pointer"
-              >
-                Continue
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
-
-      {/* Guided Used Products dialog */}
-      {showProductDialog && mounted && createPortal(
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm" onClick={handleCancelProductDialog} />
-          <div className="relative w-full max-w-2xl rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-6 shadow-2xl text-[#F5F0E8] flex flex-col max-h-[85vh]">
-            <button
-              onClick={handleCancelProductDialog}
-              className="absolute top-4 right-4 text-[#A89F8C] hover:text-[#B8962E] transition"
-            >
-              <X size={20} />
-            </button>
-
-            <div className="mb-4">
-              <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#B8962E]">
-                USED PRODUCT ASSIGNMENT
-              </span>
-              <h2 className="text-lg font-bold text-[#F5F0E8] mt-1">
-                Assign used products
-              </h2>
-            </div>
-
-            <div className="flex-1 overflow-y-auto space-y-6 pr-1 py-2 divide-y divide-[#2E2B24]">
-              {selectedServices.map((svc, serviceIndex) => (
-                <div key={serviceIndex} className={serviceIndex > 0 ? "pt-6" : ""}>
-                  <div className="flex flex-col">
-                    <p className="text-base font-extrabold text-[#F5F0E8]">
-                      {svc.name}
-                    </p>
-                  </div>
-
-                  <div className="mt-3">
-                    <p className="text-xs font-semibold text-[#6B6358] uppercase tracking-wider mb-2">Select Product</p>
-                    <div className="flex flex-wrap gap-2.5">
-                      {/* Option for No Product */}
-                      <div
-                        onClick={() => handleSelectProduct(serviceIndex, null)}
-                        className={`flex items-center gap-2 cursor-pointer border px-4 py-2.5 rounded-xl transition select-none ${
-                          assignedProducts[serviceIndex] === null
-                            ? "border-[#B8962E] bg-[#1F1A0F] text-[#B8962E]"
-                            : "border-[#2E2B24] bg-[#131210] text-[#A89F8C] hover:border-[#B8962E] hover:text-[#F5F0E8]"
-                        }`}
-                      >
-                        <div className={`size-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                          assignedProducts[serviceIndex] === null ? "border-[#B8962E]" : "border-[#6B6358]"
-                        }`}>
-                          {assignedProducts[serviceIndex] === null && (
-                            <div className="size-2 rounded-full bg-[#B8962E]" />
-                          )}
-                        </div>
-                        <span className="text-sm font-semibold">No Product</span>
-                      </div>
-
-                      {/* Options from serviceProductOptions */}
-                      {serviceProductOptions.map((option) => {
-                        const isSelected = assignedProducts[serviceIndex]?.id === option.id;
-                        const isOutOfStock = option.noOfServings <= 0;
-
-                        return (
-                          <div
-                            key={option.id}
-                            onClick={() => !isOutOfStock && handleSelectProduct(serviceIndex, option)}
-                            className={`flex items-center gap-2 border px-4 py-2.5 rounded-xl transition select-none ${
-                              isOutOfStock
-                                ? "opacity-40 cursor-not-allowed border-[#2E2B24] bg-[#0E0D0B] text-[#6B6358]"
-                                : "cursor-pointer hover:border-[#B8962E] hover:text-[#F5F0E8]"
-                            } ${
-                              isSelected
-                                ? "border-[#B8962E] bg-[#1F1A0F] text-[#B8962E]"
-                                : isOutOfStock
-                                  ? ""
-                                  : "border-[#2E2B24] bg-[#131210] text-[#A89F8C]"
-                            }`}
-                          >
-                            <div className={`size-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                              isSelected ? "border-[#B8962E]" : "border-[#6B6358]"
-                            }`}>
-                              {isSelected && (
-                                <div className="size-2 rounded-full bg-[#B8962E]" />
-                              )}
-                            </div>
-                            <div className="flex flex-col text-left">
-                              <span className="text-sm font-semibold leading-tight">{option.name}</span>
-                              <span className="text-[10px] text-[#6B6358] font-medium leading-none mt-0.5">
-                                {isOutOfStock ? "Out of Stock" : `${option.noOfServings} left`}
-                              </span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-6 flex items-center justify-between gap-3 border-t border-[#2E2B24] pt-4">
-              <button
-                type="button"
-                onClick={handleProductBack}
-                className="inline-flex h-10 items-center justify-center rounded-xl border border-[#2E2B24] bg-[#131210] px-4 text-sm font-semibold text-[#A89F8C] hover:border-[#B8962E] hover:text-[#B8962E] hover:bg-[#1F1A0F] transition cursor-pointer"
-              >
-                Back
-              </button>
-
-              <button
-                type="button"
-                onClick={handleProductAndStaffFinish}
-                className="inline-flex h-10 items-center justify-center rounded-xl bg-emerald-600 px-5 text-sm font-extrabold tracking-wide uppercase text-white hover:bg-emerald-500 shadow-[0_4px_16px_rgba(16,185,129,0.3)] transition cursor-pointer"
-              >
-                Finish
-              </button>
             </div>
           </div>
         </div>,
