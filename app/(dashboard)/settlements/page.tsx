@@ -1262,10 +1262,19 @@ export default function SettlementsPage() {
         });
 
         (inv.products || []).forEach((p: any) => {
-          const productBaseAmount =
-            p.amount ??
-            Math.max((p.price || 0) * (p.quantity || 1) - (p.discount || 0), 0);
-          const amount = productBaseAmount * discountFactor;
+          let amount: number;
+
+          if (p.amount !== undefined && p.amount !== null) {
+            amount = Number(p.amount);
+          } else {
+            const productBaseAmount = Math.max(
+              (p.price || 0) * (p.quantity || 1) - (p.discount || 0),
+              0
+            );
+
+            amount = productBaseAmount * discountFactor;
+          }
+
           dailyStats[dateKey].ownerShare += amount * ratio;
           dailyStats[dateKey].retailProductsRevenue += amount * ratio;
         });
@@ -1380,24 +1389,19 @@ export default function SettlementsPage() {
             where("dateKey", "<=", dateTo)
           );
           const invSnap = await getDocs(invQuery);
-          const staffAgg: Record<string, { revenue: number; productCost: number }> = {};
+          // Use getServiceCommission — the single source of truth — for every service.
+          // comm.stylistShare is already 0 for Owner-role services, so they never
+          // contribute to a stylist's monthly share.
+          const sharesMap: Record<string, number> = {};
           invSnap.forEach((doc) => {
             const inv = doc.data() as any;
-            const discountFactor = inv.subtotal > 0 ? inv.grandTotal / inv.subtotal : 1;
-            const services = inv.services || [];
-            services.forEach((s: any) => {
+            const ratio = getInvoicePaymentRatio(inv);
+            (inv.services || []).forEach((s: any) => {
               const staffId = s.staffId || "unassigned";
-              const serviceBaseAmount = s.amount ?? Math.max((s.price || 0) - (s.discount || 0), 0);
-              const amount = serviceBaseAmount * discountFactor;
-              const cost = s.usedProductCost || 0;
-              if (!staffAgg[staffId]) staffAgg[staffId] = { revenue: 0, productCost: 0 };
-              staffAgg[staffId].revenue += amount;
-              staffAgg[staffId].productCost += cost;
+              const comm = getServiceCommission(s, inv);
+              if (!sharesMap[staffId]) sharesMap[staffId] = 0;
+              sharesMap[staffId] += comm.stylistShare * ratio;
             });
-          });
-          const sharesMap: Record<string, number> = {};
-          Object.entries(staffAgg).forEach(([sId, v]) => {
-            sharesMap[sId] = 0.5 * v.revenue - v.productCost;
           });
           setMonthlyStaffShares(sharesMap);
         } catch (err) {
@@ -1529,9 +1533,6 @@ export default function SettlementsPage() {
       const collectedCredits: any[] = [];
 
       dayInvoices.forEach((inv) => {
-        const discountFactor =
-          inv.subtotal > 0 ? inv.grandTotal / inv.subtotal : 1;
-
         const ratio = getInvoicePaymentRatio(inv);
 
         // Read credit collections from the invoice.collectedCredits metadata array
@@ -1561,19 +1562,19 @@ export default function SettlementsPage() {
         });
 
         (inv.products || []).forEach((p: any) => {
+          // p.amount is already the post-discount retail product amount.
           const productBaseAmount =
             p.amount ??
             Math.max((p.price || 0) * (p.quantity || 1) - (p.discount || 0), 0);
-          const amount = productBaseAmount * discountFactor;
 
-          retailProductsRevenue += amount * ratio;
+          retailProductsRevenue += productBaseAmount * ratio;
         });
 
         (inv.services || []).forEach((s: any) => {
-          const serviceBaseAmount =
-            s.amount ?? Math.max((s.price || 0) - (s.discount || 0), 0);
-          const amount = serviceBaseAmount * discountFactor;
-          const cost = s.usedProductCost || 0;
+          // Use getServiceCommission — the single source of truth.
+          // comm.serviceRevenue = s.amount (post-discount, no discountFactor applied).
+          // comm.stylistShare and comm.ownerShare already reflect role and product cost.
+          const comm = getServiceCommission(s, inv);
           const staffId = s.staffId || "unassigned";
           const staffName = s.staffName || "Unassigned";
 
@@ -1583,7 +1584,7 @@ export default function SettlementsPage() {
           const role = s.staffRole || staffMember?.role || "Stylist";
 
           if (s.serviceId === "membership_fee") {
-            totalMembershipAmount += amount * ratio;
+            totalMembershipAmount += comm.serviceRevenue * ratio;
             return;
           }
 
@@ -1604,19 +1605,17 @@ export default function SettlementsPage() {
           const sd = staffDetails[key];
 
           if (role === "Owner") {
-            ownerDirectRevenue += amount * ratio;
-            sd.serviceRevenue += amount * ratio;
-            sd.productCost += cost * ratio;
-            sd.ownerShareContribution += amount * ratio;
+            ownerDirectRevenue += comm.ownerShare * ratio;
+            sd.serviceRevenue += comm.serviceRevenue * ratio;
+            sd.productCost += comm.productCost * ratio;
+            sd.ownerShareContribution += comm.ownerShare * ratio;
           } else {
-            const staffShare = 0.5 * amount - cost;
-            const ownerShare = 0.5 * amount + cost;
-            staffRevenueContribution += 0.5 * amount * ratio;
-            staffProductReimbursement += cost * ratio;
-            sd.serviceRevenue += amount * ratio;
-            sd.productCost += cost * ratio;
-            sd.staffShare += staffShare * ratio;
-            sd.ownerShareContribution += ownerShare * ratio;
+            staffRevenueContribution += 0.5 * comm.serviceRevenue * ratio;
+            staffProductReimbursement += comm.productCost * ratio;
+            sd.serviceRevenue += comm.serviceRevenue * ratio;
+            sd.productCost += comm.productCost * ratio;
+            sd.staffShare += comm.stylistShare * ratio;
+            sd.ownerShareContribution += comm.ownerShare * ratio;
           }
         });
       });
@@ -1644,18 +1643,13 @@ export default function SettlementsPage() {
     return stylistStaff.map((member) => {
       let todayShare = 0;
       todayInvoices.forEach((inv) => {
-        const discountFactor =
-          inv.subtotal > 0 ? inv.grandTotal / inv.subtotal : 1;
         const ratio = getInvoicePaymentRatio(inv);
 
         (inv.services || []).forEach((s: any) => {
           if (s.staffId === member.id || s.staffName === member.name) {
             if (s.serviceId !== "membership_fee") {
-              const serviceBaseAmount =
-                s.amount ?? Math.max((s.price || 0) - (s.discount || 0), 0);
-              const amount = serviceBaseAmount * discountFactor;
-              const cost = s.usedProductCost || 0;
-              todayShare += (0.5 * amount - cost) * ratio;
+              const comm = getServiceCommission(s, inv);
+              todayShare += comm.stylistShare * ratio;
             }
           }
         });

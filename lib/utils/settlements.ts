@@ -52,15 +52,31 @@ export function getInvoicePaymentRatio(inv: any): number {
 
 /**
  * Calculates stylist and owner splits for a single service transaction item.
+ *
+ * IMPORTANT: s.amount is the authoritative post-discount amount written by
+ * BillingTerminal at billing time. It already reflects every per-service
+ * line discount and the proportional bill-level discount. Do NOT apply
+ * discountFactor on top of it — that would double-count those discounts.
+ *
+ * The discountFactor path is a fallback only for legacy invoice records
+ * that pre-date the s.amount field (i.e., s.amount is absent/null).
  */
 export function getServiceCommission(s: any, inv: any): ServiceCommission {
   if (!s) return { serviceRevenue: 0, productCost: 0, stylistShare: 0, ownerShare: 0 };
-  
-  const serviceBaseAmount = s.amount ?? Math.max((s.price || 0) - (s.discount || 0), 0);
-  const discountFactor = inv && inv.subtotal > 0 ? (inv.grandTotal / inv.subtotal) : 1;
-  const amount = serviceBaseAmount * discountFactor;
+
+  // Use s.amount when present — it is already the correct post-discount value.
+  // Fall back to price − discount × discountFactor for pre-s.amount legacy records.
+  let amount: number;
+  if (s.amount !== undefined && s.amount !== null) {
+    amount = s.amount;
+  } else {
+    const serviceBaseAmount = Math.max((s.price || 0) - (s.discount || 0), 0);
+    const discountFactor = inv && inv.subtotal > 0 ? (inv.grandTotal / inv.subtotal) : 1;
+    amount = serviceBaseAmount * discountFactor;
+  }
+
   const cost = s.usedProductCost || 0;
-  
+
   let role = s.staffRole;
   if (!role) {
     if (s.serviceId === "membership_fee" || s.staffId === "system" || s.staffName === "System") {
@@ -77,8 +93,11 @@ export function getServiceCommission(s: any, inv: any): ServiceCommission {
     stylistShare = 0;
     ownerShare = amount;
   } else {
+    // Business rule: 50/50 split on the service amount.
+    // Product cost is transferred from stylist to owner (deducted from stylist,
+    // added to owner) — but product cost must NOT affect the 50/50 base split.
     stylistShare = 0.5 * amount - cost;
-    ownerShare = 0.5 * amount + cost;
+    ownerShare   = 0.5 * amount + cost;
   }
 
   return {
