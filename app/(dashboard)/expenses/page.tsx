@@ -17,7 +17,7 @@ export default function ExpensesPage() {
   const firstDayStr = toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1));
   const todayStr = toLocalDateString(now);
 
-  const [typeFilter, setTypeFilter] = useState<"all" | "daily" | "monthly">("all");
+  const [typeFilter, setTypeFilter] = useState<"all" | "daily" | "fixed">("all");
   const [dateFrom, setDateFrom] = useState(firstDayStr);
   const [dateTo, setDateTo] = useState(todayStr);
 
@@ -124,37 +124,46 @@ export default function ExpensesPage() {
   };
 
   // ── Summary card calculations ─────────────────────────────────────────────
+  // expenses[] is already filtered by the selected dateFrom/dateTo via loadExpenses
   const summary = useMemo(() => {
-    const todayStr = toLocalDateString(new Date());
-    const currentMonth = new Date().getMonth();
-    const currentYear = new Date().getFullYear();
-
-    let todayDaily = 0;
-    let monthFixed = 0;
+    let rangeDaily = 0;
+    let rangeFixed = 0;
 
     expenses.forEach((exp) => {
-      if (exp.type === "daily" && exp.date === todayStr) {
-        todayDaily += exp.amount;
+      const typeStr = (exp.type || "").toLowerCase();
+      const amount = Number(exp.amount) || 0;
+      const inRange = (!dateFrom || exp.date >= dateFrom) && (!dateTo || exp.date <= dateTo);
+
+      if (!inRange) return;
+
+      if (typeStr === "daily") {
+        rangeDaily += amount;
       }
-      if (exp.type === "monthly") {
-        const d = new Date(exp.date);
-        if (d.getMonth() === currentMonth && d.getFullYear() === currentYear) {
-          monthFixed += exp.amount;
-        }
+      if (typeStr === "monthly" || typeStr === "fixed") {
+        rangeFixed += amount;
       }
     });
 
-    return { todayDaily, monthFixed, total: todayDaily + monthFixed };
-  }, [expenses]);
+    return { rangeDaily, rangeFixed, total: rangeDaily + rangeFixed };
+  }, [expenses, dateFrom, dateTo]);
 
   // ── Filter logic ──────────────────────────────────────────────────────────
   const filteredExpenses = useMemo(() => {
     return expenses.filter((e) => {
-      const matchesSearch =
-        e.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        e.category.toLowerCase().includes(searchQuery.toLowerCase());
+      const desc = (e.description || "").toLowerCase();
+      const cat = (e.category || "").toLowerCase();
+      const typeS = (e.type || "").toLowerCase();
+      const sQ = searchQuery.toLowerCase();
 
-      const matchesType = typeFilter === "all" || e.type === typeFilter;
+      const matchesSearch =
+        desc.includes(sQ) ||
+        cat.includes(sQ) ||
+        typeS.includes(sQ);
+
+      const matchesType =
+        typeFilter === "all" ||
+        (typeFilter === "daily" && typeS === "daily") ||
+        (typeFilter === "fixed" && (typeS === "fixed" || typeS === "monthly"));
 
       const matchesFrom = !dateFrom || e.date >= dateFrom;
       const matchesTo = !dateTo || e.date <= dateTo;
@@ -212,13 +221,13 @@ export default function ExpensesPage() {
           <div className="mb-6 grid gap-4 sm:grid-cols-3">
             <div className="rounded-2xl border border-[#2E2B24] bg-[#131210] p-5 shadow-sm">
               <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#A89F8C]">
-                Today's Daily Expenses
+                Total Daily Expenses
               </p>
               <p className="mt-2 text-2xl font-extrabold tracking-[-0.04em] text-[#E57373]">
-                {formatCurrency(summary.todayDaily)}
+                {formatCurrency(summary.rangeDaily)}
               </p>
               <p className="mt-1 text-xs text-[#6B6358]">
-                Tiffin, fuel, misc logged today
+                Daily expenses in selected period
               </p>
             </div>
             <div className="rounded-2xl border border-[#2E2B24] bg-[#131210] p-5 shadow-sm">
@@ -226,7 +235,7 @@ export default function ExpensesPage() {
                 This Month's Fixed Costs
               </p>
               <p className="mt-2 text-2xl font-extrabold tracking-[-0.04em] text-[#E57373]">
-                {formatCurrency(summary.monthFixed)}
+                {formatCurrency(summary.rangeFixed)}
               </p>
               <p className="mt-1 text-xs text-[#6B6358]">
                 Rent, electricity, salaries
@@ -240,7 +249,7 @@ export default function ExpensesPage() {
                 {formatCurrency(summary.total)}
               </p>
               <p className="mt-1 text-xs text-[#6B6358]">
-                Today's daily + month's fixed
+                Daily + fixed costs in selected period
               </p>
             </div>
           </div>
@@ -262,12 +271,12 @@ export default function ExpensesPage() {
             {/* Type filter */}
             <select
               value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value as "all" | "daily" | "monthly")}
+              onChange={(e) => setTypeFilter(e.target.value as "all" | "daily" | "fixed")}
               className="h-11 rounded-xl border border-[#2E2B24] bg-[#131210] px-4 text-sm font-semibold text-[#A89F8C] shadow-sm outline-none focus:border-[#B8962E] transition"
             >
-              <option value="all">All types</option>
-              <option value="daily">Daily only</option>
-              <option value="monthly">Monthly only</option>
+              <option value="all">All Types</option>
+              <option value="daily">Daily</option>
+              <option value="fixed">Fixed</option>
             </select>
 
             {/* Date Selector */}
@@ -331,12 +340,12 @@ export default function ExpensesPage() {
                       <td className="px-6 py-4">
                         <span
                           className={`inline-block rounded-full px-3 py-1 text-xs font-bold border ${
-                            expense.type === "daily"
+                            (expense.type || "").toLowerCase() === "daily"
                               ? "bg-[#1F1A0F] text-[#B8962E] border-[#B8962E]/20"
                               : "bg-[#1C1A16] text-[#A89F8C] border-[#2E2B24]"
                           }`}
                         >
-                          {expense.type === "daily" ? "Daily" : "Monthly"}
+                          {(expense.type || "").toLowerCase() === "daily" ? "Daily" : "Fixed"}
                         </span>
                       </td>
                       <td className="px-6 py-4">
@@ -425,7 +434,7 @@ export default function ExpensesPage() {
                   className="mt-2 h-11 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-4 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E] focus:ring-1 focus:ring-[#B8962E]"
                 >
                   <option value="daily">Daily — tiffin, fuel, misc</option>
-                  <option value="monthly">Monthly — rent, electricity, salaries</option>
+                  <option value="monthly">Fixed — rent, electricity, salaries</option>
                 </select>
               </label>
 

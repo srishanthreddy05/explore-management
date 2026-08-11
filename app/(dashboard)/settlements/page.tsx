@@ -112,8 +112,19 @@ interface DayDetails {
 interface StaffSplit {
   id?: string;
   name: string;
-  todayShare: number;
-  monthlyShare: number;
+  todayRevenue: number;
+  todayProductCosts: number;
+  todayDrawings: number;
+  
+  monthlyRevenue: number;
+  monthlyProductCosts: number;
+  monthlyDrawings: number;
+}
+
+interface StaffMonthSummary {
+  revenueGenerated: number;
+  productCosts: number;
+  netShare: number;
 }
 
 interface Expense {
@@ -432,7 +443,13 @@ function StaffSplitCard({
   const [date, setDate] = useState(() => toLocalDateString(new Date()));
   const [isSaving, setIsSaving] = useState(false);
 
-  const totalDrawings = drawings.reduce((sum, d) => sum + (d.amount || 0), 0);
+  const todayShare = member.todayRevenue * 0.5;
+  const todayFinal = todayShare - member.todayProductCosts - member.todayDrawings;
+
+  const monthlyShare = member.monthlyRevenue * 0.5;
+  const monthlyFinal = monthlyShare - member.monthlyProductCosts - member.monthlyDrawings;
+
+  const totalDrawings = member.monthlyDrawings;
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -477,11 +494,13 @@ function StaffSplitCard({
     }
   };
 
-  const monthlyColor = member.monthlyShare < 0 ? "text-[#E57373]" : "text-[#60A5FA]";
+  const todayColor = todayFinal < 0 ? "text-[#E57373]" : "text-[#60A5FA]";
+  const monthlyColor = monthlyFinal < 0 ? "text-[#E57373]" : "text-[#60A5FA]";
 
   return (
     <div className="group rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-5 shadow-sm transition-all duration-300 hover:border-[#B8962E]/30 hover:shadow-[0_8px_30px_rgba(184,150,46,0.06)] flex flex-col justify-between min-h-[160px]">
       <div>
+        {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2.5">
             <div className="rounded-lg bg-[#60A5FA]/10 p-2 text-[#60A5FA]">
@@ -501,13 +520,14 @@ function StaffSplitCard({
           </button>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        {/* Quick Net Summary */}
+        <div className="grid grid-cols-2 gap-4 mb-4">
           <div>
             <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#6B6358]">
               Today
             </span>
-            <p className="mt-1 text-lg font-black text-[#60A5FA]">
-              {formatCurrency(member.todayShare)}
+            <p className={`mt-1 text-lg font-black ${todayColor}`}>
+              {formatCurrency(todayFinal)}
             </p>
           </div>
           <div>
@@ -515,9 +535,44 @@ function StaffSplitCard({
               {periodLabel}
             </span>
             <p className={`mt-1 text-lg font-black ${monthlyColor}`}>
-              {formatCurrency(member.monthlyShare)}
+              {formatCurrency(monthlyFinal)}
             </p>
           </div>
+        </div>
+
+        {/* Detailed Breakdown */}
+        <div className="border-t border-[#2E2B24]/40 pt-4 space-y-2">
+          <div className="flex justify-between items-center text-xs">
+            <span className="font-medium text-[#A89F8C] text-[11px]">TOTAL REVENUE GENERATED</span>
+            <span className="font-mono font-bold text-[11px] text-[#F5F0E8]">
+              {formatCurrency(member.monthlyRevenue)}
+            </span>
+          </div>
+          <div className="flex justify-between items-center text-xs">
+            <span className="font-medium text-[#A89F8C] text-[11px]">50% STAFF SHARE</span>
+            <span className="font-mono font-bold text-[11px] text-[#4ADE80]">
+              {formatCurrency(monthlyShare)}
+            </span>
+          </div>
+          <div className="flex justify-between items-center text-xs">
+            <span className="font-medium text-[#A89F8C] text-[11px]">PRODUCT COSTS</span>
+            <span className="font-mono font-bold text-[11px] text-[#E57373]">
+              − {formatCurrency(member.monthlyProductCosts)}
+            </span>
+          </div>
+          <div className="flex justify-between items-center text-xs">
+            <span className="font-medium text-[#A89F8C] text-[11px]">DRAWINGS</span>
+            <span className="font-mono font-bold text-[11px] text-[#E57373]">
+              − {formatCurrency(member.monthlyDrawings)}
+            </span>
+          </div>
+        </div>
+        
+        <div className="border-t border-[#2E2B24] mt-3 pt-3 flex justify-between items-center">
+          <span className="font-bold text-[#F5F0E8] text-[11px] uppercase tracking-wider">FINAL AMOUNT</span>
+          <span className={`font-mono font-black text-sm ${monthlyColor}`}>
+            {formatCurrency(monthlyFinal)}
+          </span>
         </div>
 
         {/* Inline Form */}
@@ -1122,7 +1177,7 @@ export default function SettlementsPage() {
   const [loading, setLoading] = useState(true);
   const [dailyStats, setDailyStats] = useState<Record<string, DailyStat>>({});
   const [dayInvoicesMap, setDayInvoicesMap] = useState<Record<string, Invoice[]>>({});
-  const [monthlyStaffShares, setMonthlyStaffShares] = useState<Record<string, number>>({});
+  const [monthlyStaffStats, setMonthlyStaffStats] = useState<Record<string, StaffMonthSummary>>({});
   const [staffDrawings, setStaffDrawings] = useState<Record<string, staffDrawingsService.StaffDrawing[]>>({});
 
   const now = new Date();
@@ -1389,24 +1444,25 @@ export default function SettlementsPage() {
             where("dateKey", "<=", dateTo)
           );
           const invSnap = await getDocs(invQuery);
-          // Use getServiceCommission — the single source of truth — for every service.
-          // comm.stylistShare is already 0 for Owner-role services, so they never
-          // contribute to a stylist's monthly share.
-          const sharesMap: Record<string, number> = {};
+          const statsMap: Record<string, StaffMonthSummary> = {};
           invSnap.forEach((doc) => {
             const inv = doc.data() as any;
             const ratio = getInvoicePaymentRatio(inv);
             (inv.services || []).forEach((s: any) => {
               const staffId = s.staffId || "unassigned";
               const comm = getServiceCommission(s, inv);
-              if (!sharesMap[staffId]) sharesMap[staffId] = 0;
-              sharesMap[staffId] += comm.stylistShare * ratio;
+              if (!statsMap[staffId]) {
+                statsMap[staffId] = { revenueGenerated: 0, productCosts: 0, netShare: 0 };
+              }
+              statsMap[staffId].revenueGenerated += comm.serviceRevenue * ratio;
+              statsMap[staffId].productCosts += comm.productCost * ratio;
+              statsMap[staffId].netShare += comm.stylistShare * ratio;
             });
           });
-          setMonthlyStaffShares(sharesMap);
+          setMonthlyStaffStats(statsMap);
         } catch (err) {
           console.error("Failed to compute staff shares from invoices:", err);
-          setMonthlyStaffShares({});
+          setMonthlyStaffStats({});
         }
 
         // Fetch drawings for the selected range
@@ -1641,7 +1697,9 @@ export default function SettlementsPage() {
     const todayInvoices = dayInvoicesMap[todayStr] || [];
 
     return stylistStaff.map((member) => {
-      let todayShare = 0;
+      let todayRevenue = 0;
+      let todayProductCosts = 0;
+
       todayInvoices.forEach((inv) => {
         const ratio = getInvoicePaymentRatio(inv);
 
@@ -1649,26 +1707,38 @@ export default function SettlementsPage() {
           if (s.staffId === member.id || s.staffName === member.name) {
             if (s.serviceId !== "membership_fee") {
               const comm = getServiceCommission(s, inv);
-              todayShare += comm.stylistShare * ratio;
+              todayRevenue += comm.serviceRevenue * ratio;
+              todayProductCosts += comm.productCost * ratio;
             }
           }
         });
       });
 
-      const totalDrawings = (member.id ? staffDrawings[member.id] || [] : []).reduce(
-        (sum, d) => sum + (d.amount || 0),
-        0
-      );
-      const monthlyShare = (member.id ? monthlyStaffShares[member.id] || 0 : 0) - totalDrawings;
+      const memberDrawings = member.id ? staffDrawings[member.id] || [] : [];
+      
+      const todayDrawings = memberDrawings
+        .filter(d => d.date === todayStr)
+        .reduce((sum, d) => sum + (d.amount || 0), 0);
+
+      const monthlyDrawings = memberDrawings
+        .reduce((sum, d) => sum + (d.amount || 0), 0);
+        
+      const mStats = member.id ? monthlyStaffStats[member.id] : undefined;
+      const monthlyRevenue = mStats?.revenueGenerated || 0;
+      const monthlyProductCosts = mStats?.productCosts || 0;
 
       return {
         id: member.id,
         name: member.name,
-        todayShare,
-        monthlyShare,
+        todayRevenue,
+        todayProductCosts,
+        todayDrawings,
+        monthlyRevenue,
+        monthlyProductCosts,
+        monthlyDrawings,
       };
     });
-  }, [dayInvoicesMap, staff, monthlyStaffShares, todayStr, staffDrawings]);
+  }, [dayInvoicesMap, staff, monthlyStaffStats, todayStr, staffDrawings]);
 
   const todayMetrics = useMemo(() => {
     const details = getDayDetails(todayStr);
