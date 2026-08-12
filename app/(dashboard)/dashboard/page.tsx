@@ -40,7 +40,7 @@ import { AddExpenseModal } from "@/components/expenses/AddExpenseModal";
 import * as customerService from "@/services/customers";
 import * as expensesService from "@/services/expenses";
 import { toLocalDateString } from "@/lib/utils/date";
-import { getInvoicePayments, getInvoicePaymentRatio } from "@/lib/utils/settlements";
+import { getInvoicePayments, getInvoicePaymentRatio, DaySettlementDetails, calculateDaySettlement } from "@/lib/utils/settlements";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface Invoice {
@@ -82,32 +82,6 @@ interface ProductItem {
   quantity?: number | "";
   discount?: number | "";
   amount?: number;
-}
-
-interface StaffDetail {
-  staffId: string;
-  name: string;
-  role: string;
-  serviceRevenue: number;
-  productCost: number;
-  staffShare: number;
-  ownerShareContribution: number;
-  collectedCredits?: any[];
-  collectedCreditsShare?: number;
-}
-
-interface TodaySettlement {
-  totalServiceRevenue: number;
-  totalMembershipAmount: number;
-  totalProductCost: number;
-  totalStaffShare: number;
-  totalOwnerShare: number;
-  ownerDirectRevenue: number;
-  staffRevenueContribution: number;
-  staffProductReimbursement: number;
-  retailProductsRevenue: number;
-  staffDetails: Record<string, StaffDetail>;
-  collectedCredits: any[];
 }
 
 // ── Utilities ──────────────────────────────────────────────────────────────
@@ -858,7 +832,7 @@ export default function DashboardPage() {
   }, [loadTodayExpenses]);
 
   const todayExpensesTotal = useMemo(
-    () => todayExpenses.reduce((sum, exp) => sum + exp.amount, 0),
+    () => todayExpenses.filter((e) => e.type === "daily").reduce((sum, exp) => sum + exp.amount, 0),
     [todayExpenses]
   );
 
@@ -1095,118 +1069,8 @@ export default function DashboardPage() {
     });
   }, [todayInvoices, selectedStaffId, staff]);
 
-  const todaySettlement = useMemo<TodaySettlement>(() => {
-    const dayObj: TodaySettlement = {
-      totalServiceRevenue: 0,
-      totalMembershipAmount: 0,
-      totalProductCost: 0,
-      totalStaffShare: 0,
-      totalOwnerShare: 0,
-      ownerDirectRevenue: 0,
-      staffRevenueContribution: 0,
-      staffProductReimbursement: 0,
-      retailProductsRevenue: 0,
-      staffDetails: {},
-      collectedCredits: [],
-    };
-
-    todayInvoices.forEach((inv) => {
-      const discountFactor = inv.subtotal > 0 ? inv.grandTotal / inv.subtotal : 1;
-
-      const ratio = getInvoicePaymentRatio(inv);
-
-      // Read credit collections from the invoice.collectedCredits metadata array
-      const invCollectedCredits: any[] = (inv as any).collectedCredits || [];
-      invCollectedCredits.forEach((cc: any) => {
-        const amount = cc.collectedAmount || 0;
-        dayObj.collectedCredits.push({
-          originalBillDate: cc.collectedAt || todayStr,
-          originalInvoiceNumber: cc.originalInvoiceNumber || "",
-          collectionDate: todayStr,
-          collectionMethod: cc.paymentSplit
-            ? (cc.paymentSplit.cash > 0 && cc.paymentSplit.upi === 0 && cc.paymentSplit.card === 0 ? "CASH"
-              : cc.paymentSplit.upi > 0 && cc.paymentSplit.cash === 0 && cc.paymentSplit.card === 0 ? "UPI"
-              : cc.paymentSplit.card > 0 && cc.paymentSplit.cash === 0 && cc.paymentSplit.upi === 0 ? "CARD"
-              : "SPLIT")
-            : inv.paymentMethod || "UPI",
-          collectedBy: "System",
-          amount,
-          staffName: "System",
-          staffId: "system",
-          serviceOrProductName: `Credit Collected (Inv #${cc.originalInvoiceNumber || "?"})`,
-          type: "credit",
-        });
-        dayObj.ownerDirectRevenue += amount;
-        dayObj.totalOwnerShare += amount;
-      });
-
-      (inv.products || []).forEach((p: any) => {
-        const base = p.amount ?? Math.max((p.price || 0) * (p.quantity || 1) - (p.discount || 0), 0);
-        const amount = base * discountFactor;
-
-        dayObj.retailProductsRevenue += amount * ratio;
-        dayObj.totalOwnerShare += amount * ratio;
-      });
-
-      (inv.services || []).forEach((s: any) => {
-        const base = s.amount ?? Math.max((s.price || 0) - (s.discount || 0), 0);
-        const amount = base * discountFactor;
-        const cost = s.usedProductCost || 0;
-        const staffId = s.staffId || "unassigned";
-        const staffName = s.staffName || "Unassigned";
-
-        const staffMember = staff.find(
-          (st) => st.id === staffId || st.name === staffName
-        );
-        const role = s.staffRole || staffMember?.role || "Stylist";
-
-        if (s.serviceId === "membership_fee") {
-          dayObj.totalMembershipAmount += amount * ratio;
-          dayObj.totalOwnerShare += amount * ratio;
-          return;
-        }
-
-        const key = staffId !== "unassigned" ? staffId : staffName;
-        if (!dayObj.staffDetails[key]) {
-          dayObj.staffDetails[key] = {
-            staffId,
-            name: staffName,
-            role,
-            serviceRevenue: 0,
-            productCost: 0,
-            staffShare: 0,
-            ownerShareContribution: 0,
-            collectedCredits: [],
-            collectedCreditsShare: 0,
-          };
-        }
-        const sd = dayObj.staffDetails[key];
-
-        if (role === "Owner") {
-          dayObj.ownerDirectRevenue += amount * ratio;
-          dayObj.totalServiceRevenue += amount * ratio;
-          dayObj.totalOwnerShare += amount * ratio;
-          sd.serviceRevenue += amount * ratio;
-          sd.productCost += cost * ratio;
-          sd.ownerShareContribution += amount * ratio;
-        } else {
-          const staffShare = 0.5 * amount - cost;
-          const ownerShare = 0.5 * amount + cost;
-          dayObj.totalServiceRevenue += amount * ratio;
-          dayObj.totalProductCost += cost * ratio;
-          dayObj.totalStaffShare += staffShare * ratio;
-          dayObj.totalOwnerShare += ownerShare * ratio;
-          dayObj.staffRevenueContribution += 0.5 * amount * ratio;
-          dayObj.staffProductReimbursement += cost * ratio;
-          sd.serviceRevenue += amount * ratio;
-          sd.productCost += cost * ratio;
-          sd.staffShare += staffShare * ratio;
-          sd.ownerShareContribution += ownerShare * ratio;
-        }
-      });
-    });
-
-    return dayObj;
+  const todaySettlement = useMemo<DaySettlementDetails>(() => {
+    return calculateDaySettlement(todayInvoices, staff, todayStr);
   }, [todayInvoices, staff, todayStr]);
 
   const staffSplits = useMemo(() => {

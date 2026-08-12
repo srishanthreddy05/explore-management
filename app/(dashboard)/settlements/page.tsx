@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import * as invoicesService from "@/services/invoices";
 import * as expensesService from "@/services/expenses";
 import * as staffDrawingsService from "@/services/staffDrawings";
-import { getInvoicePayments, getInvoicePaymentRatio, getServiceCommission } from "@/lib/utils/settlements";
+import { getInvoicePayments, getInvoicePaymentRatio, getServiceCommission, calculateDaySettlement, DaySettlementDetails } from "@/lib/utils/settlements";
 import { useAppData } from "@/context/AppDataContext";
 import { formatCurrency } from "@/components/salon-dashboard/types";
 import { format } from "date-fns";
@@ -85,28 +85,6 @@ interface DailyStat {
   ownerShare?: number;
   totalMembershipAmount?: number;
   retailProductsRevenue?: number;
-}
-
-interface StaffDetail {
-  staffId: string;
-  name: string;
-  role: string;
-  serviceRevenue: number;
-  productCost: number;
-  staffShare: number;
-  ownerShareContribution: number;
-  collectedCredits?: any[];
-  collectedCreditsShare?: number;
-}
-
-interface DayDetails {
-  ownerDirectRevenue: number;
-  staffRevenueContribution: number;
-  staffProductReimbursement: number;
-  totalMembershipAmount: number;
-  retailProductsRevenue: number;
-  staffDetails: StaffDetail[];
-  collectedCredits: any[];
 }
 
 interface StaffSplit {
@@ -1578,112 +1556,13 @@ export default function SettlementsPage() {
   );
 
   const getDayDetails = useCallback(
-    (dateStr: string): DayDetails => {
+    (dateStr: string) => {
       const dayInvoices = dayInvoicesMap[dateStr] || [];
-      let ownerDirectRevenue = 0;
-      let staffRevenueContribution = 0;
-      let staffProductReimbursement = 0;
-      let totalMembershipAmount = 0;
-      let retailProductsRevenue = 0;
-      const staffDetails: Record<string, StaffDetail> = {};
-      const collectedCredits: any[] = [];
-
-      dayInvoices.forEach((inv) => {
-        const ratio = getInvoicePaymentRatio(inv);
-
-        // Read credit collections from the invoice.collectedCredits metadata array
-        const invCollectedCredits: any[] = (inv as any).collectedCredits || [];
-        invCollectedCredits.forEach((cc: any) => {
-          const amount = cc.collectedAmount || 0;
-          const method = cc.paymentSplit
-            ? (cc.paymentSplit.cash > 0 && cc.paymentSplit.upi === 0 && cc.paymentSplit.card === 0 ? "CASH"
-              : cc.paymentSplit.upi > 0 && cc.paymentSplit.cash === 0 && cc.paymentSplit.card === 0 ? "UPI"
-              : cc.paymentSplit.card > 0 && cc.paymentSplit.cash === 0 && cc.paymentSplit.upi === 0 ? "CARD"
-              : "SPLIT")
-            : inv.paymentMethod || "UPI";
-
-          collectedCredits.push({
-            originalBillDate: cc.collectedAt || dateStr,
-            originalInvoiceNumber: cc.originalInvoiceNumber || "",
-            collectionDate: dateStr,
-            collectionMethod: method,
-            collectedBy: "System",
-            amount,
-            serviceOrProductName: `Credit Collected (Inv #${cc.originalInvoiceNumber || "?"})`,
-            type: "credit",
-            share: amount,
-          });
-
-          ownerDirectRevenue += amount;
-        });
-
-        (inv.products || []).forEach((p: any) => {
-          // p.amount is already the post-discount retail product amount.
-          const productBaseAmount =
-            p.amount ??
-            Math.max((p.price || 0) * (p.quantity || 1) - (p.discount || 0), 0);
-
-          retailProductsRevenue += productBaseAmount * ratio;
-        });
-
-        (inv.services || []).forEach((s: any) => {
-          // Use getServiceCommission — the single source of truth.
-          // comm.serviceRevenue = s.amount (post-discount, no discountFactor applied).
-          // comm.stylistShare and comm.ownerShare already reflect role and product cost.
-          const comm = getServiceCommission(s, inv);
-          const staffId = s.staffId || "unassigned";
-          const staffName = s.staffName || "Unassigned";
-
-          const staffMember = staff.find(
-            (st) => st.id === staffId || st.name === staffName
-          );
-          const role = s.staffRole || staffMember?.role || "Stylist";
-
-          if (s.serviceId === "membership_fee") {
-            totalMembershipAmount += comm.serviceRevenue * ratio;
-            return;
-          }
-
-          const key = staffId !== "unassigned" ? staffId : staffName;
-          if (!staffDetails[key]) {
-            staffDetails[key] = {
-              staffId,
-              name: staffName,
-              role,
-              serviceRevenue: 0,
-              productCost: 0,
-              staffShare: 0,
-              ownerShareContribution: 0,
-              collectedCredits: [],
-              collectedCreditsShare: 0,
-            };
-          }
-          const sd = staffDetails[key];
-
-          if (role === "Owner") {
-            ownerDirectRevenue += comm.ownerShare * ratio;
-            sd.serviceRevenue += comm.serviceRevenue * ratio;
-            sd.productCost += comm.productCost * ratio;
-            sd.ownerShareContribution += comm.ownerShare * ratio;
-          } else {
-            staffRevenueContribution += 0.5 * comm.serviceRevenue * ratio;
-            staffProductReimbursement += comm.productCost * ratio;
-            sd.serviceRevenue += comm.serviceRevenue * ratio;
-            sd.productCost += comm.productCost * ratio;
-            sd.staffShare += comm.stylistShare * ratio;
-            sd.ownerShareContribution += comm.ownerShare * ratio;
-          }
-        });
-      });
-
+      const details = calculateDaySettlement(dayInvoices, staff, dateStr);
+      
       return {
-        ownerDirectRevenue,
-        staffRevenueContribution,
-        staffProductReimbursement,
-        totalMembershipAmount,
-        retailProductsRevenue,
-        staffDetails: Object.values(staffDetails),
-        collectedCredits,
+        ...details,
+        staffDetails: Object.values(details.staffDetails),
       };
     },
     [staff, dayInvoicesMap]

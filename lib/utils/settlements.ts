@@ -107,3 +107,154 @@ export function getServiceCommission(s: any, inv: any): ServiceCommission {
     ownerShare,
   };
 }
+
+export interface StaffDetail {
+  staffId: string;
+  name: string;
+  role: string;
+  serviceRevenue: number;
+  productCost: number;
+  staffShare: number;
+  ownerShareContribution: number;
+  collectedCredits?: any[];
+  collectedCreditsShare?: number;
+}
+
+export interface DaySettlementDetails {
+  totalServiceRevenue: number;
+  totalMembershipAmount: number;
+  totalProductCost: number;
+  totalStaffShare: number;
+  totalOwnerShare: number;
+  ownerDirectRevenue: number;
+  staffRevenueContribution: number;
+  staffProductReimbursement: number;
+  retailProductsRevenue: number;
+  staffDetails: Record<string, StaffDetail>;
+  collectedCredits: any[];
+}
+
+export function calculateDaySettlement(
+  dayInvoices: any[],
+  staffList: any[],
+  dateStr: string
+): DaySettlementDetails {
+  const result: DaySettlementDetails = {
+    totalServiceRevenue: 0,
+    totalMembershipAmount: 0,
+    totalProductCost: 0,
+    totalStaffShare: 0,
+    totalOwnerShare: 0,
+    ownerDirectRevenue: 0,
+    staffRevenueContribution: 0,
+    staffProductReimbursement: 0,
+    retailProductsRevenue: 0,
+    staffDetails: {},
+    collectedCredits: [],
+  };
+
+  dayInvoices.forEach((inv) => {
+    const ratio = getInvoicePaymentRatio(inv);
+
+    const invCollectedCredits: any[] = inv.collectedCredits || [];
+    invCollectedCredits.forEach((cc: any) => {
+      const amount = cc.collectedAmount || 0;
+      const method = cc.paymentSplit
+        ? (cc.paymentSplit.cash > 0 && cc.paymentSplit.upi === 0 && cc.paymentSplit.card === 0 ? "CASH"
+          : cc.paymentSplit.upi > 0 && cc.paymentSplit.cash === 0 && cc.paymentSplit.card === 0 ? "UPI"
+          : cc.paymentSplit.card > 0 && cc.paymentSplit.cash === 0 && cc.paymentSplit.upi === 0 ? "CARD"
+          : "SPLIT")
+        : inv.paymentMethod || "UPI";
+
+      result.collectedCredits.push({
+        originalBillDate: cc.collectedAt || dateStr,
+        originalInvoiceNumber: cc.originalInvoiceNumber || "",
+        collectionDate: dateStr,
+        collectionMethod: method,
+        collectedBy: "System",
+        amount,
+        serviceOrProductName: `Credit Collected (Inv #${cc.originalInvoiceNumber || "?"})`,
+        type: "credit",
+        share: amount,
+      });
+
+      result.ownerDirectRevenue += amount;
+      result.totalOwnerShare += amount;
+    });
+
+    const discountFactor = inv.subtotal > 0 ? inv.grandTotal / inv.subtotal : 1;
+
+    (inv.products || []).forEach((p: any) => {
+      let amount: number;
+      if (p.amount !== undefined && p.amount !== null) {
+        amount = Number(p.amount);
+      } else {
+        const productBaseAmount = Math.max(
+          (p.price || 0) * (p.quantity || 1) - (p.discount || 0),
+          0
+        );
+        amount = productBaseAmount * discountFactor;
+      }
+      result.retailProductsRevenue += amount * ratio;
+      result.totalOwnerShare += amount * ratio;
+    });
+
+    (inv.services || []).forEach((s: any) => {
+      const comm = getServiceCommission(s, inv);
+      const staffId = s.staffId || "unassigned";
+      const staffName = s.staffName || "Unassigned";
+
+      const staffMember = staffList.find(
+        (st) => st.id === staffId || st.name === staffName
+      );
+      const role = s.staffRole || staffMember?.role || "Stylist";
+
+      if (s.serviceId === "membership_fee") {
+        result.totalMembershipAmount += comm.serviceRevenue * ratio;
+        result.totalOwnerShare += comm.serviceRevenue * ratio;
+        return;
+      }
+
+      const key = staffId !== "unassigned" ? staffId : staffName;
+      if (!result.staffDetails[key]) {
+        result.staffDetails[key] = {
+          staffId,
+          name: staffName,
+          role,
+          serviceRevenue: 0,
+          productCost: 0,
+          staffShare: 0,
+          ownerShareContribution: 0,
+          collectedCredits: [],
+          collectedCreditsShare: 0,
+        };
+      }
+      const sd = result.staffDetails[key];
+
+      result.totalServiceRevenue += comm.serviceRevenue * ratio;
+      result.totalProductCost += comm.productCost * ratio;
+
+      if (role === "Owner") {
+        result.ownerDirectRevenue += comm.ownerShare * ratio;
+        result.totalOwnerShare += comm.ownerShare * ratio;
+
+        sd.serviceRevenue += comm.serviceRevenue * ratio;
+        sd.productCost += comm.productCost * ratio;
+        sd.ownerShareContribution += comm.ownerShare * ratio;
+      } else {
+        result.staffRevenueContribution += 0.5 * comm.serviceRevenue * ratio;
+        result.staffProductReimbursement += comm.productCost * ratio;
+
+        result.totalStaffShare += comm.stylistShare * ratio;
+        result.totalOwnerShare += comm.ownerShare * ratio;
+
+        sd.serviceRevenue += comm.serviceRevenue * ratio;
+        sd.productCost += comm.productCost * ratio;
+        sd.staffShare += comm.stylistShare * ratio;
+        sd.ownerShareContribution += comm.ownerShare * ratio;
+      }
+    });
+  });
+
+  return result;
+}
