@@ -103,9 +103,39 @@ function getLocalDateKey(d: Date): string {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 }
 
+export interface AttendanceSession {
+  inTimeStr: string;
+  outTimeStr: string | null;
+  durationMs: number;
+}
+
+export interface ActiveTimeResult {
+  totalFormatted: string;
+  sessions: AttendanceSession[];
+  isOnDuty: boolean;
+  currentInTimeStr: string | null;
+}
+
+function formatAMPM(date: Date): string {
+  let hours = date.getHours();
+  let minutes = date.getMinutes();
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12;
+  hours = hours ? hours : 12; 
+  const minutesStr = minutes < 10 ? '0' + minutes : minutes;
+  return `${hours}:${minutesStr} ${ampm}`;
+}
+
 // ── Active Time Computation ────────────────────────────────────────────────
-function computeTodayActiveTime(clockLogs: any[] = []): string {
-  if (!clockLogs?.length) return "0 mins";
+function computeTodayActiveTime(clockLogs: any[] = []): ActiveTimeResult {
+  const result: ActiveTimeResult = {
+    totalFormatted: "0m",
+    sessions: [],
+    isOnDuty: false,
+    currentInTimeStr: null,
+  };
+
+  if (!clockLogs?.length) return result;
 
   const today = new Date();
   const todayKey = getLocalDateKey(today);
@@ -141,17 +171,40 @@ function computeTodayActiveTime(clockLogs: any[] = []): string {
 
   let totalMs = 0;
   for (const session of todaySessions) {
+    let durationMs = 0;
     if (session.clockOut) {
-      totalMs += session.clockOut.time - session.clockIn.time;
+      durationMs = session.clockOut.time - session.clockIn.time;
+      totalMs += durationMs;
+      result.sessions.push({
+        inTimeStr: formatAMPM(session.clockIn.date),
+        outTimeStr: formatAMPM(session.clockOut.date),
+        durationMs,
+      });
     } else {
-      totalMs += Date.now() - session.clockIn.time;
+      durationMs = Date.now() - session.clockIn.time;
+      totalMs += durationMs;
+      result.sessions.push({
+        inTimeStr: formatAMPM(session.clockIn.date),
+        outTimeStr: null,
+        durationMs,
+      });
+      result.isOnDuty = true;
+      result.currentInTimeStr = formatAMPM(session.clockIn.date);
     }
   }
 
   const mins = Math.floor(totalMs / 60000);
   const h = Math.floor(mins / 60);
   const m = mins % 60;
-  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+  result.totalFormatted = h > 0 ? `${h}h ${m}m` : `${m}m`;
+
+  // Determine global isOnDuty across all days (just in case an old day was left open)
+  if (parsedLogs.length > 0) {
+    const lastLog = parsedLogs[parsedLogs.length - 1];
+    result.isOnDuty = lastLog.event === "clockIn";
+  }
+
+  return result;
 }
 
 // ── Sub-Components ─────────────────────────────────────────────────────────
@@ -254,14 +307,13 @@ function PaymentBreakdown({
 
 function StaffCard({
   member,
-  activeTime,
   onToggle,
 }: {
-  member: Staff & { activeTime: string };
-  activeTime: string;
-  onToggle: (member: Staff) => void;
+  member: Staff & { activeData: ActiveTimeResult };
+  onToggle: (member: Staff & { activeData: ActiveTimeResult }) => void;
 }) {
-  const isOnDuty = member.dutyStatus === "onDuty";
+  const { activeData } = member;
+  const isOnDuty = activeData.isOnDuty;
 
   return (
     <div
@@ -295,12 +347,31 @@ function StaffCard({
         />
       </div>
 
-      <div className="mt-3 flex items-center justify-between border-t border-[#2E2B24] pt-3">
-        <div className="flex items-center gap-1.5 text-[#6B6358]">
-          <Clock size={12} strokeWidth={2.5} />
-          <span className="text-[11px] font-medium">Active today</span>
+      <div className="mt-3 flex flex-col gap-2 border-t border-[#2E2B24] pt-3">
+        <div className="flex items-center justify-between text-[#6B6358]">
+          <div className="flex items-center gap-1.5">
+            <Clock size={12} strokeWidth={2.5} />
+            <span className="text-[11px] font-medium">Total Worked Today</span>
+          </div>
+          <span className="text-xs font-bold text-[#F5F0E8]">{activeData.totalFormatted}</span>
         </div>
-        <span className="text-xs font-bold text-[#F5F0E8]">{activeTime}</span>
+
+        {activeData.sessions.length > 0 && (
+          <div className="flex flex-col gap-1 mt-1">
+            {activeData.sessions.map((s, i) => (
+              <div key={i} className="flex justify-between text-[10px] text-[#8C8273]">
+                <span>{s.inTimeStr} → {s.outTimeStr || "Now"}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {isOnDuty && activeData.currentInTimeStr && (
+          <div className="flex items-center justify-between text-[10px] mt-1 text-[#4ADE80]">
+            <span className="font-semibold uppercase tracking-wider">Currently IN</span>
+            <span className="font-bold">{activeData.currentInTimeStr}</span>
+          </div>
+        )}
       </div>
 
       <button
@@ -969,7 +1040,7 @@ export default function DashboardPage() {
   const staffWithActiveTimes = useMemo(() => {
     const mapped = staff.map((member) => ({
       ...member,
-      activeTime: computeTodayActiveTime(member.clockLogs),
+      activeData: computeTodayActiveTime(member.clockLogs),
     }));
     return mapped.sort((a, b) => {
       if (a.role === "Owner" && b.role !== "Owner") return -1;
@@ -1117,10 +1188,10 @@ export default function DashboardPage() {
   // ── Handlers ───────────────────────────────────────────────────────────
 
   const toggleDutyStatus = useCallback(
-    async (member: Staff) => {
+    async (member: Staff & { activeData?: ActiveTimeResult }) => {
       if (!member.id) return;
-      const current = member.dutyStatus || "offDuty";
-      const next = current === "onDuty" ? "offDuty" : "onDuty";
+      const currentIsOnDuty = member.activeData ? member.activeData.isOnDuty : (member.dutyStatus === "onDuty");
+      const next = currentIsOnDuty ? "offDuty" : "onDuty";
       const logEvent = next === "onDuty" ? "clockIn" : "clockOut";
 
       try {
@@ -1435,7 +1506,6 @@ export default function DashboardPage() {
                 <StaffCard
                   key={member.id}
                   member={member}
-                  activeTime={member.activeTime}
                   onToggle={toggleDutyStatus}
                 />
               ))}
