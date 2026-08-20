@@ -93,11 +93,10 @@ export function getServiceCommission(s: any, inv: any): ServiceCommission {
     stylistShare = 0;
     ownerShare = amount;
   } else {
-    // Business rule: 50/50 split on the service amount.
-    // Product cost is transferred from stylist to owner (deducted from stylist,
-    // added to owner) — but product cost must NOT affect the 50/50 base split.
-    stylistShare = 0.5 * amount - cost;
-    ownerShare   = 0.5 * amount + cost;
+    // Business rule: Remove product cost first, then split remaining 50/50.
+    const remainingService = amount - cost;
+    stylistShare = remainingService * 0.5;
+    ownerShare   = (remainingService * 0.5) + cost;
   }
 
   return {
@@ -242,7 +241,8 @@ export function calculateDaySettlement(
         sd.productCost += comm.productCost * ratio;
         sd.ownerShareContribution += comm.ownerShare * ratio;
       } else {
-        result.staffRevenueContribution += 0.5 * comm.serviceRevenue * ratio;
+        const remainingService = comm.serviceRevenue - comm.productCost;
+        result.staffRevenueContribution += 0.5 * remainingService * ratio;
         result.staffProductReimbursement += comm.productCost * ratio;
 
         result.totalStaffShare += comm.stylistShare * ratio;

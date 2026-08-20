@@ -345,11 +345,13 @@ export default function SettlementReconciliationPage() {
               correctOwner = correctAmount;
               currentOwner = currentAmount;
             } else {
-              correctStylist = 0.5 * correctAmount - cost;
-              correctOwner = 0.5 * correctAmount + cost;
+              const remainingCorrect = correctAmount - cost;
+              correctStylist = remainingCorrect * 0.5;
+              correctOwner = (remainingCorrect * 0.5) + cost;
 
-              currentStylist = 0.5 * currentAmount - cost;
-              currentOwner = 0.5 * currentAmount + cost;
+              const remainingCurrent = currentAmount - cost;
+              currentStylist = remainingCurrent * 0.5;
+              currentOwner = (remainingCurrent * 0.5) + cost;
             }
 
             const correctCollectedAmount = correctAmount * ratio;

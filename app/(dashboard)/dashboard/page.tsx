@@ -1561,8 +1561,9 @@ export default function DashboardPage() {
                           icon={Users}
                           items={[
                             { label: "Service Revenue", value: sd.serviceRevenue },
-                            { label: "50% Base Share", value: 0.5 * sd.serviceRevenue },
                             { label: "Product Cost Used", value: sd.productCost, negative: true },
+                            { label: "Net Service Revenue", value: sd.serviceRevenue - sd.productCost },
+                            { label: "50% Staff Share", value: 0.5 * (sd.serviceRevenue - sd.productCost) },
                           ]}
                           collectedCredits={mappedCollectedCredits}
                         />

@@ -421,11 +421,13 @@ function StaffSplitCard({
   const [date, setDate] = useState(() => toLocalDateString(new Date()));
   const [isSaving, setIsSaving] = useState(false);
 
-  const todayShare = member.todayRevenue * 0.5;
-  const todayFinal = todayShare - member.todayProductCosts - member.todayDrawings;
+  const todayNetRevenue = member.todayRevenue - member.todayProductCosts;
+  const todayShare = todayNetRevenue * 0.5;
+  const todayFinal = todayShare - member.todayDrawings;
 
-  const monthlyShare = member.monthlyRevenue * 0.5;
-  const monthlyFinal = monthlyShare - member.monthlyProductCosts - member.monthlyDrawings;
+  const monthlyNetRevenue = member.monthlyRevenue - member.monthlyProductCosts;
+  const monthlyShare = monthlyNetRevenue * 0.5;
+  const monthlyFinal = monthlyShare - member.monthlyDrawings;
 
   const totalDrawings = member.monthlyDrawings;
 
@@ -521,9 +523,21 @@ function StaffSplitCard({
         {/* Detailed Breakdown */}
         <div className="border-t border-[#2E2B24]/40 pt-4 space-y-2">
           <div className="flex justify-between items-center text-xs">
-            <span className="font-medium text-[#A89F8C] text-[11px]">TOTAL REVENUE GENERATED</span>
+            <span className="font-medium text-[#A89F8C] text-[11px]">SERVICE REVENUE</span>
             <span className="font-mono font-bold text-[11px] text-[#F5F0E8]">
               {formatCurrency(member.monthlyRevenue)}
+            </span>
+          </div>
+          <div className="flex justify-between items-center text-xs">
+            <span className="font-medium text-[#A89F8C] text-[11px]">PRODUCT COST USED</span>
+            <span className="font-mono font-bold text-[11px] text-[#E57373]">
+              − {formatCurrency(member.monthlyProductCosts)}
+            </span>
+          </div>
+          <div className="flex justify-between items-center text-xs border-t border-[#2E2B24]/40 pt-1 mt-1">
+            <span className="font-medium text-[#A89F8C] text-[11px]">NET SERVICE REVENUE</span>
+            <span className="font-mono font-bold text-[11px] text-[#F5F0E8]">
+              {formatCurrency(monthlyNetRevenue)}
             </span>
           </div>
           <div className="flex justify-between items-center text-xs">
@@ -532,18 +546,14 @@ function StaffSplitCard({
               {formatCurrency(monthlyShare)}
             </span>
           </div>
-          <div className="flex justify-between items-center text-xs">
-            <span className="font-medium text-[#A89F8C] text-[11px]">PRODUCT COSTS</span>
-            <span className="font-mono font-bold text-[11px] text-[#E57373]">
-              − {formatCurrency(member.monthlyProductCosts)}
-            </span>
-          </div>
-          <div className="flex justify-between items-center text-xs">
-            <span className="font-medium text-[#A89F8C] text-[11px]">DRAWINGS</span>
-            <span className="font-mono font-bold text-[11px] text-[#E57373]">
-              − {formatCurrency(member.monthlyDrawings)}
-            </span>
-          </div>
+          {member.monthlyDrawings > 0 && (
+            <div className="flex justify-between items-center text-xs">
+              <span className="font-medium text-[#A89F8C] text-[11px]">DRAWINGS</span>
+              <span className="font-mono font-bold text-[11px] text-[#E57373]">
+                − {formatCurrency(member.monthlyDrawings)}
+              </span>
+            </div>
+          )}
         </div>
         
         <div className="border-t border-[#2E2B24] mt-3 pt-3 flex justify-between items-center">
@@ -1923,13 +1933,17 @@ export default function SettlementsPage() {
                                             value: sd.serviceRevenue,
                                           },
                                           {
-                                            label: "50% Base Share",
-                                            value: 0.5 * sd.serviceRevenue,
-                                          },
-                                          {
                                             label: "Product Cost Used",
                                             value: sd.productCost,
                                             negative: true,
+                                          },
+                                          {
+                                            label: "Net Service Revenue",
+                                            value: sd.serviceRevenue - sd.productCost,
+                                          },
+                                          {
+                                            label: "50% Staff Share",
+                                            value: 0.5 * (sd.serviceRevenue - sd.productCost),
                                           },
                                         ]}
                                         collectedCredits={mappedCollectedCredits}

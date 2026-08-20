@@ -1104,8 +1104,9 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
         const serviceAmount = Math.round(serviceBaseAmount * serviceBillDiscountFactor * 100) / 100;
         const staffId = matchedStaff?.id ?? "";
         const staffRole = row.staff === "System" ? "Owner" : (matchedStaff?.role || "Stylist");
-        const stylistShare = staffRole === "Owner" ? 0 : 0.5 * serviceAmount - usedProductCost;
-        const ownerShare = staffRole === "Owner" ? serviceAmount : 0.5 * serviceAmount + usedProductCost;
+        const remainingService = serviceAmount - usedProductCost;
+        const stylistShare = staffRole === "Owner" ? 0 : remainingService * 0.5;
+        const ownerShare = staffRole === "Owner" ? serviceAmount : (remainingService * 0.5) + usedProductCost;
         return {
           serviceId: matchedService?.id ?? "",
           serviceName: row.service,
