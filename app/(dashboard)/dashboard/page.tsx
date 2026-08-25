@@ -43,6 +43,8 @@ import * as customerService from "@/services/customers";
 import * as expensesService from "@/services/expenses";
 import { toLocalDateString } from "@/lib/utils/date";
 import { getInvoicePayments, getInvoicePaymentRatio, DaySettlementDetails, calculateDaySettlement } from "@/lib/utils/settlements";
+import { computeStaffPerformance, ServiceBreakdownItem } from "@/lib/utils/staffPerformance";
+import { ServiceBreakdownModal } from "@/components/ui/ServiceBreakdownModal";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface Invoice {
@@ -310,19 +312,37 @@ function PaymentBreakdown({
 function StaffCard({
   member,
   onToggle,
+  onOpenBreakdown,
+  invoices = [],
+  selectedDate,
 }: {
   member: Staff & { activeData: ActiveTimeResult };
   onToggle: (member: Staff & { activeData: ActiveTimeResult }) => void;
+  onOpenBreakdown: (data: { staffName: string; title: string; breakdown: ServiceBreakdownItem[] }) => void;
+  invoices?: Invoice[];
+  selectedDate?: string;
 }) {
   const { activeData } = member;
   const isOnDuty = activeData.isOnDuty;
 
+  const realTodayStr = useMemo(() => toLocalDateString(new Date()), []);
+  const targetDate = selectedDate || realTodayStr;
+  const isSelectedToday = targetDate === realTodayStr;
+
+  const perf = useMemo(
+    () => computeStaffPerformance(invoices, member, targetDate),
+    [invoices, member, targetDate]
+  );
+
+  const todayVisibleList = perf.todayBreakdown.slice(0, 3);
+
   return (
     <div
-      className={`group relative overflow-hidden rounded-2xl border bg-[#131210] p-4 transition-all duration-300 hover:-translate-y-0.5 ${isOnDuty
-        ? "border-[#B8962E]/30 shadow-[0_4px_20px_rgba(184,150,46,0.08)]"
-        : "border-[#2E2B24] hover:border-[#4A4535]"
-        }`}
+      className={`group relative overflow-hidden rounded-2xl border bg-[#131210] p-4 transition-all duration-300 hover:-translate-y-0.5 ${
+        isOnDuty
+          ? "border-[#B8962E]/30 shadow-[0_4px_20px_rgba(184,150,46,0.08)]"
+          : "border-[#2E2B24] hover:border-[#4A4535]"
+      }`}
     >
       <div className="flex items-start justify-between">
         <div className="min-w-0 flex-1">
@@ -331,10 +351,11 @@ function StaffCard({
               {member.name}
             </h3>
             <span
-              className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold tracking-[0.1em] uppercase border ${isOnDuty
-                ? "border-[#4A3A10] bg-[#2A2310] text-[#D4A935]"
-                : "border-[#2E2B24] bg-[#1C1A16] text-[#6B6358]"
-                }`}
+              className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold tracking-[0.1em] uppercase border ${
+                isOnDuty
+                  ? "border-[#4A3A10] bg-[#2A2310] text-[#D4A935]"
+                  : "border-[#2E2B24] bg-[#1C1A16] text-[#6B6358]"
+              }`}
             >
               {isOnDuty ? "On Duty" : "Off Duty"}
             </span>
@@ -344,8 +365,9 @@ function StaffCard({
           </p>
         </div>
         <div
-          className={`size-2 rounded-full shrink-0 mt-1.5 ${isOnDuty ? "bg-[#4ADE80] shadow-[0_0_8px_rgba(74,222,128,0.4)]" : "bg-[#6B6358]"
-            }`}
+          className={`size-2 rounded-full shrink-0 mt-1.5 ${
+            isOnDuty ? "bg-[#4ADE80] shadow-[0_0_8px_rgba(74,222,128,0.4)]" : "bg-[#6B6358]"
+          }`}
         />
       </div>
 
@@ -378,13 +400,69 @@ function StaffCard({
 
       <button
         onClick={() => onToggle(member)}
-        className={`mt-3 h-9 w-full rounded-xl text-[11px] font-bold tracking-wide transition-all duration-200 ${isOnDuty
-          ? "border border-[#2E2B24] bg-transparent text-[#A89F8C] hover:border-[#B8962E] hover:text-[#B8962E]"
-          : "bg-[#B8962E] text-[#0E0D0B] hover:bg-[#D4A935] shadow-[0_2px_12px_rgba(184,150,46,0.2)]"
-          }`}
+        className={`mt-3 h-9 w-full rounded-xl text-[11px] font-bold tracking-wide transition-all duration-200 cursor-pointer ${
+          isOnDuty
+            ? "border border-[#2E2B24] bg-transparent text-[#A89F8C] hover:border-[#B8962E] hover:text-[#B8962E]"
+            : "bg-[#B8962E] text-[#0E0D0B] hover:bg-[#D4A935] shadow-[0_2px_12px_rgba(184,150,46,0.2)]"
+        }`}
       >
         {isOnDuty ? "Clock Out" : "Clock In"}
       </button>
+
+      {/* Service Performance Section — TODAY ONLY */}
+      <div className="mt-4 border-t border-[#2E2B24] pt-3 space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#B8962E]">
+            Service Performance
+          </span>
+        </div>
+
+        <div className="rounded-xl border border-[#2E2B24] bg-[#0E0D0B]/70 p-2.5 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-[#A89F8C]">
+              {isSelectedToday ? "Today" : targetDate}
+            </span>
+            <span className="text-xs font-black text-[#4ADE80]">
+              {perf.todayTotal} {perf.todayTotal === 1 ? "service" : "services"}
+            </span>
+          </div>
+
+          {perf.todayBreakdown.length === 0 ? (
+            <p className="text-[10px] text-[#6B6358] italic">
+              {isSelectedToday ? "No services completed today" : `No services completed on ${targetDate}`}
+            </p>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-1">
+                {todayVisibleList.map((item) => (
+                  <span
+                    key={item.name}
+                    className="inline-flex items-center gap-1 rounded-lg bg-[#1C1A16] border border-[#2E2B24] px-2 py-0.5 text-[10px] font-semibold text-[#F5F0E8]"
+                  >
+                    <span>{item.name}</span>
+                    <span className="text-[#B8962E] font-bold">×{item.count}</span>
+                  </span>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  onOpenBreakdown({
+                    staffName: member.name,
+                    title: isSelectedToday ? "Today's Services" : `Services on ${targetDate}`,
+                    breakdown: perf.todayBreakdown,
+                  })
+                }
+                className="w-full text-center py-1 rounded-lg bg-[#1F1A0F] border border-[#B8962E]/40 text-[10px] font-bold text-[#B8962E] hover:bg-[#2A2310] transition cursor-pointer"
+              >
+                {perf.todayBreakdown.length > 3
+                  ? `View all (+${perf.todayBreakdown.length - 3})`
+                  : "View breakdown"}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -870,6 +948,11 @@ export default function DashboardPage() {
   const [selectedInvoiceDate, setSelectedInvoiceDate] = useState<string>(
     toLocalDateString(new Date())
   );
+  const [breakdownModal, setBreakdownModal] = useState<{
+    staffName: string;
+    title: string;
+    breakdown: ServiceBreakdownItem[];
+  } | null>(null);
 
   const [modals, setModals] = useState({
     billing: false,
@@ -996,17 +1079,20 @@ export default function DashboardPage() {
 
   useEffect(() => {
     setInvoicesLoaded(false);
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+
     const dateParts = selectedInvoiceDate.split("-").map(Number);
-    const yyyy = dateParts[0];
-    const mm = dateParts[1];
-    const dd = dateParts[2];
-    const startOfDay = new Date(yyyy, mm - 1, dd, 0, 0, 0, 0);
-    const endOfDay = new Date(yyyy, mm - 1, dd, 23, 59, 59, 999);
+    const selStartOfDay = new Date(dateParts[0], dateParts[1] - 1, dateParts[2], 0, 0, 0, 0);
+    const selEndOfDay = new Date(dateParts[0], dateParts[1] - 1, dateParts[2], 23, 59, 59, 999);
+
+    const minStart = selStartOfDay < startOfMonth ? selStartOfDay : startOfMonth;
+    const maxEnd = selEndOfDay > now ? selEndOfDay : new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
 
     const qInvoices = query(
       collection(db, "invoices"),
-      where("date", ">=", Timestamp.fromDate(startOfDay)),
-      where("date", "<=", Timestamp.fromDate(endOfDay)),
+      where("date", ">=", Timestamp.fromDate(minStart)),
+      where("date", "<=", Timestamp.fromDate(maxEnd)),
       orderBy("date", "desc")
     );
 
@@ -1022,8 +1108,8 @@ export default function DashboardPage() {
         // Fallback query without orderBy
         const fallbackQ = query(
           collection(db, "invoices"),
-          where("date", ">=", Timestamp.fromDate(startOfDay)),
-          where("date", "<=", Timestamp.fromDate(endOfDay))
+          where("date", ">=", Timestamp.fromDate(minStart)),
+          where("date", "<=", Timestamp.fromDate(maxEnd))
         );
         onSnapshot(
           fallbackQ,
@@ -1639,6 +1725,9 @@ export default function DashboardPage() {
                   key={member.id}
                   member={member}
                   onToggle={toggleDutyStatus}
+                  onOpenBreakdown={(data) => setBreakdownModal(data)}
+                  invoices={invoices}
+                  selectedDate={selectedInvoiceDate}
                 />
               ))}
             </div>
@@ -1777,6 +1866,17 @@ export default function DashboardPage() {
           </div>
         </div>
       </ModalOverlay>
+
+      {/* Service Performance Breakdown Modal */}
+      {breakdownModal && (
+        <ServiceBreakdownModal
+          isOpen={!!breakdownModal}
+          onClose={() => setBreakdownModal(null)}
+          staffName={breakdownModal.staffName}
+          title={breakdownModal.title}
+          breakdown={breakdownModal.breakdown}
+        />
+      )}
     </div>
   );
 }

@@ -7,6 +7,8 @@ import { Plus, Search, Edit2, Trash2, X, Users } from "lucide-react";
 import { db } from "@/lib/firebase";
 import { collection, query, where, getDocs, Timestamp, doc, getDoc } from "firebase/firestore";
 import { useAppData } from "@/context/AppDataContext";
+import { computeStaffPerformance, ServiceBreakdownItem } from "@/lib/utils/staffPerformance";
+import { ServiceBreakdownModal } from "@/components/ui/ServiceBreakdownModal";
 
 export default function StaffPage() {
   const { staff, refreshStaff, loadingAppData } = useAppData();
@@ -29,6 +31,35 @@ export default function StaffPage() {
 
   const [staffRevenueMap, setStaffRevenueMap] = useState<Record<string, number>>({});
   const [staffMemberMap, setStaffMemberMap] = useState<Record<string, number>>({});
+  const [monthlyInvoices, setMonthlyInvoices] = useState<any[]>([]);
+  const [breakdownModal, setBreakdownModal] = useState<{
+    staffName: string;
+    title: string;
+    breakdown: ServiceBreakdownItem[];
+  } | null>(null);
+
+  useEffect(() => {
+    const fetchMonthlyInvoices = async () => {
+      try {
+        const now = new Date();
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+        const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+        const q = query(
+          collection(db, "invoices"),
+          where("date", ">=", Timestamp.fromDate(startOfMonth)),
+          where("date", "<=", Timestamp.fromDate(endOfToday))
+        );
+        const snap = await getDocs(q);
+        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        setMonthlyInvoices(list);
+      } catch (err) {
+        console.error("Failed to load monthly invoices for staff page:", err);
+      }
+    };
+
+    fetchMonthlyInvoices();
+  }, []);
 
   const loadStaffProgress = async () => {
     try {
@@ -260,43 +291,92 @@ export default function StaffPage() {
                     </div>
                   </div>
 
-                  {/* Middle: Targets */}
-                  <div className="flex-1 min-w-[280px] pt-4 md:pt-0 border-t md:border-t-0 border-[#2E2B24]">
-                    <span className="font-semibold block text-[10px] text-[#A89F8C] uppercase tracking-wider mb-2">Monthly Targets</span>
-                    {!hasRevenueTarget && !hasMemberTarget ? (
-                      <p className="text-xs text-[#6B6358] italic">No targets set</p>
-                    ) : (
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        {hasRevenueTarget && (
-                          <div className="space-y-1">
-                            <div className="flex justify-between text-[10px] text-[#A89F8C]">
-                              <span>Revenue: ₹{revenueAchieved.toLocaleString()} / ₹{revenueMonthly.toLocaleString()}</span>
-                              <span className="font-bold text-[#B8962E]">{Math.round(revenuePercent)}%</span>
-                            </div>
-                            <div className="w-full h-1.5 rounded-full bg-[#0E0D0B] overflow-hidden">
-                              <div
-                                className="h-full rounded-full bg-[#B8962E]"
-                                style={{ width: `${revenuePercent}%` }}
-                              />
-                            </div>
+                  {/* Middle: Performance & Targets */}
+                  <div className="flex-1 min-w-[280px] pt-4 md:pt-0 border-t md:border-t-0 border-[#2E2B24] space-y-3">
+                    {/* Monthly Service Count & Top Services */}
+                    {(() => {
+                      const perf = computeStaffPerformance(monthlyInvoices, stf);
+                      return (
+                        <div className="rounded-xl border border-[#2E2B24] bg-[#0E0D0B]/60 p-3 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-[#A89F8C]">
+                              Services This Month
+                            </span>
+                            <span className="text-sm font-black text-[#60A5FA]">
+                              {perf.monthlyTotal} {perf.monthlyTotal === 1 ? "service" : "services"}
+                            </span>
                           </div>
-                        )}
-                        {hasMemberTarget && (
-                          <div className="space-y-1">
-                            <div className="flex justify-between text-[10px] text-[#A89F8C]">
-                              <span>Servings: {memberAchieved} / {memberCountMonthly}</span>
-                              <span className="font-bold text-[#B8962E]">{Math.round(memberPercent)}%</span>
+
+                          {perf.monthlyBreakdown.length > 0 && (
+                            <div className="flex flex-wrap items-center gap-1 pt-1">
+                              {perf.monthlyBreakdown.slice(0, 4).map((item) => (
+                                <span
+                                  key={item.name}
+                                  className="inline-flex items-center gap-1 rounded-lg bg-[#1C1A16] border border-[#2E2B24] px-2 py-0.5 text-[10px] font-semibold text-[#F5F0E8]"
+                                >
+                                  <span>{item.name}</span>
+                                  <span className="text-[#60A5FA] font-bold">×{item.count}</span>
+                                </span>
+                              ))}
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setBreakdownModal({
+                                    staffName: stf.name,
+                                    title: "Services This Month",
+                                    breakdown: perf.monthlyBreakdown,
+                                  })
+                                }
+                                className="inline-flex items-center gap-1 rounded-lg bg-[#1F1A0F] border border-[#B8962E]/40 px-2 py-0.5 text-[10px] font-bold text-[#B8962E] hover:bg-[#2A2310] transition cursor-pointer"
+                              >
+                                {perf.monthlyBreakdown.length > 4
+                                  ? `View all (+${perf.monthlyBreakdown.length - 4})`
+                                  : "View breakdown"}
+                              </button>
                             </div>
-                            <div className="w-full h-1.5 rounded-full bg-[#0E0D0B] overflow-hidden">
-                              <div
-                                className="h-full rounded-full bg-[#B8962E]"
-                                style={{ width: `${memberPercent}%` }}
-                              />
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    {/* Monthly Targets */}
+                    <div>
+                      <span className="font-semibold block text-[10px] text-[#A89F8C] uppercase tracking-wider mb-2">Monthly Targets</span>
+                      {!hasRevenueTarget && !hasMemberTarget ? (
+                        <p className="text-xs text-[#6B6358] italic">No targets set</p>
+                      ) : (
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          {hasRevenueTarget && (
+                            <div className="space-y-1">
+                              <div className="flex justify-between text-[10px] text-[#A89F8C]">
+                                <span>Revenue: ₹{revenueAchieved.toLocaleString()} / ₹{revenueMonthly.toLocaleString()}</span>
+                                <span className="font-bold text-[#B8962E]">{Math.round(revenuePercent)}%</span>
+                              </div>
+                              <div className="w-full h-1.5 rounded-full bg-[#0E0D0B] overflow-hidden">
+                                <div
+                                  className="h-full rounded-full bg-[#B8962E]"
+                                  style={{ width: `${revenuePercent}%` }}
+                                />
+                              </div>
                             </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
+                          )}
+                          {hasMemberTarget && (
+                            <div className="space-y-1">
+                              <div className="flex justify-between text-[10px] text-[#A89F8C]">
+                                <span>Target: {memberAchieved} / {memberCountMonthly}</span>
+                                <span className="font-bold text-[#B8962E]">{Math.round(memberPercent)}%</span>
+                              </div>
+                              <div className="w-full h-1.5 rounded-full bg-[#0E0D0B] overflow-hidden">
+                                <div
+                                  className="h-full rounded-full bg-[#B8962E]"
+                                  style={{ width: `${memberPercent}%` }}
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {/* Right: Actions */}
@@ -498,6 +578,16 @@ export default function StaffPage() {
             </div>
           </div>
         </div>
+      )}
+      {/* Service Breakdown Modal */}
+      {breakdownModal && (
+        <ServiceBreakdownModal
+          isOpen={!!breakdownModal}
+          onClose={() => setBreakdownModal(null)}
+          staffName={breakdownModal.staffName}
+          title={breakdownModal.title}
+          breakdown={breakdownModal.breakdown}
+        />
       )}
     </div>
   );

@@ -4,6 +4,7 @@ import {
   computeRemainingInventoryValue,
 } from "./servingCost";
 import { getServiceCommission } from "./settlements";
+import { computeStaffPerformance } from "./staffPerformance";
 
 function assertEqual(actual: number, expected: number, message: string) {
   if (Math.abs(Number(actual) - Number(expected)) > 0.001) {
@@ -101,7 +102,68 @@ function runTests() {
     assertEqual(comm.stylistShare + comm.ownerShare, 2000, "Settlement: Total shares should reconcile to ₹2000");
   }
 
-  console.log("=== ALL TESTS COMPLETED SUCCESSFULLY ===");
-}
+  // Staff Performance Test 1: Daily and Monthly counts with quantities, staff matching & month boundary
+    {
+      const staffRehan = { id: "staff_1", name: "Rehan" };
+      const staffSohail = { id: "staff_2", name: "Sohail" };
+      const todayStr = "2026-08-25";
 
-runTests();
+      const testInvoices = [
+        // Today Invoice 1 (Rehan: Haircut x2, Facial x1; Sohail: Shave x1)
+        {
+          id: "inv_1",
+          dateKey: "2026-08-25",
+          services: [
+            { staffId: "staff_1", staffName: "Rehan", serviceName: "Haircut", quantity: 2 },
+            { staffId: "staff_1", staffName: "Rehan", serviceName: "Facial", quantity: 1 },
+            { staffId: "staff_2", staffName: "Sohail", serviceName: "Shave", quantity: 1 },
+          ],
+        },
+        // Today Invoice 2 (Rehan: Haircut x1)
+        {
+          id: "inv_2",
+          dateKey: "2026-08-25",
+          services: [
+            { staffId: "staff_1", staffName: "Rehan", serviceName: "Haircut", quantity: 1 },
+            { serviceId: "membership_fee", staffId: "staff_1", staffName: "Rehan", serviceName: "Membership Fee", quantity: 1 },
+          ],
+        },
+        // Earlier this month Invoice (Rehan: Haircut x12, Facial x7; Sohail: Haircut x5)
+        {
+          id: "inv_3",
+          dateKey: "2026-08-10",
+          services: [
+            { staffId: "staff_1", staffName: "Rehan", serviceName: "Haircut", quantity: 12 },
+            { staffId: "staff_1", staffName: "Rehan", serviceName: "Facial", quantity: 7 },
+            { staffId: "staff_2", staffName: "Sohail", serviceName: "Haircut", quantity: 5 },
+          ],
+        },
+        // Previous month Invoice (July 2026 - should not count for this month)
+        {
+          id: "inv_4",
+          dateKey: "2026-07-20",
+          services: [
+            { staffId: "staff_1", staffName: "Rehan", serviceName: "Haircut", quantity: 10 },
+          ],
+        },
+      ];
+
+      const rehanPerf = computeStaffPerformance(testInvoices, staffRehan, todayStr);
+      const sohailPerf = computeStaffPerformance(testInvoices, staffSohail, todayStr);
+
+      assertEqual(rehanPerf.todayTotal, 4, "Rehan: Today's total services should be 4 (Haircut x3 + Facial x1)");
+      assertEqual(rehanPerf.todayBreakdown.find((s) => s.name === "Haircut")?.count || 0, 3, "Rehan: Today Haircut count should be 3");
+      assertEqual(rehanPerf.todayBreakdown.find((s) => s.name === "Facial")?.count || 0, 1, "Rehan: Today Facial count should be 1");
+
+      assertEqual(rehanPerf.monthlyTotal, 23, "Rehan: Monthly total services should be 23 (3+12 Haircuts + 1+7 Facials)");
+      assertEqual(rehanPerf.monthlyBreakdown.find((s) => s.name === "Haircut")?.count || 0, 15, "Rehan: Monthly Haircut count should be 15");
+      assertEqual(rehanPerf.monthlyBreakdown.find((s) => s.name === "Facial")?.count || 0, 8, "Rehan: Monthly Facial count should be 8");
+
+      assertEqual(sohailPerf.todayTotal, 1, "Sohail: Today's total services should be 1 (Shave x1)");
+      assertEqual(sohailPerf.monthlyTotal, 6, "Sohail: Monthly total services should be 6 (Shave x1 + Haircut x5)");
+    }
+
+    console.log("=== ALL TESTS COMPLETED SUCCESSFULLY ===");
+  }
+
+  runTests();
