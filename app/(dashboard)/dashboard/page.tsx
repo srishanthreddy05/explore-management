@@ -7,6 +7,7 @@ import {
   onSnapshot,
   query,
   where,
+  orderBy,
   Timestamp,
   arrayUnion,
   doc,
@@ -18,6 +19,7 @@ import type { Staff } from "@/types/staff";
 import { useAppData } from "@/context/AppDataContext";
 import {
   CalendarDays,
+  Calendar,
   CreditCard,
   TrendingUp,
   ShieldCheck,
@@ -865,6 +867,9 @@ export default function DashboardPage() {
   const staffLoaded = !loadingAppData;
   const [tick, setTick] = useState(0);
   const [selectedStaffId, setSelectedStaffId] = useState<string>("All");
+  const [selectedInvoiceDate, setSelectedInvoiceDate] = useState<string>(
+    toLocalDateString(new Date())
+  );
 
   const [modals, setModals] = useState({
     billing: false,
@@ -990,12 +995,19 @@ export default function DashboardPage() {
   // ── Real-time Listeners ────────────────────────────────────────────────
 
   useEffect(() => {
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
+    setInvoicesLoaded(false);
+    const dateParts = selectedInvoiceDate.split("-").map(Number);
+    const yyyy = dateParts[0];
+    const mm = dateParts[1];
+    const dd = dateParts[2];
+    const startOfDay = new Date(yyyy, mm - 1, dd, 0, 0, 0, 0);
+    const endOfDay = new Date(yyyy, mm - 1, dd, 23, 59, 59, 999);
 
     const qInvoices = query(
       collection(db, "invoices"),
-      where("billDate", "==", Timestamp.fromDate(startOfToday))
+      where("date", ">=", Timestamp.fromDate(startOfDay)),
+      where("date", "<=", Timestamp.fromDate(endOfDay)),
+      orderBy("date", "desc")
     );
 
     const unsub = onSnapshot(
@@ -1005,11 +1017,40 @@ export default function DashboardPage() {
         setInvoices(list);
         setInvoicesLoaded(true);
       },
-      (err) => console.error("Invoices listener error:", err)
+      (err) => {
+        console.error("Invoices listener error:", err);
+        // Fallback query without orderBy
+        const fallbackQ = query(
+          collection(db, "invoices"),
+          where("date", ">=", Timestamp.fromDate(startOfDay)),
+          where("date", "<=", Timestamp.fromDate(endOfDay))
+        );
+        onSnapshot(
+          fallbackQ,
+          (snapshot) => {
+            const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }) as Invoice);
+            list.sort((a: any, b: any) => {
+              const getTime = (x: any) => {
+                const ts = x.invoiceDate || x.createdAt || x.date;
+                if (!ts) return 0;
+                if (ts.toMillis) return ts.toMillis();
+                if (ts instanceof Date) return ts.getTime();
+                if (typeof ts === "string") return new Date(ts).getTime();
+                if (typeof ts.seconds === "number") return ts.seconds * 1000;
+                return 0;
+              };
+              return getTime(b) - getTime(a);
+            });
+            setInvoices(list);
+            setInvoicesLoaded(true);
+          },
+          (fallbackErr) => console.error("Fallback query failed:", fallbackErr)
+        );
+      }
     );
 
     return () => unsub();
-  }, []);
+  }, [selectedInvoiceDate]);
 
   useEffect(() => {
     if (invoicesLoaded && staffLoaded) {
@@ -1105,11 +1146,11 @@ export default function DashboardPage() {
   }, [invoices, staff, monthlyStats]);
 
   const todayStr = toLocalDateString(new Date());
-  const todayInvoices = useMemo(() => {
+  const selectedDateInvoices = useMemo(() => {
     return invoices
       .filter((inv) => {
         const d = inv.dateKey || toLocalDateString(inv.date);
-        return d === todayStr;
+        return d === selectedInvoiceDate;
       })
       .sort((a, b) => {
         const getTime = (x: any) => {
@@ -1123,22 +1164,68 @@ export default function DashboardPage() {
         };
         return getTime(b) - getTime(a);
       });
-  }, [invoices, todayStr]);
+  }, [invoices, selectedInvoiceDate]);
+
+  // Alias todayInvoices to selectedDateInvoices so settlements and other cards continue working
+  const todayInvoices = selectedDateInvoices;
 
   const filteredTodayInvoices = useMemo(() => {
-    if (selectedStaffId === "All") return todayInvoices;
+    if (selectedStaffId === "All") return selectedDateInvoices;
 
     const targetStaff = staff.find((s) => s.id === selectedStaffId);
-    if (!targetStaff) return todayInvoices;
+    if (!targetStaff) return selectedDateInvoices;
 
-    return todayInvoices.filter((inv) => {
+    return selectedDateInvoices.filter((inv) => {
       return (inv.services || []).some((s: any) => 
         s.staffId === targetStaff.id || 
         (s.staffName && s.staffName.toLowerCase() === targetStaff.name.toLowerCase()) ||
         (s.staff && s.staff.toLowerCase() === targetStaff.name.toLowerCase())
       );
     });
-  }, [todayInvoices, selectedStaffId, staff]);
+  }, [selectedDateInvoices, selectedStaffId, staff]);
+
+  // Payment Summary for filtered invoices (selected date + staff filter)
+  const staffPaymentSummary = useMemo(() => {
+    let totalSales = 0;
+    let upiTotal = 0;
+    let cashTotal = 0;
+    let productCostUsed = 0;
+
+    filteredTodayInvoices.forEach((inv: any) => {
+      const payments = getInvoicePayments(inv);
+      const ratio = getInvoicePaymentRatio(inv);
+      const grandTotal = inv.grandTotal || 0;
+
+      cashTotal += payments.cash || 0;
+      upiTotal += payments.upi || 0;
+
+      if (grandTotal > 0) {
+        totalSales += grandTotal;
+      }
+
+      const targetStaff = staff.find((st) => st.id === selectedStaffId);
+
+      (inv.services || []).forEach((s: any) => {
+        const isMatchingStaff =
+          selectedStaffId === "All" ||
+          s.staffId === selectedStaffId ||
+          (targetStaff && s.staffName && s.staffName.toLowerCase() === targetStaff.name.toLowerCase()) ||
+          (targetStaff && s.staff && s.staff.toLowerCase() === targetStaff.name.toLowerCase());
+
+        if (isMatchingStaff) {
+          const cost = s.usedProductCost || 0;
+          productCostUsed += cost * ratio;
+        }
+      });
+    });
+
+    return {
+      totalSales,
+      upiTotal,
+      cashTotal,
+      returnedTotal: productCostUsed,
+    };
+  }, [filteredTodayInvoices, selectedStaffId, staff]);
 
   const todaySettlement = useMemo<DaySettlementDetails>(() => {
     return calculateDaySettlement(todayInvoices, staff, todayStr);
@@ -1336,20 +1423,31 @@ export default function DashboardPage() {
             </div>
           </section>
 
-          {/* Today's Invoices */}
+          {/* Invoices Section with Date Picker and Staff Payment Summary */}
           <section className="rounded-2xl border border-[#2E2B24] bg-[#1C1A16] shadow-sm overflow-hidden">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-[#2E2B24] px-6 py-4 gap-4">
               <div>
                 <h2 className="text-base font-bold tracking-[-0.01em] text-[#F5F0E8]">
-                  Today's Invoices
+                  Invoices
                 </h2>
                 <p className="mt-0.5 text-xs text-[#6B6358]">
-                  {filteredTodayInvoices.length} transactions displayed
+                  {filteredTodayInvoices.length} transactions for {selectedInvoiceDate}
                 </p>
               </div>
               <div className="flex items-center gap-3">
-                <div className="rounded-lg bg-[#131210] px-3 py-1.5 text-xs font-bold text-[#B8962E] border border-[#2E2B24]">
-                  {todayStr}
+                <div className="flex items-center gap-2 rounded-xl bg-[#131210] px-3.5 py-2 border border-[#2E2B24] focus-within:border-[#B8962E] transition">
+                  <Calendar size={15} className="text-[#B8962E]" />
+                  <span className="text-xs font-semibold text-[#6B6358]">Date:</span>
+                  <input
+                    type="date"
+                    value={selectedInvoiceDate}
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        setSelectedInvoiceDate(e.target.value);
+                      }
+                    }}
+                    className="bg-transparent text-xs font-bold text-[#F5F0E8] outline-none cursor-pointer"
+                  />
                 </div>
               </div>
             </div>
@@ -1383,6 +1481,40 @@ export default function DashboardPage() {
                 </button>
               ))}
             </div>
+
+            {/* Staff Payment Summary Panel — only shown when an individual staff member is selected */}
+            {selectedStaffId !== "All" && (
+              <div className="border-b border-[#2E2B24] bg-[#131210]/60 px-6 py-4">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#B8962E]">
+                    Payment Summary — {staff.find((s) => s.id === selectedStaffId)?.name || "Selected Staff"} ({selectedInvoiceDate})
+                  </span>
+                  <span className="text-[10px] font-semibold text-[#6B6358]">
+                    {filteredTodayInvoices.length} Invoices
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                  <div className="rounded-xl border border-[#2E2B24] bg-[#1C1A16] p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-[#6B6358]">Total Sales</p>
+                    <p className="mt-1 text-base font-extrabold text-[#F5F0E8]">{formatCurrency(staffPaymentSummary.totalSales)}</p>
+                  </div>
+                  <div className="rounded-xl border border-[#2E2B24] bg-[#1C1A16] p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-[#60A5FA]">UPI</p>
+                    <p className="mt-1 text-base font-extrabold text-[#60A5FA]">{formatCurrency(staffPaymentSummary.upiTotal)}</p>
+                  </div>
+                  <div className="rounded-xl border border-[#2E2B24] bg-[#1C1A16] p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-[#4ADE80]">Cash</p>
+                    <p className="mt-1 text-base font-extrabold text-[#4ADE80]">{formatCurrency(staffPaymentSummary.cashTotal)}</p>
+                  </div>
+                  <div className="rounded-xl border border-[#2E2B24] bg-[#1C1A16] p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-[#E57373]">Returned</p>
+                    <p className="mt-1 text-base font-extrabold text-[#E57373]">
+                      {staffPaymentSummary.returnedTotal > 0 ? "-" : ""}{formatCurrency(staffPaymentSummary.returnedTotal)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="overflow-x-auto">
               <table className="w-full min-w-[600px] text-left">

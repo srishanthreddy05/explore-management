@@ -4,8 +4,9 @@ import { useState } from "react";
 import * as productsService from "@/services/products";
 import { useAppData } from "@/context/AppDataContext";
 import type { Product } from "@/types/product";
-import { Plus, Search, Edit2, Trash2, X, Package } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, X } from "lucide-react";
 import { formatCurrency } from "@/components/salon-dashboard/types";
+import { computeCostPerServing } from "@/lib/utils/servingCost";
 
 export default function ProductsPage() {
   const { products, refreshProducts, loadingAppData } = useAppData();
@@ -20,6 +21,10 @@ export default function ProductsPage() {
     quantity: 0,
     type: "retail" as "retail" | "service",
     amount: 0,
+    // For service products:
+    // originalServings = immutable original count at purchase (never decremented)
+    // noOfServings     = remaining servings (decremented on use)
+    originalServings: 0,
     noOfServings: 0,
     brand: "",
     category: "",
@@ -36,6 +41,7 @@ export default function ProductsPage() {
       quantity: 0,
       type,
       amount: 0,
+      originalServings: 0,
       noOfServings: 0,
       brand: "",
       category: "",
@@ -51,6 +57,10 @@ export default function ProductsPage() {
       quantity: product.quantity || 0,
       type: product.type || "retail",
       amount: product.amount || 0,
+      // Load the IMMUTABLE original serving count (not remaining)
+      // If a product predates the originalServings field, fall back to noOfServings
+      // but note this may be inaccurate for products already consumed.
+      originalServings: product.originalServings ?? product.noOfServings ?? 0,
       noOfServings: product.noOfServings || 0,
       brand: product.brand || "",
       category: product.category || "",
@@ -79,28 +89,73 @@ export default function ProductsPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const payload = {
-        name: formData.name,
-        type: formData.type,
-        brand: formData.brand.trim() || undefined,
-        category: formData.category.trim() || undefined,
-        ...(formData.type === "retail" ? {
+      if (formData.type === "service") {
+        if (!formData.originalServings || formData.originalServings <= 0) {
+          alert("Original servings must be greater than 0.");
+          return;
+        }
+        if (!formData.amount || formData.amount <= 0) {
+          alert("Cost amount must be greater than 0.");
+          return;
+        }
+      }
+
+      let payload: Omit<Product, "id">;
+
+      if (formData.type === "retail") {
+        payload = {
+          name: formData.name,
           price: formData.price,
           quantity: formData.quantity,
+          type: "retail",
+          brand: formData.brand.trim() || undefined,
+          category: formData.category.trim() || undefined,
           amount: null,
+          originalServings: null,
           noOfServings: null,
           costPerServing: null,
-        } : {
-          price: 0,
-          quantity: null,
-          amount: formData.amount,
-          noOfServings: formData.noOfServings,
-          costPerServing: (formData.amount && formData.noOfServings) ? (formData.amount / formData.noOfServings) : 0,
-        })
-      };
+        };
+      } else {
+        // SERVICE PRODUCT
+        // costPerServing MUST always use originalServings as denominator, not remaining.
+        const originalServings = formData.originalServings;
+        const costPerServing = computeCostPerServing(formData.amount, originalServings);
+
+        if (editingProduct?.id) {
+          // EDIT MODE:
+          // - Do NOT overwrite noOfServings (it tracks consumed state)
+          // - Only update metadata + amount + originalServings
+          // - Recompute costPerServing from the new originalServings
+          payload = {
+            name: formData.name,
+            price: 0,
+            type: "service",
+            brand: formData.brand.trim() || undefined,
+            category: formData.category.trim() || undefined,
+            amount: formData.amount,
+            originalServings,
+            // noOfServings is NOT included here — it must not be reset on metadata edits
+            costPerServing,
+          };
+        } else {
+          // CREATE MODE:
+          // originalServings = noOfServings (same at creation)
+          payload = {
+            name: formData.name,
+            price: 0,
+            type: "service",
+            brand: formData.brand.trim() || undefined,
+            category: formData.category.trim() || undefined,
+            amount: formData.amount,
+            originalServings,
+            noOfServings: originalServings, // starts equal to original
+            costPerServing,
+          };
+        }
+      }
 
       if (editingProduct?.id) {
-        await productsService.update(editingProduct.id, payload);
+        await productsService.update(editingProduct.id, payload as Partial<Omit<Product, "id">>);
       } else {
         await productsService.create(payload as Omit<Product, "id">);
       }
@@ -417,23 +472,39 @@ export default function ProductsPage() {
                     />
                   </label>
                   <label className="block">
-                    <span className="text-sm font-semibold text-[#A89F8C]">Number of Servings</span>
+                    <span className="text-sm font-semibold text-[#A89F8C]">Original Purchased Servings</span>
                     <input
                       required
                       type="number"
                       min="1"
-                      value={formData.noOfServings === 0 ? "" : formData.noOfServings}
-                      onChange={(e) => setFormData({ ...formData, noOfServings: e.target.value === "" ? 0 : Number(e.target.value) })}
+                      value={formData.originalServings === 0 ? "" : formData.originalServings}
+                      onChange={(e) => {
+                        const val = e.target.value === "" ? 0 : Number(e.target.value);
+                        setFormData({ ...formData, originalServings: val });
+                      }}
                       className="mt-2 h-11 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-4 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E] focus:ring-1 focus:ring-[#B8962E]"
+                      placeholder="e.g. 10"
                     />
                   </label>
+
+                  {editingProduct && (
+                    <div className="rounded-xl border border-[#2E2B24] bg-[#131210] p-3 text-xs text-[#A89F8C] flex items-center justify-between">
+                      <span>Remaining Servings Available:</span>
+                      <span className="font-bold text-[#F5F0E8]">{formData.noOfServings} servings</span>
+                    </div>
+                  )}
+
                   <label className="block">
                     <span className="text-sm font-semibold text-[#A89F8C]">Cost Per Serving (₹ - Auto-calculated)</span>
                     <input
                       readOnly
                       type="text"
-                      value={formData.noOfServings > 0 ? formatCurrency(formData.amount / formData.noOfServings) : "—"}
-                      className="mt-2 h-11 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-4 text-sm text-[#A89F8C] outline-none"
+                      value={
+                        formData.originalServings > 0
+                          ? formatCurrency(computeCostPerServing(formData.amount, formData.originalServings))
+                          : "—"
+                      }
+                      className="mt-2 h-11 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-4 text-sm text-[#A89F8C] outline-none cursor-not-allowed"
                     />
                   </label>
                 </>
