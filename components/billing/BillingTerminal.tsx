@@ -19,6 +19,8 @@ import * as advanceBalancesService from "@/services/advanceBalances";
 import type { CreditBalance } from "@/types/creditBalance";
 import { useAppData } from "@/context/AppDataContext";
 import { toLocalDateString } from "@/lib/utils/date";
+import { getEffectiveCostPerServing } from "@/lib/utils/servingCost";
+
 
 import type { Customer } from "@/types/customer";
 import type { Service } from "@/types/service";
@@ -931,6 +933,27 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
       return;
     }
 
+    // Validate stock for all used service products to prevent negative inventory
+    const requiredServingsMap: Record<string, number> = {};
+    for (const s of services) {
+      if (s.usedProductId) {
+        requiredServingsMap[s.usedProductId] = (requiredServingsMap[s.usedProductId] || 0) + 1;
+      }
+    }
+
+    for (const [prodId, count] of Object.entries(requiredServingsMap)) {
+      const prod = productsList.find((p) => p.id === prodId);
+      const available = prod?.noOfServings ?? 0;
+      if (count > available) {
+        const prodName = prod?.name || "Selected supply";
+        setMessage({
+          type: "error",
+          text: `Insufficient stock: "${prodName}" only has ${available} serving(s) left, but ${count} are required.`,
+        });
+        return;
+      }
+    }
+
     setSaving(true);
     setMessage(null);
 
@@ -1096,8 +1119,8 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
         let usedProductCost = 0;
         if (row.usedProductId) {
           const matchedProduct = productsList.find((p) => p.id === row.usedProductId);
-          if (matchedProduct && typeof matchedProduct.costPerServing === "number") {
-            usedProductCost = matchedProduct.costPerServing;
+          if (matchedProduct) {
+            usedProductCost = getEffectiveCostPerServing(matchedProduct);
           }
         }
         const serviceBaseAmount = Math.max((Number(row.price) || 0) - (Number(row.discount) || 0), 0);
