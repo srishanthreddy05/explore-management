@@ -14,6 +14,7 @@ import {
   History,
   Coins,
   LogOut,
+  BarChart3,
 } from "lucide-react";
 import { SidebarItem } from "./SidebarItem";
 import { useMemo } from "react";
@@ -52,6 +53,7 @@ const menuGroups = [
   {
     title: "Business",
     items: [
+      { label: "Reports", href: "/reports", icon: BarChart3 },
       { label: "Expenses", href: "/expenses", icon: Coins },
     ],
   },
