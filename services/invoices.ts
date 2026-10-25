@@ -78,14 +78,19 @@ function getInvoiceDateKeys(invoice: any): { dateKey: string; monthKey: string }
 
 function summarizeStaffServices(services: any[], inv: any): Record<string, { revenue: number; servicesCount: number; productCost: number }> {
   const summary: Record<string, { revenue: number; servicesCount: number; productCost: number }> = {};
-  const discountFactor = inv && inv.subtotal > 0 ? (inv.grandTotal / inv.subtotal) : 1;
   services.forEach((s: any) => {
     const staffId = s.staffId || "unassigned";
     if (!summary[staffId]) {
       summary[staffId] = { revenue: 0, servicesCount: 0, productCost: 0 };
     }
-    const serviceBaseAmount = s.amount ?? Math.max((s.price || 0) - (s.discount || 0), 0);
-    const amount = serviceBaseAmount * discountFactor;
+    let amount: number;
+    if (s.amount !== undefined && s.amount !== null) {
+      amount = s.amount;
+    } else {
+      const serviceBaseAmount = Math.max((s.price || 0) - (s.discount || 0), 0);
+      const discountFactor = inv && inv.subtotal > 0 ? (inv.grandTotal / inv.subtotal) : 1;
+      amount = serviceBaseAmount * discountFactor;
+    }
     const cost = s.usedProductCost || 0;
     summary[staffId].revenue += amount;
     summary[staffId].servicesCount += 1;
@@ -116,7 +121,6 @@ export function applyStatsAndInventoryDiff(
   const staffChanges: Record<string, { revenue: number; servicesCount: number; visits: number; productCost: number }> = {};
 
   const productQuantityChanges: Record<string, number> = {};
-  const productServingsChanges: Record<string, number> = {};
 
   const oldRatio = oldInv ? getInvoicePaymentRatio(oldInv) : 1;
   const newRatio = newInv ? getInvoicePaymentRatio(newInv) : 1;
@@ -181,11 +185,6 @@ export function applyStatsAndInventoryDiff(
         productQuantityChanges[p.productId] = (productQuantityChanges[p.productId] || 0) + (p.quantity || 1);
       }
     });
-    (oldInv.services || []).forEach((s: any) => {
-      if (s.usedProductId) {
-        productServingsChanges[s.usedProductId] = (productServingsChanges[s.usedProductId] || 0) + 1;
-      }
-    });
   }
 
   // 2. Process new invoice additions
@@ -248,11 +247,6 @@ export function applyStatsAndInventoryDiff(
         productQuantityChanges[p.productId] = (productQuantityChanges[p.productId] || 0) - (p.quantity || 1);
       }
     });
-    (newInv.services || []).forEach((s: any) => {
-      if (s.usedProductId) {
-        productServingsChanges[s.usedProductId] = (productServingsChanges[s.usedProductId] || 0) - 1;
-      }
-    });
   }
 
   // Write changes to batch/transaction
@@ -311,25 +305,10 @@ export function applyStatsAndInventoryDiff(
     }, { merge: true });
   });
 
-  const allProductIds = new Set([
-    ...Object.keys(productQuantityChanges),
-    ...Object.keys(productServingsChanges)
-  ]);
-
-  allProductIds.forEach((prodId) => {
-    const qtyChange = productQuantityChanges[prodId] || 0;
-    const srvChange = productServingsChanges[prodId] || 0;
-    if (qtyChange === 0 && srvChange === 0) return;
-
+  Object.entries(productQuantityChanges).forEach(([prodId, qtyChange]) => {
+    if (qtyChange === 0) return;
     const ref = doc(db, "products", prodId);
-    const updateFields: any = {};
-    if (qtyChange !== 0) {
-      updateFields.quantity = increment(qtyChange);
-    }
-    if (srvChange !== 0) {
-      updateFields.noOfServings = increment(srvChange);
-    }
-    batch.update(ref, updateFields);
+    batch.update(ref, { quantity: increment(qtyChange) });
   });
 }
 

@@ -22,14 +22,13 @@ export default function DashboardNotifications() {
 
   const fetchData = async () => {
     try {
-      // 1. Fetch products and filter low stock / servings
+      // 1. Fetch retail products and filter low stock
       const allProducts = await productService.getAll();
       const lowStock = allProducts.filter((p) => {
         if (p.type === "service") {
-          return (p.noOfServings ?? 0) < 3;
-        } else {
-          return (p.quantity ?? 0) < 5;
+          return false;
         }
+        return (p.quantity ?? 0) < 5;
       });
       setLowStockProducts(lowStock);
 
@@ -183,11 +182,7 @@ export default function DashboardNotifications() {
                         <div className="min-w-0 text-left">
                           <span className="font-bold text-rose-950 truncate block mr-1">{p.name}</span>
                           <span className="font-medium text-rose-800">
-                            {p.type === "service" ? (
-                              <>Only <b>{p.noOfServings ?? 0}</b> servings left.</>
-                            ) : (
-                              <>Only <b>{p.quantity}</b> remaining.</>
-                            )}
+                            Only <b>{p.quantity ?? 0}</b> remaining.
                           </span>
                         </div>
                       </div>

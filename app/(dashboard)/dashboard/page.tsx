@@ -42,7 +42,7 @@ import { AddExpenseModal } from "@/components/expenses/AddExpenseModal";
 import * as customerService from "@/services/customers";
 import * as expensesService from "@/services/expenses";
 import { toLocalDateString } from "@/lib/utils/date";
-import { getInvoicePayments, getInvoicePaymentRatio, DaySettlementDetails, calculateDaySettlement } from "@/lib/utils/settlements";
+import { getInvoicePayments, getInvoicePaymentRatio, DaySettlementDetails, calculateDaySettlement, getServiceCommission } from "@/lib/utils/settlements";
 import { computeStaffPerformance, ServiceBreakdownItem } from "@/lib/utils/staffPerformance";
 import { ServiceBreakdownModal } from "@/components/ui/ServiceBreakdownModal";
 
@@ -1327,19 +1327,14 @@ export default function DashboardPage() {
       invoices.forEach((inv) => {
         const dateKeyStr = inv.dateKey || toLocalDateString(inv.date);
         const isToday = dateKeyStr === todayStr;
-        const discountFactor = inv.subtotal > 0 ? inv.grandTotal / inv.subtotal : 1;
-
         const ratio = getInvoicePaymentRatio(inv);
 
         (inv.services || []).forEach((s: any) => {
           if (s.staffId === member.id || s.staffName === member.name) {
             if (s.serviceId !== "membership_fee") {
-              const base = s.amount ?? Math.max((s.price || 0) - (s.discount || 0), 0);
-              const amount = base * discountFactor;
-              const cost = s.usedProductCost || 0;
+              const comm = getServiceCommission(s, inv);
               if (isToday) {
-                const stylistShare = s.isCreditSettle ? (0.5 * amount) : (0.5 * amount - cost);
-                todayShare += stylistShare * ratio;
+                todayShare += comm.stylistShare * ratio;
               }
             }
           }
@@ -1347,7 +1342,8 @@ export default function DashboardPage() {
       });
 
       const stStats = member.id ? staffMonthlyStats[member.id] : null;
-      const monthlyShare = 0.5 * (stStats?.revenue ?? 0) - (stStats?.productCost ?? 0);
+      const monthlyNet = (stStats?.revenue ?? 0) - (stStats?.productCost ?? 0);
+      const monthlyShare = 0.5 * monthlyNet;
 
       return {
         id: member.id,

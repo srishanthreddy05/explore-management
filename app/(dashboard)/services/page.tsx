@@ -210,33 +210,47 @@ export default function ServicesPage() {
               </button>
 
               {/* Dynamic Category Cards */}
-              {categories.map((cat) => {
-                const count = services.filter(
-                  (s) => s.category?.toLowerCase() === cat.name.toLowerCase()
-                ).length;
+              {(() => {
+                const seen = new Set<string>();
+                return categories
+                  .filter((cat) => {
+                    const norm = (cat.name || "").trim().toLowerCase();
+                    if (!norm || seen.has(norm)) return false;
+                    seen.add(norm);
+                    return true;
+                  })
+                  .map((cat) => {
+                    const count = services.filter(
+                      (s) => (s.category || "").trim().toLowerCase() === cat.name.trim().toLowerCase()
+                    ).length;
 
-                return (
-                  <button
-                    key={cat.id}
-                    onClick={() => setSelectedCategory(cat.name)}
-                    className={`flex flex-col min-w-[140px] rounded-2xl border p-4 transition-all duration-200 cursor-pointer text-left shadow-sm ${
-                      selectedCategory === cat.name
-                        ? "bg-[#B8962E] border-[#B8962E] text-[#0E0D0B] font-bold"
-                        : "bg-[#131210] border-[#2E2B24] text-[#A89F8C] hover:border-[#B8962E] hover:text-[#B8962E] hover:bg-[#1F1A0F]"
-                    }`}
-                  >
-                    <span className="text-[10px] font-bold uppercase tracking-wider opacity-70">
-                      Category
-                    </span>
-                    <span className="mt-1 text-base font-extrabold truncate w-[105px]" title={cat.name}>
-                      {cat.name}
-                    </span>
-                    <span className="mt-2 text-xs font-semibold">
-                      {count} {count === 1 ? "service" : "services"}
-                    </span>
-                  </button>
-                );
-              })}
+                    const isSelected =
+                      selectedCategory === cat.name ||
+                      (selectedCategory !== "All" && selectedCategory.trim().toLowerCase() === cat.name.trim().toLowerCase());
+
+                    return (
+                      <button
+                        key={cat.id || cat.name}
+                        onClick={() => setSelectedCategory(cat.name)}
+                        className={`flex flex-col min-w-[140px] rounded-2xl border p-4 transition-all duration-200 cursor-pointer text-left shadow-sm ${
+                          isSelected
+                            ? "bg-[#B8962E] border-[#B8962E] text-[#0E0D0B] font-bold"
+                            : "bg-[#131210] border-[#2E2B24] text-[#A89F8C] hover:border-[#B8962E] hover:text-[#B8962E] hover:bg-[#1F1A0F]"
+                        }`}
+                      >
+                        <span className="text-[10px] font-bold uppercase tracking-wider opacity-70">
+                          Category
+                        </span>
+                        <span className="mt-1 text-base font-extrabold truncate w-[105px]" title={cat.name}>
+                          {cat.name}
+                        </span>
+                        <span className="mt-2 text-xs font-semibold">
+                          {count} {count === 1 ? "service" : "services"}
+                        </span>
+                      </button>
+                    );
+                  });
+              })()}
             </div>
           </div>
 
@@ -254,37 +268,74 @@ export default function ServicesPage() {
 
           {/* Grouped Services List Display */}
           {(() => {
-            // Filter categories that should render based on selection and services match
-            const categoriesToRender = categories.filter((cat) => {
-              if (selectedCategory !== "All" && selectedCategory.toLowerCase() !== cat.name.toLowerCase()) {
+            const normalizeCategory = (name?: string | null) => (name || "General").trim().toLowerCase();
+
+            // Normalized set of all saved categories in collection
+            const savedCategoryNormSet = new Set(
+              categories.map((c) => normalizeCategory(c.name))
+            );
+
+            // Deduplicate saved categories by normalized name
+            const uniqueSavedCategories: typeof categories = [];
+            const seenSavedNorm = new Set<string>();
+            for (const cat of categories) {
+              const norm = normalizeCategory(cat.name);
+              if (!seenSavedNorm.has(norm)) {
+                seenSavedNorm.add(norm);
+                uniqueSavedCategories.push(cat);
+              }
+            }
+
+            // Filter saved categories that should render based on selection and services match
+            const categoriesToRender = uniqueSavedCategories.filter((cat) => {
+              if (
+                selectedCategory !== "All" &&
+                normalizeCategory(selectedCategory) !== normalizeCategory(cat.name)
+              ) {
                 return false;
               }
               const catServices = filteredServices.filter(
-                (s) => (s.category || "General").toLowerCase() === cat.name.toLowerCase()
+                (s) => normalizeCategory(s.category) === normalizeCategory(cat.name)
               );
               return catServices.length > 0;
             });
 
             // Handle any services that have categories not tracked in current serviceCategories collection
-            const untrackedCategories = Array.from(
-              new Set(
-                filteredServices
-                  .map((s) => s.category || "General")
-                  .filter(
-                    (catName) =>
-                      !categories.some((c) => c.name.toLowerCase() === catName.toLowerCase())
-                  )
-              )
+            // ALWAYS excludes categories already present in the saved categories collection
+            const untrackedCategoryMap = new Map<string, string>(); // normalized -> display name
+            for (const s of filteredServices) {
+              const rawCat = (s.category || "General").trim();
+              const norm = normalizeCategory(rawCat);
+              if (!savedCategoryNormSet.has(norm) && !untrackedCategoryMap.has(norm)) {
+                untrackedCategoryMap.set(norm, rawCat);
+              }
+            }
+
+            const untrackedCategoriesToRender = Array.from(untrackedCategoryMap.values()).filter(
+              (catName) =>
+                selectedCategory === "All" ||
+                normalizeCategory(selectedCategory) === normalizeCategory(catName)
             );
 
-            const allCategoriesToRender = [
-              ...categoriesToRender.map((c) => c.name),
-              ...untrackedCategories.filter(
-                (catName) =>
-                  selectedCategory === "All" ||
-                  selectedCategory.toLowerCase() === catName.toLowerCase()
-              ),
-            ];
+            // Combine saved categories and untracked categories, guaranteeing every category is rendered exactly once
+            const allCategoriesToRender: string[] = [];
+            const seenRenderNorm = new Set<string>();
+
+            for (const cat of categoriesToRender) {
+              const norm = normalizeCategory(cat.name);
+              if (!seenRenderNorm.has(norm)) {
+                seenRenderNorm.add(norm);
+                allCategoriesToRender.push(cat.name);
+              }
+            }
+
+            for (const catName of untrackedCategoriesToRender) {
+              const norm = normalizeCategory(catName);
+              if (!seenRenderNorm.has(norm)) {
+                seenRenderNorm.add(norm);
+                allCategoriesToRender.push(catName);
+              }
+            }
 
             if (allCategoriesToRender.length === 0) {
               return (
@@ -298,11 +349,11 @@ export default function ServicesPage() {
               <div className="space-y-8">
                 {allCategoriesToRender.map((catName) => {
                   const catServices = filteredServices.filter(
-                    (s) => (s.category || "General").toLowerCase() === catName.toLowerCase()
+                    (s) => normalizeCategory(s.category) === normalizeCategory(catName)
                   );
 
                   return (
-                    <div key={catName} className="space-y-3">
+                    <div key={normalizeCategory(catName)} className="space-y-3">
                       <div className="flex items-center gap-3">
                         <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-[#B8962E]">
                           {catName}

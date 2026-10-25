@@ -18,24 +18,20 @@ export interface Product {
   quantity?: number | null; // Stock quantity (retail)
   createdAt?: string;
   type?: "retail" | "service";
-  amount?: number | null; // Original purchase cost
+  amount?: number | null; // Total purchase cost or recorded amount (service supplies)
   /**
-   * IMMUTABLE: The original number of servings when the product was first purchased.
-   * This field must NEVER be decremented on consumption.
-   * Use noOfServings for the remaining/available count.
+   * LEGACY: The original number of servings from serving-based inventory.
+   * Preserved for backward compatibility with historical records.
    */
   originalServings?: number | null;
   /**
-   * Remaining servings available (decremented each time a serving is consumed).
-   * Do NOT use this field as denominator to compute cost per serving.
+   * LEGACY: Remaining servings available from serving-based inventory.
+   * Preserved for backward compatibility with historical records.
    */
   noOfServings?: number | null;
   /**
-   * Current unit cost per serving.
-   * When created: amount / originalServings.
-   * When refilled: updated via weighted average costing:
-   * (remainingServings * oldCost + refillServings * refillCost) / (remainingServings + refillServings).
-   * NEVER recomputed using consumed servings.
+   * LEGACY: Current unit cost per serving.
+   * Preserved for backward compatibility with historical records.
    */
   costPerServing?: number | null;
   /**

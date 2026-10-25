@@ -10,10 +10,10 @@ import { ClearableNumberInput } from "../ui/ClearableNumberInput";
 interface BillingTableProps {
   rows: ServiceRow[];
   onRowsChange: (rows: ServiceRow[]) => void;
-  serviceOptions?: { name: string; price: number; category?: string }[];
+  serviceOptions?: { id?: string; name: string; price: number; category?: string }[];
   staffOptions?: string[];
   disabled?: boolean;
-  serviceProductOptions?: { id: string; name: string; noOfServings: number }[];
+  serviceProductOptions?: { id: string; name: string; amount?: number; noOfServings?: number }[];
 }
 
 export function BillingTable({
@@ -29,7 +29,7 @@ export function BillingTable({
   const [mounted, setMounted] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
-  const [selectedServices, setSelectedServices] = useState<{ name: string; price: number; category?: string }[]>([]);
+  const [selectedServices, setSelectedServices] = useState<{ id?: string; name: string; price: number; category?: string }[]>([]);
 
   useEffect(() => {
     setMounted(true);
@@ -47,7 +47,7 @@ export function BillingTable({
     onRowsChange(rows.map((row) => (row.id === id ? { ...row, ...patch } : row)));
   };
 
-  const handleSelectService = (svc: { name: string; price: number; category?: string }) => {
+  const handleSelectService = (svc: { id?: string; name: string; price: number; category?: string }) => {
     setSelectedServices((prev) => [...prev, svc]);
   };
 
@@ -186,14 +186,15 @@ export function BillingTable({
                       updateRow(row.id, {
                         usedProductId: val || undefined,
                         usedProductName: matched?.name || undefined,
+                        usedProductCost: val && matched ? (Number(matched.amount) || 0) : undefined,
                       });
                     }}
                     className="h-10 w-full rounded-xl border border-[#2E2B24] bg-[#131210] px-2.5 text-[#F5F0E8] outline-none transition focus:border-[#B8962E] disabled:bg-[#0E0D0B] disabled:text-[#6B6358] text-xs font-semibold cursor-pointer appearance-none"
                   >
                     <option value="" className="bg-[#131210] text-[#F5F0E8]">No Product</option>
                     {serviceProductOptions.map((option) => (
-                      <option key={option.id} value={option.id} disabled={option.noOfServings <= 0} className="bg-[#131210] text-[#F5F0E8]">
-                        {option.name} ({option.noOfServings} left)
+                      <option key={option.id} value={option.id} className="bg-[#131210] text-[#F5F0E8]">
+                        {option.name}{option.amount !== undefined && option.amount !== null ? ` (₹${option.amount})` : ""}
                       </option>
                     ))}
                   </select>
@@ -298,12 +299,12 @@ export function BillingTable({
                     </div>
 
                     <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
-                      {serviceGroups[catName].map((svc) => {
-                        const selectionCount = selectedServices.filter((s) => s.name === svc.name).length;
+                      {serviceGroups[catName].map((svc, idx) => {
+                        const selectionCount = selectedServices.filter((s) => (s.id && svc.id ? s.id === svc.id : s.name === svc.name)).length;
                         const isSelected = selectionCount > 0;
                         return (
                           <div
-                            key={svc.name}
+                            key={svc.id || `${catName}-${svc.name}-${idx}`}
                             onClick={() => handleSelectService(svc)}
                             className={`relative cursor-pointer rounded-2xl border p-4 transition duration-200 hover:-translate-y-0.5 ${
                               isSelected

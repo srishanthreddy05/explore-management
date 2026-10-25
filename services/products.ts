@@ -16,7 +16,6 @@ import {
 import type { Product, ProductRefill } from "@/types/product";
 import { toTitleCase } from "@/lib/utils/text";
 import {
-  computeCostPerServing,
   computeRefillCostPerServing,
   getEffectiveCostPerServing,
   validateRefillInput,
@@ -27,35 +26,34 @@ const COLLECTION = "products";
 export async function create(product: Omit<Product, "id">): Promise<string> {
   try {
     const isService = product.type === "service";
-    let originalServings = product.originalServings ?? null;
-    let noOfServings = product.noOfServings ?? null;
-    let costPerServing = product.costPerServing ?? null;
 
-    if (isService) {
-      if (!product.originalServings || !Number.isInteger(product.originalServings) || product.originalServings <= 0) {
-        throw new Error("Original purchased servings must be a positive whole number.");
-      }
-      if (!product.amount || typeof product.amount !== "number" || product.amount <= 0) {
-        throw new Error("Purchase cost amount must be greater than 0.");
-      }
-
-      originalServings = product.originalServings;
-      noOfServings = product.originalServings; // starts equal to original
-      costPerServing = computeCostPerServing(product.amount, originalServings);
+    if (!product.name || typeof product.name !== "string" || !product.name.trim()) {
+      throw new Error("Product name is required.");
     }
 
-    const docRef = await addDoc(collection(db, COLLECTION), {
+    if (isService) {
+      if (!product.amount || typeof product.amount !== "number" || product.amount <= 0) {
+        throw new Error("Amount must be greater than 0.");
+      }
+    }
+
+    const payload: Record<string, unknown> = {
       ...product,
-      name: toTitleCase(product.name),
+      name: toTitleCase(product.name.trim()),
       isActive: true,
-      originalServings,
-      noOfServings,
-      costPerServing,
-      totalPurchasedServings: isService ? originalServings : null,
-      totalPurchaseCost: isService ? product.amount : null,
-      refillHistory: [],
+      price: isService ? 0 : (product.price ?? 0),
+      amount: product.amount ?? null,
       createdAt: serverTimestamp(),
+    };
+
+    // Remove undefined values to prevent Firestore errors
+    Object.keys(payload).forEach((key) => {
+      if (payload[key] === undefined) {
+        delete payload[key];
+      }
     });
+
+    const docRef = await addDoc(collection(db, COLLECTION), payload);
     return docRef.id;
   } catch (error) {
     console.error("Error creating product:", error);
@@ -93,8 +91,7 @@ export async function getById(id: string): Promise<Product | null> {
 }
 
 /**
- * Updates general product metadata (name, brand, category, retail price/quantity).
- * Note: For service supplies, stock cannot be refilled via this method. Use refillStock instead.
+ * Updates product details (name, brand, category, retail price/quantity, service supply amount).
  */
 export async function update(
   id: string,
@@ -103,7 +100,7 @@ export async function update(
   try {
     const normalizedData: Record<string, unknown> = { ...data };
     if (typeof normalizedData.name === "string") {
-      normalizedData.name = toTitleCase(normalizedData.name);
+      normalizedData.name = toTitleCase(normalizedData.name.trim());
     }
     // Remove undefined values to prevent Firestore errors
     Object.keys(normalizedData).forEach((key) => {
