@@ -41,6 +41,7 @@ import { AddCustomerModal } from "@/components/customers/AddCustomerModal";
 import { AddExpenseModal } from "@/components/expenses/AddExpenseModal";
 import * as customerService from "@/services/customers";
 import * as expensesService from "@/services/expenses";
+import * as staffDrawingsService from "@/services/staffDrawings";
 import { toLocalDateString } from "@/lib/utils/date";
 import { getInvoicePayments, getInvoicePaymentRatio, DaySettlementDetails, calculateDaySettlement, getServiceCommission } from "@/lib/utils/settlements";
 import { computeStaffPerformance, ServiceBreakdownItem } from "@/lib/utils/staffPerformance";
@@ -832,7 +833,7 @@ function SettlementCard({
         <div className="rounded-2xl border border-[#2E2B24] bg-[#0E0D0B]/80 p-4 flex justify-between items-center shadow-inner">
           <div className="space-y-0.5">
             <span className="text-[9px] font-bold uppercase tracking-wider text-[#6B6358]">
-              Today's Net Share
+              {items.some((it) => it.label.toLowerCase().includes("remaining")) ? "Remaining Payable" : "Today's Net Share"}
             </span>
             <p className={`font-black text-xl tracking-tight ${heroTextColor}`}>
               {formatCurrency(value)}
@@ -857,26 +858,34 @@ function SettlementCard({
           <div className="space-y-1.5">
             {items.map((item, i) => {
               const isNegative = item.negative;
-              const isTotal = item.label.toLowerCase().includes("gross") || item.label.toLowerCase().includes("total");
+              const isTotal = item.label.toLowerCase().includes("gross") || item.label.toLowerCase().includes("total") || item.label.toLowerCase().includes("remaining") || item.label.toLowerCase().includes("payable");
               return (
                 <div 
                   key={i} 
-                  className="flex justify-between items-center text-xs py-0.5"
+                  className={`flex justify-between items-center text-xs py-0.5 ${
+                    isTotal ? "border-t border-[#2E2B24]/60 pt-1.5 font-bold mt-1" : ""
+                  }`}
                 >
                   <div className="flex items-center gap-2 text-[#A89F8C]">
-                    <div 
-                      className={`size-1.5 rounded-full shrink-0 ${
-                        isNegative ? "bg-[#E57373]" : "bg-[#4ADE80]"
-                      }`} 
-                    />
-                    <span className="font-medium text-[11px]">{item.label}</span>
+                    {!isTotal && (
+                      <div 
+                        className={`size-1.5 rounded-full shrink-0 ${
+                          isNegative ? "bg-[#E57373]" : "bg-[#4ADE80]"
+                        }`} 
+                      />
+                    )}
+                    <span className={`${isTotal ? "text-[#F5F0E8] font-bold" : "font-medium"} text-[11px]`}>{item.label}</span>
                   </div>
                   <span
                     className={`font-mono font-bold text-[11px] ${
-                      isNegative ? "text-[#E57373]" : "text-[#4ADE80]"
+                      isTotal 
+                        ? (item.value >= 0 ? "text-[#D4A935]" : "text-[#E57373]") 
+                        : isNegative 
+                          ? "text-[#E57373]" 
+                          : "text-[#4ADE80]"
                     }`}
                   >
-                    {isNegative ? "−" : "+"}
+                    {isNegative ? "−" : isTotal ? "" : "+"}
                     {formatCurrency(Math.abs(item.value))}
                   </span>
                 </div>
@@ -962,6 +971,7 @@ export default function DashboardPage() {
   });
 
   const [todayExpenses, setTodayExpenses] = useState<any[]>([]);
+  const [todayStaffDrawings, setTodayStaffDrawings] = useState<Record<string, number>>({});
   const [monthlyStats, setMonthlyStats] = useState<{
     totalRevenue: number;
     totalVisits: number;
@@ -986,9 +996,27 @@ export default function DashboardPage() {
     }
   }, []);
 
+  const loadTodayDrawings = useCallback(async () => {
+    try {
+      const todayStr = toLocalDateString(new Date());
+      const monthKey = todayStr.slice(0, 7);
+      const data = await staffDrawingsService.getDrawingsByMonth(monthKey);
+      const map: Record<string, number> = {};
+      data.forEach((d) => {
+        if (d.date === todayStr && d.staffId) {
+          map[d.staffId] = (map[d.staffId] || 0) + (Number(d.amount) || 0);
+        }
+      });
+      setTodayStaffDrawings(map);
+    } catch (err) {
+      console.error("Failed to load today's staff drawings:", err);
+    }
+  }, []);
+
   useEffect(() => {
     loadTodayExpenses();
-  }, [loadTodayExpenses]);
+    loadTodayDrawings();
+  }, [loadTodayExpenses, loadTodayDrawings]);
 
   const todayExpensesTotal = useMemo(
     () => todayExpenses.filter((e) => e.type === "daily").reduce((sum, exp) => sum + exp.amount, 0),
@@ -1384,8 +1412,12 @@ export default function DashboardPage() {
   );
 
   const openModal = useCallback((key: keyof typeof modals) => {
+    if (key === "settlements") {
+      loadTodayExpenses();
+      loadTodayDrawings();
+    }
     setModals((prev) => ({ ...prev, [key]: true }));
-  }, []);
+  }, [loadTodayExpenses, loadTodayDrawings]);
 
   const closeModal = useCallback((key: keyof typeof modals) => {
     setModals((prev) => ({ ...prev, [key]: false }));
@@ -1833,24 +1865,32 @@ export default function DashboardPage() {
                     .map((sd) => {
                       const collectedCredits = sd.collectedCredits || [];
                       const collectedCreditsShare = sd.collectedCreditsShare || 0;
-                      const totalShare = sd.staffShare + collectedCreditsShare;
+                      const commissionEarned = sd.staffShare + collectedCreditsShare;
+                      const drawingsDeducted = todayStaffDrawings[sd.staffId] || 0;
+                      const remainingPayable = commissionEarned - drawingsDeducted;
 
                       const mappedCollectedCredits = collectedCredits.map((c: any) => ({
                         ...c,
                         share: 0.5 * c.amount,
                       }));
 
+                      const serviceRev = sd.serviceRevenue;
+                      const productCost = sd.productCost;
+                      const netServiceRev = serviceRev - productCost;
+
                       return (
                         <SettlementCard
                           key={sd.staffId}
                           title={sd.name}
-                          value={totalShare}
+                          value={remainingPayable}
                           icon={Users}
                           items={[
-                            { label: "Service Revenue", value: sd.serviceRevenue },
-                            { label: "Product Cost Used", value: sd.productCost, negative: true },
-                            { label: "Net Service Revenue", value: sd.serviceRevenue - sd.productCost },
-                            { label: "50% Staff Share", value: 0.5 * (sd.serviceRevenue - sd.productCost) },
+                            { label: "Service Revenue", value: serviceRev },
+                            { label: "Product Cost Used", value: productCost, negative: true },
+                            { label: "Net Service Revenue", value: netServiceRev },
+                            { label: "Commission Earned", value: commissionEarned },
+                            { label: "Staff Drawings Deducted", value: drawingsDeducted, negative: true },
+                            { label: "Remaining Payable", value: remainingPayable },
                           ]}
                           collectedCredits={mappedCollectedCredits}
                         />

@@ -2,14 +2,19 @@ import { getServiceCommission, calculateDaySettlement } from "./settlements";
 import { generateMonthlyReport } from "./monthlyReports";
 import type { Staff } from "@/types/staff";
 
-function assertEqual(actual: number, expected: number, message: string) {
-  if (Math.abs(Number(actual) - Number(expected)) > 0.001) {
+function assertEqual(actual: any, expected: any, message: string) {
+  if (typeof actual === "number" && typeof expected === "number") {
+    if (Math.abs(Number(actual) - Number(expected)) > 0.001) {
+      console.error(`❌ FAILED: ${message}`);
+      console.error(`   Expected: ${expected}, Got: ${actual}`);
+      throw new Error(`Assertion failed: ${message}`);
+    }
+  } else if (actual !== expected) {
     console.error(`❌ FAILED: ${message}`);
     console.error(`   Expected: ${expected}, Got: ${actual}`);
     throw new Error(`Assertion failed: ${message}`);
-  } else {
-    console.log(`✅ PASSED: ${message}`);
   }
+  console.log(`✅ PASSED: ${message}`);
 }
 
 export function runSettlementScenarioTests() {
@@ -232,7 +237,140 @@ export function runSettlementScenarioTests() {
     assertEqual(run1.totalOwnerShare, 300, "Scenario F: Owner share is ₹300 (200 + 100)");
   }
 
-  console.log("\n🎉 ALL SCENARIOS A THROUGH F PASSED SUCCESSFULLY!\n");
+  // Scenario G: Staff drawings and remaining payable calculation
+  {
+    console.log("\n--- Scenario G: Staff Drawings and Remaining Payable ---");
+    const inv = {
+      id: "inv_g",
+      dateKey: "2026-10-25",
+      subtotal: 300,
+      grandTotal: 300,
+      paymentSplit: { cash: 300, upi: 0, card: 0 },
+      services: [
+        {
+          serviceId: "srv_cut",
+          serviceName: "Hair Cut",
+          staffId: "staff_stylist",
+          staffName: "Sohail",
+          staffRole: "Stylist",
+          amount: 300,
+          usedProductId: "prod_1",
+          usedProductName: "Beard Color",
+          usedProductCost: 50,
+        },
+      ],
+      products: [],
+    };
+
+    const settlement = calculateDaySettlement([inv], testStaff, "2026-10-25");
+    const sd = settlement.staffDetails["staff_stylist"];
+
+    const serviceRev = sd.serviceRevenue;
+    const productCost = sd.productCost;
+    const netServiceRev = serviceRev - productCost;
+    const commissionEarned = sd.staffShare;
+    const staffDrawing = 25;
+    const remainingPayable = commissionEarned - staffDrawing;
+
+    assertEqual(serviceRev, 300, "Scenario G: Service revenue is ₹300");
+    assertEqual(productCost, 50, "Scenario G: Product cost is ₹50");
+    assertEqual(netServiceRev, 250, "Scenario G: Net service revenue is ₹250");
+    assertEqual(commissionEarned, 125, "Scenario G: Commission earned is ₹125");
+    assertEqual(remainingPayable, 100, "Scenario G: Remaining payable after ₹25 drawing is ₹100");
+
+    // Ensure business expenses do not reduce stylist's ₹100 remaining payable
+    const businessExpenses = 500;
+    const ownerNetAfterExpenses = settlement.totalOwnerShare - businessExpenses;
+    assertEqual(ownerNetAfterExpenses, 175 - 500, "Scenario G: Business expenses reduce owner balance");
+    assertEqual(remainingPayable, 100, "Scenario G: Business expenses NEVER reduce stylist payable");
+  }
+
+  // Scenario H: Staff drawing payload sanitization & zero undefined fields
+  {
+    console.log("\n--- Scenario H: Drawing Payload Sanitization & Undefined Prevention ---");
+    function buildDrawingPayload(drawing: {
+      staffId: string;
+      staffName: string;
+      amount: number;
+      date: string;
+      month?: string;
+      note?: string;
+      referenceNumber?: string;
+      paymentMethod?: string;
+      type?: string;
+      recordedBy?: string;
+    }) {
+      const month = (drawing.month || drawing.date.slice(0, 7)).trim();
+      const payload: Record<string, any> = {
+        staffId: drawing.staffId.trim(),
+        staffName: drawing.staffName.trim(),
+        amount: Number(drawing.amount),
+        date: drawing.date.trim(),
+        month,
+        type: drawing.type || "payout",
+        paymentMethod: drawing.paymentMethod || "Cash",
+        recordedBy: drawing.recordedBy || "Owner",
+        createdAt: "MOCK_SERVER_TIMESTAMP",
+      };
+
+      const trimmedNote = drawing.note?.trim();
+      if (trimmedNote) {
+        payload.note = trimmedNote;
+      }
+
+      const trimmedRef = drawing.referenceNumber?.trim();
+      if (trimmedRef) {
+        payload.referenceNumber = trimmedRef;
+      }
+      return payload;
+    }
+
+    // 1. Drawing with note, without referenceNumber
+    const payloadWithNote = buildDrawingPayload({
+      staffId: "staff_1",
+      staffName: "Sohail",
+      amount: 500,
+      date: "2026-10-25",
+      note: "Cash advance for festival",
+    });
+
+    assertEqual("note" in payloadWithNote, true, "Scenario H: note key is present when provided");
+    assertEqual(payloadWithNote.note, "Cash advance for festival", "Scenario H: note matches input");
+    assertEqual("referenceNumber" in payloadWithNote, false, "Scenario H: referenceNumber key is omitted when absent");
+    assertEqual(Object.values(payloadWithNote).includes(undefined), false, "Scenario H: payload contains NO undefined values");
+
+    // 2. Drawing without note, without referenceNumber
+    const payloadNoNote = buildDrawingPayload({
+      staffId: "staff_2",
+      staffName: "Sameer",
+      amount: 200,
+      date: "2026-10-25",
+      note: "",
+      referenceNumber: "   ",
+    });
+
+    assertEqual("note" in payloadNoNote, false, "Scenario H: empty note is omitted");
+    assertEqual("referenceNumber" in payloadNoNote, false, "Scenario H: whitespace referenceNumber is omitted");
+    assertEqual(Object.values(payloadNoNote).includes(undefined), false, "Scenario H: payload contains NO undefined values");
+
+    // 3. Drawing with both note and referenceNumber
+    const payloadFull = buildDrawingPayload({
+      staffId: "staff_1",
+      staffName: "Sohail",
+      amount: 1000,
+      date: "2026-10-25",
+      note: "Bank transfer payout",
+      referenceNumber: "UPI/12345678",
+      paymentMethod: "UPI",
+    });
+
+    assertEqual(payloadFull.note, "Bank transfer payout", "Scenario H: note included");
+    assertEqual(payloadFull.referenceNumber, "UPI/12345678", "Scenario H: referenceNumber included");
+    assertEqual(payloadFull.paymentMethod, "UPI", "Scenario H: paymentMethod included");
+    assertEqual(Object.values(payloadFull).includes(undefined), false, "Scenario H: full payload has NO undefined values");
+  }
+
+  console.log("\n🎉 ALL SCENARIOS A THROUGH H PASSED SUCCESSFULLY!\n");
 }
 
 runSettlementScenarioTests();

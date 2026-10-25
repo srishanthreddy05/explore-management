@@ -33,30 +33,42 @@ const COLLECTION_NAME = "staffDrawings";
 
 export async function addDrawing(drawing: Omit<StaffDrawing, "id" | "createdAt">): Promise<string> {
   try {
-    if (!drawing.staffId || !drawing.staffName) {
+    if (!drawing.staffId?.trim() || !drawing.staffName?.trim()) {
       throw new Error("Stylist is required.");
     }
     const amt = Number(drawing.amount);
     if (isNaN(amt) || amt <= 0) {
       throw new Error("Payment amount must be greater than 0.");
     }
-    if (!drawing.date) {
+    if (!drawing.date?.trim()) {
       throw new Error("Payment date is required.");
     }
 
-    const month = drawing.month || drawing.date.slice(0, 7);
+    const month = (drawing.month || drawing.date.slice(0, 7)).trim();
 
-    const docRef = await addDoc(collection(db, COLLECTION_NAME), {
-      ...drawing,
+    const payload: Record<string, any> = {
+      staffId: drawing.staffId.trim(),
+      staffName: drawing.staffName.trim(),
       amount: amt,
+      date: drawing.date.trim(),
       month,
       type: drawing.type || "payout",
       paymentMethod: drawing.paymentMethod || "Cash",
-      note: drawing.note?.trim() || undefined,
-      referenceNumber: drawing.referenceNumber?.trim() || undefined,
       recordedBy: drawing.recordedBy || "Owner",
       createdAt: serverTimestamp(),
-    });
+    };
+
+    const trimmedNote = drawing.note?.trim();
+    if (trimmedNote) {
+      payload.note = trimmedNote;
+    }
+
+    const trimmedRef = drawing.referenceNumber?.trim();
+    if (trimmedRef) {
+      payload.referenceNumber = trimmedRef;
+    }
+
+    const docRef = await addDoc(collection(db, COLLECTION_NAME), payload);
     return docRef.id;
   } catch (error) {
     console.error("Error adding staff drawing:", error);

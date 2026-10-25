@@ -137,6 +137,7 @@ function MetricCard({
   variant = "default",
   isHorizontal = false,
   periodLabel = "This Month",
+  showToday = true,
 }: {
   title: string;
   today: number;
@@ -145,6 +146,7 @@ function MetricCard({
   variant?: "default" | "danger" | "owner";
   isHorizontal?: boolean;
   periodLabel?: string;
+  showToday?: boolean;
 }) {
   const variants = {
     default: {
@@ -176,7 +178,7 @@ function MetricCard({
       >
         <div className="absolute -right-20 -top-20 size-40 rounded-full blur-[80px] pointer-events-none opacity-10 bg-[#B8962E]" />
         
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className={`rounded-xl p-2.5 shrink-0 ${v.iconBg}`}>
               <Icon size={18} strokeWidth={2.5} />
@@ -191,16 +193,27 @@ function MetricCard({
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-6 sm:gap-12 md:mr-4">
-            <div>
-              <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#6B6358]">
-                Today
-              </span>
-              <p className={`mt-1 text-2xl font-black ${v.todayColor}`}>
-                {formatCurrency(today)}
-              </p>
+          {showToday ? (
+            <div className="flex flex-col sm:flex-row gap-6 sm:gap-12 md:mr-4">
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#6B6358]">
+                  Today
+                </span>
+                <p className={`mt-1 text-2xl font-black ${v.todayColor}`}>
+                  {formatCurrency(today)}
+                </p>
+              </div>
+              <div className="sm:border-l sm:border-[#2E2B24] sm:pl-12">
+                <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#6B6358]">
+                  {periodLabel}
+                </span>
+                <p className={`mt-1 text-2xl font-black ${v.monthlyColor}`}>
+                  {formatCurrency(monthly)}
+                </p>
+              </div>
             </div>
-            <div className="sm:border-l sm:border-[#2E2B24] sm:pl-12">
+          ) : (
+            <div className="md:mr-4 text-left sm:text-right">
               <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#6B6358]">
                 {periodLabel}
               </span>
@@ -208,7 +221,7 @@ function MetricCard({
                 {formatCurrency(monthly)}
               </p>
             </div>
-          </div>
+          )}
         </div>
       </div>
     );
@@ -421,10 +434,6 @@ function StaffSplitCard({
   const [date, setDate] = useState(() => toLocalDateString(new Date()));
   const [isSaving, setIsSaving] = useState(false);
 
-  const todayNetRevenue = member.todayRevenue - member.todayProductCosts;
-  const todayShare = todayNetRevenue * 0.5;
-  const todayFinal = todayShare - member.todayDrawings;
-
   const monthlyNetRevenue = member.monthlyRevenue - member.monthlyProductCosts;
   const monthlyShare = monthlyNetRevenue * 0.5;
   const monthlyFinal = monthlyShare - member.monthlyDrawings;
@@ -433,31 +442,39 @@ function StaffSplitCard({
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!member.id || !member.name) {
+      alert("Staff identity is missing. Cannot record drawing.");
+      return;
+    }
     const parsedAmount = parseFloat(amount);
     if (isNaN(parsedAmount) || parsedAmount <= 0) {
       alert("Please enter a valid positive amount.");
       return;
     }
+    if (!date?.trim()) {
+      alert("Please select a valid date.");
+      return;
+    }
 
     setIsSaving(true);
     try {
-      if (!member.id) throw new Error("Staff ID is missing");
       const month = date.slice(0, 7);
+      const trimmedNote = note.trim();
       await staffDrawingsService.addDrawing({
         staffId: member.id,
         staffName: member.name,
         amount: parsedAmount,
-        note: note.trim() || undefined,
-        date,
+        date: date.trim(),
         month,
+        ...(trimmedNote ? { note: trimmedNote } : {}),
       });
       setAmount("");
       setNote("");
       setIsFormOpen(false);
       onRefreshDrawings();
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to save drawing:", err);
-      alert("Failed to save drawing.");
+      alert(err?.message || "Failed to save drawing.");
     } finally {
       setIsSaving(false);
     }
@@ -474,7 +491,6 @@ function StaffSplitCard({
     }
   };
 
-  const todayColor = todayFinal < 0 ? "text-[#E57373]" : "text-[#60A5FA]";
   const monthlyColor = monthlyFinal < 0 ? "text-[#E57373]" : "text-[#60A5FA]";
 
   return (
@@ -501,23 +517,13 @@ function StaffSplitCard({
         </div>
 
         {/* Quick Net Summary */}
-        <div className="grid grid-cols-2 gap-4 mb-4">
-          <div>
-            <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#6B6358]">
-              Today
-            </span>
-            <p className={`mt-1 text-lg font-black ${todayColor}`}>
-              {formatCurrency(todayFinal)}
-            </p>
-          </div>
-          <div>
-            <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#6B6358]">
-              {periodLabel}
-            </span>
-            <p className={`mt-1 text-lg font-black ${monthlyColor}`}>
-              {formatCurrency(monthlyFinal)}
-            </p>
-          </div>
+        <div className="mb-4">
+          <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#6B6358]">
+            {periodLabel}
+          </span>
+          <p className={`mt-1 text-2xl font-black ${monthlyColor}`}>
+            {formatCurrency(monthlyFinal)}
+          </p>
         </div>
 
         {/* Detailed Breakdown */}
@@ -541,23 +547,21 @@ function StaffSplitCard({
             </span>
           </div>
           <div className="flex justify-between items-center text-xs">
-            <span className="font-medium text-[#A89F8C] text-[11px]">50% STAFF SHARE</span>
+            <span className="font-medium text-[#A89F8C] text-[11px]">COMMISSION EARNED</span>
             <span className="font-mono font-bold text-[11px] text-[#4ADE80]">
               {formatCurrency(monthlyShare)}
             </span>
           </div>
-          {member.monthlyDrawings > 0 && (
-            <div className="flex justify-between items-center text-xs">
-              <span className="font-medium text-[#A89F8C] text-[11px]">DRAWINGS</span>
-              <span className="font-mono font-bold text-[11px] text-[#E57373]">
-                − {formatCurrency(member.monthlyDrawings)}
-              </span>
-            </div>
-          )}
+          <div className="flex justify-between items-center text-xs">
+            <span className="font-medium text-[#A89F8C] text-[11px]">DRAWINGS DEDUCTED</span>
+            <span className="font-mono font-bold text-[11px] text-[#E57373]">
+              − {formatCurrency(member.monthlyDrawings)}
+            </span>
+          </div>
         </div>
         
         <div className="border-t border-[#2E2B24] mt-3 pt-3 flex justify-between items-center">
-          <span className="font-bold text-[#F5F0E8] text-[11px] uppercase tracking-wider">FINAL AMOUNT</span>
+          <span className="font-bold text-[#F5F0E8] text-[11px] uppercase tracking-wider">REMAINING PAYABLE</span>
           <span className={`font-mono font-black text-sm ${monthlyColor}`}>
             {formatCurrency(monthlyFinal)}
           </span>
@@ -1214,9 +1218,15 @@ export default function SettlementsPage() {
           if (!map[sId]) map[sId] = [];
           map[sId].push(d);
         }
+        if (d.staffName && (!sId || d.staffName !== sId)) {
+          if (!map[d.staffName]) map[d.staffName] = [];
+          if (!map[d.staffName].some((x) => x.id === d.id)) {
+            map[d.staffName].push(d);
+          }
+        }
       });
-      Object.keys(map).forEach((sId) => {
-        map[sId].sort((a, b) => b.date.localeCompare(a.date));
+      Object.keys(map).forEach((key) => {
+        map[key].sort((a, b) => b.date.localeCompare(a.date));
       });
       setStaffDrawings(map);
     } catch (err) {
@@ -1603,7 +1613,7 @@ export default function SettlementsPage() {
         });
       });
 
-      const memberDrawings = member.id ? staffDrawings[member.id] || [] : [];
+      const memberDrawings = (member.id && staffDrawings[member.id]) || staffDrawings[member.name] || [];
       
       const todayDrawings = memberDrawings
         .filter(d => d.date === todayStr)
@@ -1743,13 +1753,14 @@ export default function SettlementsPage() {
             variant="owner"
             isHorizontal={true}
             periodLabel={periodLabel}
+            showToday={false}
           />
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {staffSplits.map((member) => (
               <StaffSplitCard
                 key={member.id}
                 member={member}
-                drawings={member.id ? staffDrawings[member.id] || [] : []}
+                drawings={(member.id && staffDrawings[member.id]) || staffDrawings[member.name] || []}
                 onRefreshDrawings={() => fetchDrawings(dateFrom, dateTo)}
                 periodLabel={periodLabel}
               />
