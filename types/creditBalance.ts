@@ -26,6 +26,7 @@ export interface CreditBalance {
   
   // Collection Metadata
   collectionStatus: "pending" | "partial" | "settled";
+  collectedAmount?: number;
   collectionDate?: string | null;
   collectionMethod?: string | null;
   collectedBy?: string | null;

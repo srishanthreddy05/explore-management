@@ -81,6 +81,18 @@ export interface Invoice {
     collectedAt: string;
   }>;
 
+  creditPaymentHistory?: Array<{
+    collectedAt: string;
+    collectedAmount: number;
+    paymentSplit: {
+      cash: number;
+      upi: number;
+      card: number;
+    };
+    remainingBalance: number;
+    note?: string;
+  }>;
+
   // ── Audit ─────────────────────────────────────────────────────────────────
   editHistory?: Array<{
     editedAt: string;

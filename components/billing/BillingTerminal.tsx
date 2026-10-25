@@ -1201,6 +1201,8 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
           billDiscount: billDiscount,
           billDiscountPercent: billDiscountPercent,
           grandTotal: totals.grandTotal,
+          receivedAmount: Math.round((totalPaid + advanceApplied) * 100) / 100,
+          balanceDue: Math.max(0, Math.round((totals.grandTotal - (totalPaid + advanceApplied)) * 100) / 100),
 
           appliedOffer: selectedOffer
             ? {
@@ -1271,8 +1273,11 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
 
         await invoicesService.update(editInvoiceId, updatePayload);
       } else {
+        const totalPaidAmt = Math.round((totalPaid + advanceApplied) * 100) / 100;
+        const balanceDueAmt = Math.max(0, Math.round((totals.grandTotal - totalPaidAmt) * 100) / 100);
+
         const invoicePaymentStatus = markAsCredit
-          ? ((totalPaid + advanceApplied) === 0 ? "unpaid" : "partial")
+          ? (totalPaidAmt === 0 ? "unpaid" : "partial")
           : "paid";
 
         savedInvoiceId = await invoicesService.create({
@@ -1294,6 +1299,8 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
           billDiscount: billDiscount,
           billDiscountPercent: billDiscountPercent,
           grandTotal: totals.grandTotal,
+          receivedAmount: totalPaidAmt,
+          balanceDue: balanceDueAmt,
 
           ...(selectedOffer
             ? {
@@ -1352,17 +1359,16 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
         } as any);
       }
 
-      // Step 5: Create a single credit balance record for partial payment on the NEW invoice
-      if (markAsCredit) {
-        const creditAmount = Math.round((totals.grandTotal - totalPaid) * 100) / 100;
-        if (creditAmount > 0) {
+      // Step 5: Create a single credit balance record for intentional credit on NEW invoice
+      if (markAsCredit && !editInvoiceId) {
+        const creditAmount = Math.max(0, Math.round((totals.grandTotal - (totalPaid + advanceApplied)) * 100) / 100);
+        if (creditAmount > 0 && savedInvoiceId) {
           const invNum = invoiceNumberDisplay === "Auto-assigned on save" ? invoiceNumber : invoiceNumberDisplay;
-          const currentInvId = savedInvoiceId || editInvoiceId || "";
           await creditBalancesService.create({
             customerId,
             customerName: customerName.trim(),
             customerPhone: customerMobile.trim(),
-            originalInvoiceId: currentInvId,
+            originalInvoiceId: savedInvoiceId,
             originalInvoiceNumber: invNum,
             originalBillDate: dateString,
             originalStaffId: enrichedServices[0]?.staffId || "system",
@@ -1378,7 +1384,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
             // compatibility fields
-            invoiceId: currentInvId,
+            invoiceId: savedInvoiceId,
             invoiceNumber: invNum,
             amount: creditAmount,
             type: "service"

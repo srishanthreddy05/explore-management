@@ -13,7 +13,7 @@
  *    Closing Balance (M) strictly equals Opening Balance (M + 1).
  */
 
-import { getInvoicePayments, getInvoicePaymentRatio, getServiceCommission } from "./settlements";
+import { getInvoicePayments, getInvoicePaymentRatio, getServiceCommission, calculateInvoiceRetailRevenue } from "./settlements";
 import type { StaffDrawing } from "@/services/staffDrawings";
 import type { Expense } from "@/types/expense";
 import type { Staff } from "@/types/staff";
@@ -23,11 +23,15 @@ export interface MonthlyRevenueSummary {
   totalInvoicedSales: number;         // sum of invoice.grandTotal
   subtotal: number;                   // sum of invoice.subtotal
   totalDiscounts: number;             // line discounts + bill discounts
-  totalProductSuppliesCost: number;   // sum of usedProductCost across services
+  totalProductSuppliesCost: number;   // deductible stylist supply cost (100% reimbursed to owner)
+  ownerServiceSuppliesCost: number;   // owner-performed service supplies (internal salon cost, non-deductible)
+  totalSalonSuppliesCost: number;     // total supplies consumed across all services (deductible + owner internal)
   recognizedRevenue: number;          // recognized revenue factoring in payment ratios
 
   // Product & Service Breakdown
   grossServiceRevenue: number;        // recognized gross service revenue
+  stylistGrossServiceRevenue: number; // gross revenue from stylist-performed services
+  stylistNetServiceRevenuePool: number;// stylist gross - deductible supplies
   netServiceRevenue: number;          // grossServiceRevenue - totalProductSuppliesCost
   retailProductsRevenue: number;      // recognized retail products revenue
   membershipFeesRevenue: number;      // membership fees collected
@@ -35,13 +39,21 @@ export interface MonthlyRevenueSummary {
 
   // Actual Payment Collections
   collections: {
-    totalCollected: number;
+    currentInvoiceCollected: number;  // cash + upi + card + advanceUsed on current period invoices
+    creditCollections: number;        // historical credit collections received this month
+    totalCollected: number;           // currentInvoiceCollected + creditCollections
     cash: number;
     upi: number;
     card: number;
     advanceUsed: number;
+    creditCollectionsTender: {
+      cash: number;
+      upi: number;
+      card: number;
+      unspecified: number;
+    };
   };
-  totalOutstandingReceivables: number; // unpaid customer balance dues
+  totalOutstandingReceivables: number; // unpaid customer balance dues on current month invoices
 
   // Revenue Allocation (100% Reconciled)
   allocation: {
@@ -169,20 +181,32 @@ export function generateMonthlyReport(params: {
     subtotal: 0,
     totalDiscounts: 0,
     totalProductSuppliesCost: 0,
+    ownerServiceSuppliesCost: 0,
+    totalSalonSuppliesCost: 0,
     recognizedRevenue: 0,
 
     grossServiceRevenue: 0,
+    stylistGrossServiceRevenue: 0,
+    stylistNetServiceRevenuePool: 0,
     netServiceRevenue: 0,
     retailProductsRevenue: 0,
     membershipFeesRevenue: 0,
     creditCollectionsRevenue: 0,
 
     collections: {
+      currentInvoiceCollected: 0,
+      creditCollections: 0,
       totalCollected: 0,
       cash: 0,
       upi: 0,
       card: 0,
       advanceUsed: 0,
+      creditCollectionsTender: {
+        cash: 0,
+        upi: 0,
+        card: 0,
+        unspecified: 0,
+      },
     },
     totalOutstandingReceivables: 0,
 
@@ -274,7 +298,19 @@ export function generateMonthlyReport(params: {
     return staffMap[id];
   };
 
-  // 3. Process all invoices (partitioning prior vs current month)
+  // 3. Track credit collections already registered in current month to avoid double-counting
+  const registeredCreditCollections = new Set<string>();
+  invoices.forEach((inv) => {
+    const { monthKey } = getInvoiceDateInfo(inv);
+    if (monthKey === selectedMonth) {
+      (inv.collectedCredits || []).forEach((cc: any) => {
+        const key = `${cc.originalInvoiceId || cc.originalInvoiceNumber}_${Number(cc.collectedAmount) || 0}`;
+        registeredCreditCollections.add(key);
+      });
+    }
+  });
+
+  // Process all invoices (partitioning prior vs current month)
   invoices.forEach((inv) => {
     const { dateKey, monthKey } = getInvoiceDateInfo(inv);
     const isCurrentMonth = monthKey === selectedMonth;
@@ -283,6 +319,40 @@ export function generateMonthlyReport(params: {
     if (!isCurrentMonth && !isPriorMonth) {
       // Future month invoices (relative to selectedMonth) are ignored
       return;
+    }
+
+    // Direct credit payment collections on prior invoices received in current month
+    if (isPriorMonth) {
+      const directPayments: any[] = (inv as any).creditPaymentHistory || [];
+      directPayments.forEach((dp: any) => {
+        const payMonth = (dp.collectedAt || "").substring(0, 7);
+        if (payMonth === selectedMonth) {
+          const amt = Number(dp.collectedAmount) || 0;
+          const dedupeKey = `${inv.id || inv.invoiceNumber}_${amt}`;
+          if (amt > 0 && !registeredCreditCollections.has(dedupeKey)) {
+            registeredCreditCollections.add(dedupeKey);
+            overview.creditCollectionsRevenue += amt;
+            overview.collections.creditCollections += amt;
+            overview.allocation.ownerCreditCollectionsShare += amt;
+            overview.allocation.totalOwnerShare += amt;
+
+            if (dp.paymentSplit) {
+              const cCash = Number(dp.paymentSplit.cash) || 0;
+              const cUpi = Number(dp.paymentSplit.upi) || 0;
+              const cCard = Number(dp.paymentSplit.card) || 0;
+              overview.collections.creditCollectionsTender.cash += cCash;
+              overview.collections.creditCollectionsTender.upi += cUpi;
+              overview.collections.creditCollectionsTender.card += cCard;
+              const accounted = cCash + cUpi + cCard;
+              if (amt > accounted) {
+                overview.collections.creditCollectionsTender.unspecified += (amt - accounted);
+              }
+            } else {
+              overview.collections.creditCollectionsTender.unspecified += amt;
+            }
+          }
+        }
+      });
     }
 
     const ratio = getInvoicePaymentRatio(inv);
@@ -305,31 +375,39 @@ export function generateMonthlyReport(params: {
       overview.collections.upi += (payments.upi || 0);
       overview.collections.card += (payments.card || 0);
       overview.collections.advanceUsed += advanceUsed;
-      overview.collections.totalCollected += (payments.cash || 0) + (payments.upi || 0) + (payments.card || 0) + advanceUsed;
+      const currentInvCollected = (payments.cash || 0) + (payments.upi || 0) + (payments.card || 0) + advanceUsed;
+      overview.collections.currentInvoiceCollected += currentInvCollected;
 
-      // Credit collections (old customer debt settled this month)
+      // Credit collections (old customer debt settled this month via new billing invoice)
       const invCollectedCredits: any[] = inv.collectedCredits || [];
       invCollectedCredits.forEach((cc: any) => {
         const amt = Number(cc.collectedAmount) || 0;
         overview.creditCollectionsRevenue += amt;
+        overview.collections.creditCollections += amt;
         overview.allocation.ownerCreditCollectionsShare += amt;
         overview.allocation.totalOwnerShare += amt;
+
+        if (cc.paymentSplit) {
+          const cCash = Number(cc.paymentSplit.cash) || 0;
+          const cUpi = Number(cc.paymentSplit.upi) || 0;
+          const cCard = Number(cc.paymentSplit.card) || 0;
+          overview.collections.creditCollectionsTender.cash += cCash;
+          overview.collections.creditCollectionsTender.upi += cUpi;
+          overview.collections.creditCollectionsTender.card += cCard;
+          const accounted = cCash + cUpi + cCard;
+          if (amt > accounted) {
+            overview.collections.creditCollectionsTender.unspecified += (amt - accounted);
+          }
+        } else {
+          overview.collections.creditCollectionsTender.unspecified += amt;
+        }
       });
 
-      // Retail products
-      (inv.products || []).forEach((p: any) => {
-        let amount: number;
-        if (p.amount !== undefined && p.amount !== null) {
-          amount = Number(p.amount);
-        } else {
-          const productBaseAmount = Math.max((Number(p.price) || 0) * (Number(p.quantity) || 1) - (Number(p.discount) || 0), 0);
-          amount = productBaseAmount * discountFactor;
-        }
-        const recognizedRetail = amount * ratio;
-        overview.retailProductsRevenue += recognizedRetail;
-        overview.allocation.ownerRetailShare += recognizedRetail;
-        overview.allocation.totalOwnerShare += recognizedRetail;
-      });
+      // Retail products (using shared calculation)
+      const retailRev = calculateInvoiceRetailRevenue(inv);
+      overview.retailProductsRevenue += retailRev;
+      overview.allocation.ownerRetailShare += retailRev;
+      overview.allocation.totalOwnerShare += retailRev;
     }
 
     // B. Process Services across prior and current months
@@ -360,13 +438,17 @@ export function generateMonthlyReport(params: {
 
       if (isCurrentMonth) {
         overview.grossServiceRevenue += effectiveServiceRevenue;
-        overview.totalProductSuppliesCost += effectiveProductCost;
+        overview.totalSalonSuppliesCost += effectiveProductCost;
 
         if (role === "Owner") {
+          overview.ownerServiceSuppliesCost += effectiveProductCost;
           overview.allocation.ownerDirectServiceShare += effectiveOwnerShare;
           overview.allocation.totalOwnerShare += effectiveOwnerShare;
         } else {
+          overview.stylistGrossServiceRevenue += effectiveServiceRevenue;
+          overview.totalProductSuppliesCost += effectiveProductCost;
           const netRemaining = effectiveServiceRevenue - effectiveProductCost;
+          overview.stylistNetServiceRevenuePool += netRemaining;
           overview.allocation.ownerNetServiceSplit += 0.5 * netRemaining;
           overview.allocation.ownerProductReimbursement += effectiveProductCost;
           overview.allocation.totalOwnerShare += effectiveOwnerShare;
@@ -441,6 +523,9 @@ export function generateMonthlyReport(params: {
   });
 
   // 6. Finalize Overview metrics
+  overview.collections.totalCollected =
+    overview.collections.currentInvoiceCollected + overview.collections.creditCollections;
+
   overview.netServiceRevenue = overview.grossServiceRevenue - overview.totalProductSuppliesCost;
   overview.recognizedRevenue =
     overview.grossServiceRevenue +
@@ -461,13 +546,19 @@ export function generateMonthlyReport(params: {
   overview.subtotal = Math.round(overview.subtotal * 100) / 100;
   overview.totalDiscounts = Math.round(overview.totalDiscounts * 100) / 100;
   overview.totalProductSuppliesCost = Math.round(overview.totalProductSuppliesCost * 100) / 100;
+  overview.ownerServiceSuppliesCost = Math.round(overview.ownerServiceSuppliesCost * 100) / 100;
+  overview.totalSalonSuppliesCost = Math.round(overview.totalSalonSuppliesCost * 100) / 100;
   overview.grossServiceRevenue = Math.round(overview.grossServiceRevenue * 100) / 100;
+  overview.stylistGrossServiceRevenue = Math.round(overview.stylistGrossServiceRevenue * 100) / 100;
+  overview.stylistNetServiceRevenuePool = Math.round(overview.stylistNetServiceRevenuePool * 100) / 100;
   overview.netServiceRevenue = Math.round(overview.netServiceRevenue * 100) / 100;
   overview.retailProductsRevenue = Math.round(overview.retailProductsRevenue * 100) / 100;
   overview.membershipFeesRevenue = Math.round(overview.membershipFeesRevenue * 100) / 100;
   overview.creditCollectionsRevenue = Math.round(overview.creditCollectionsRevenue * 100) / 100;
   overview.recognizedRevenue = Math.round(overview.recognizedRevenue * 100) / 100;
 
+  overview.collections.currentInvoiceCollected = Math.round(overview.collections.currentInvoiceCollected * 100) / 100;
+  overview.collections.creditCollections = Math.round(overview.collections.creditCollections * 100) / 100;
   overview.collections.totalCollected = Math.round(overview.collections.totalCollected * 100) / 100;
   overview.collections.cash = Math.round(overview.collections.cash * 100) / 100;
   overview.collections.upi = Math.round(overview.collections.upi * 100) / 100;
@@ -598,18 +689,23 @@ export function generateMonthlyReportCSV(report: MonthlyReportPayload): string {
   lines.push(`"--- EXECUTIVE FINANCIAL SUMMARY ---"`);
   lines.push(`"Metric","Amount (INR)"`);
   lines.push(`"Total Invoiced Sales",${overview.totalInvoicedSales}`);
-  lines.push(`"Recognized Service Revenue",${overview.grossServiceRevenue}`);
-  lines.push(`"Service Supplies Cost Deducted",${overview.totalProductSuppliesCost}`);
-  lines.push(`"Net Service Revenue",${overview.netServiceRevenue}`);
+  lines.push(`"Gross Service Revenue",${overview.grossServiceRevenue}`);
+  lines.push(`"Deductible Stylist Supplies",${overview.totalProductSuppliesCost}`);
+  lines.push(`"Owner Service Supplies (Internal)",${overview.ownerServiceSuppliesCost}`);
+  lines.push(`"Total Salon Supplies Consumed",${overview.totalSalonSuppliesCost}`);
+  lines.push(`"Net Salon Service Revenue",${overview.netServiceRevenue}`);
+  lines.push(`"Stylist Net Service Revenue Pool",${overview.stylistNetServiceRevenuePool}`);
   lines.push(`"Retail Products Revenue",${overview.retailProductsRevenue}`);
   lines.push(`"Membership Fees Revenue",${overview.membershipFeesRevenue}`);
   lines.push(`"Past Credit Collections",${overview.creditCollectionsRevenue}`);
-  lines.push(`"Total Actual Collections",${overview.collections.totalCollected}`);
-  lines.push(`"  - Cash Collections",${overview.collections.cash}`);
-  lines.push(`"  - UPI Collections",${overview.collections.upi}`);
-  lines.push(`"  - Card Collections",${overview.collections.card}`);
-  lines.push(`"  - Advance Balance Used",${overview.collections.advanceUsed}`);
-  lines.push(`"Outstanding Customer Receivables",${overview.totalOutstandingReceivables}`);
+  lines.push(`"Total Actual Realized Collections",${overview.collections.totalCollected}`);
+  lines.push(`"  - Current Invoices Collected",${overview.collections.currentInvoiceCollected}`);
+  lines.push(`"  - Historical Credit Collections Received",${overview.collections.creditCollections}`);
+  lines.push(`"  - Cash Collections (Current)",${overview.collections.cash}`);
+  lines.push(`"  - UPI Collections (Current)",${overview.collections.upi}`);
+  lines.push(`"  - Card Collections (Current)",${overview.collections.card}`);
+  lines.push(`"  - Advance Balance Used (Current)",${overview.collections.advanceUsed}`);
+  lines.push(`"Outstanding Customer Receivables (Current Month Invoices)",${overview.totalOutstandingReceivables}`);
   lines.push("");
 
   // Section 2: Revenue Allocation & Profit

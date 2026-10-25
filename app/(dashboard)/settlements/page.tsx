@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import * as invoicesService from "@/services/invoices";
 import * as expensesService from "@/services/expenses";
 import * as staffDrawingsService from "@/services/staffDrawings";
-import { getInvoicePayments, getInvoicePaymentRatio, getServiceCommission, calculateDaySettlement, DaySettlementDetails } from "@/lib/utils/settlements";
+import { getInvoicePayments, getInvoicePaymentRatio, getServiceCommission, calculateDaySettlement, DaySettlementDetails, calculateInvoiceRetailRevenue, calculateSettlementRangeOverview } from "@/lib/utils/settlements";
 import { useAppData } from "@/context/AppDataContext";
 import { formatCurrency } from "@/components/salon-dashboard/types";
 import { format } from "date-fns";
@@ -519,7 +519,7 @@ function StaffSplitCard({
         {/* Quick Net Summary */}
         <div className="mb-4">
           <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#6B6358]">
-            {periodLabel}
+            {periodLabel} Net Payable
           </span>
           <p className={`mt-1 text-2xl font-black ${monthlyColor}`}>
             {formatCurrency(monthlyFinal)}
@@ -1237,6 +1237,7 @@ export default function SettlementsPage() {
     ownerShare: 0,
     membershipAmount: 0,
     retailProductsRevenue: 0,
+    serviceSuppliesUsed: 0,
     productsReturned: 0,
   });
   const [loadingDays, setLoadingDays] = useState<Record<string, boolean>>({});
@@ -1330,6 +1331,43 @@ export default function SettlementsPage() {
 
           dailyStats[dateKey].ownerShare += amount * ratio;
           dailyStats[dateKey].retailProductsRevenue += amount * ratio;
+        });
+
+        // Track historical credit collections realized in current period
+        (inv.collectedCredits || []).forEach((cc: any) => {
+          const amount = Number(cc.collectedAmount) || 0;
+          dailyStats[dateKey].ownerShare += amount;
+          monthlyStats[monthKey].totalRevenue += amount;
+        });
+
+        (inv.creditPaymentHistory || []).forEach((cph: any) => {
+          const amount = Number(cph.collectedAmount) || 0;
+          const cDateKey = (cph.collectedAt || dateKey).slice(0, 10);
+          const cMonthKey = cDateKey.slice(0, 7);
+          if (amount > 0) {
+            if (!dailyStats[cDateKey]) {
+              dailyStats[cDateKey] = {
+                dateKey: cDateKey,
+                totalRevenue: 0,
+                totalVisits: 0,
+                cash: 0,
+                upi: 0,
+                card: 0,
+                serviceRevenue: 0,
+                productCost: 0,
+                stylistShare: 0,
+                ownerShare: 0,
+                totalMembershipAmount: 0,
+                retailProductsRevenue: 0,
+              };
+            }
+            dailyStats[cDateKey].ownerShare += amount;
+            dailyStats[cDateKey].totalRevenue += amount;
+            if (!monthlyStats[cMonthKey]) {
+              monthlyStats[cMonthKey] = { totalRevenue: 0, totalVisits: 0, cash: 0, upi: 0, card: 0 };
+            }
+            monthlyStats[cMonthKey].totalRevenue += amount;
+          }
         });
 
         const staffInvoiceSummary: Record<string, any> = {};
@@ -1434,7 +1472,9 @@ export default function SettlementsPage() {
           console.error("Failed to load today's invoices:", err);
         }
 
-        // Compute staff shares from invoices inside selected range
+        let liveRetailRevenue = 0;
+        let liveStylistSupplies = 0;
+        // Compute staff shares and range totals from invoices inside selected range using shared utility
         try {
           const invQuery = query(
             collection(db, "invoices"),
@@ -1442,48 +1482,49 @@ export default function SettlementsPage() {
             where("dateKey", "<=", dateTo)
           );
           const invSnap = await getDocs(invQuery);
-          const statsMap: Record<string, StaffMonthSummary> = {};
+          const invoicesList: any[] = [];
           invSnap.forEach((doc) => {
-            const inv = doc.data() as any;
-            const ratio = getInvoicePaymentRatio(inv);
-            (inv.services || []).forEach((s: any) => {
-              const staffId = s.staffId || "unassigned";
-              const comm = getServiceCommission(s, inv);
-              if (!statsMap[staffId]) {
-                statsMap[staffId] = { revenueGenerated: 0, productCosts: 0, netShare: 0 };
-              }
-              statsMap[staffId].revenueGenerated += comm.serviceRevenue * ratio;
-              statsMap[staffId].productCosts += comm.productCost * ratio;
-              statsMap[staffId].netShare += comm.stylistShare * ratio;
-            });
+            invoicesList.push({ id: doc.id, ...doc.data() });
           });
-          setMonthlyStaffStats(statsMap);
+
+          // Fetch drawings for the selected range
+          await fetchDrawings(dateFrom, dateTo);
+
+          if (invoicesList.length > 0) {
+            const overview = calculateSettlementRangeOverview(invoicesList, dateFrom, dateTo, staff);
+            setMonthlyStaffStats(overview.staffSummaryMap);
+            setMonthlyStatsTotals({
+              ownerShare: overview.ownerShare,
+              membershipAmount: overview.membershipAmount,
+              retailProductsRevenue: overview.retailProductsRevenue,
+              serviceSuppliesUsed: overview.serviceSuppliesUsed,
+              productsReturned: overview.serviceSuppliesUsed,
+            });
+          } else {
+            // Fallback to daily stats map if no raw invoices exist
+            let mOwnerShare = 0;
+            let mMembershipAmount = 0;
+            let mRetailProductsRevenue = 0;
+            let mServiceSuppliesUsed = 0;
+            Object.values(statsMap).forEach((data: any) => {
+              mOwnerShare += data.ownerShare || 0;
+              mMembershipAmount += data.totalMembershipAmount || 0;
+              mRetailProductsRevenue += data.retailProductsRevenue || 0;
+              mServiceSuppliesUsed += data.productCost || 0;
+            });
+            setMonthlyStaffStats({});
+            setMonthlyStatsTotals({
+              ownerShare: mOwnerShare,
+              membershipAmount: mMembershipAmount,
+              retailProductsRevenue: mRetailProductsRevenue,
+              serviceSuppliesUsed: mServiceSuppliesUsed,
+              productsReturned: mServiceSuppliesUsed,
+            });
+          }
         } catch (err) {
           console.error("Failed to compute staff shares from invoices:", err);
           setMonthlyStaffStats({});
         }
-
-        // Fetch drawings for the selected range
-        await fetchDrawings(dateFrom, dateTo);
-
-        // Compute aggregated totals for the selected range from daily stats map
-        let mOwnerShare = 0;
-        let mMembershipAmount = 0;
-        let mRetailProductsRevenue = 0;
-        let mProductsReturned = 0;
-        Object.values(statsMap).forEach((data: any) => {
-          mOwnerShare += data.ownerShare || 0;
-          mMembershipAmount += data.totalMembershipAmount || 0;
-          mRetailProductsRevenue += data.retailProductsRevenue || 0;
-          mProductsReturned += data.productCost || 0;
-        });
-
-        setMonthlyStatsTotals({
-          ownerShare: mOwnerShare,
-          membershipAmount: mMembershipAmount,
-          retailProductsRevenue: mRetailProductsRevenue,
-          productsReturned: mProductsReturned,
-        });
 
         try {
           const start = new Date(dateFrom);
@@ -1652,6 +1693,7 @@ export default function SettlementsPage() {
       ownerShare,
       membershipAmount: details.totalMembershipAmount,
       retailProductsRevenue: details.retailProductsRevenue,
+      serviceSuppliesUsed: details.staffProductReimbursement,
       productsReturned: details.staffProductReimbursement,
     };
   }, [getDayDetails, todayStr]);
@@ -1793,9 +1835,9 @@ export default function SettlementsPage() {
             periodLabel={periodLabel}
           />
           <MetricCard
-            title="Products Returned"
-            today={todayMetrics.productsReturned}
-            monthly={monthlyStatsTotals.productsReturned}
+            title="Service Supplies Used"
+            today={todayMetrics.serviceSuppliesUsed}
+            monthly={monthlyStatsTotals.serviceSuppliesUsed}
             icon={Package}
             periodLabel={periodLabel}
           />

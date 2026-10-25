@@ -20,6 +20,8 @@ export async function create(
   try {
     const docRef = await addDoc(collection(db, COLLECTION_NAME), {
       ...credit,
+      remainingAmount: credit.remainingAmount ?? credit.creditAmount,
+      collectionStatus: "pending",
       status: "pending",
       createdAt: credit.createdAt || new Date().toISOString(),
       settledAt: null,
@@ -75,39 +77,34 @@ export async function getAllPending(): Promise<CreditBalance[]> {
     return [];
   }
 }
-export async function settle(id: string, collectedAmount?: number, providedBatch?: any): Promise<void> {
+/**
+ * Internal settlement helper that delegates to invoicesService.collectCreditPayment
+ * ensuring all credit document and invoice updates are performed in a single atomic transaction.
+ */
+export async function settle(id: string, collectedAmount?: number): Promise<void> {
   try {
     const docRef = doc(db, COLLECTION_NAME, id);
-    
-    // Retrieve the document first to calculate the correct remainingAmount
     const snap = await getDoc(docRef);
     if (!snap.exists()) {
       throw new Error(`Credit balance document ${id} not found`);
     }
     const data = snap.data();
+    const invoiceId = data.originalInvoiceId || data.invoiceId;
+    if (!invoiceId) {
+      throw new Error(`Credit balance document ${id} is missing an invoice reference.`);
+    }
+
     const currentRemaining = data.remainingAmount !== undefined ? data.remainingAmount : (data.amount ?? 0);
     const amountToSettle = collectedAmount !== undefined ? collectedAmount : currentRemaining;
-    const newRemaining = Math.max(0, currentRemaining - amountToSettle);
-    const isFullySettled = newRemaining <= 0;
-    
-    const updateData: any = {
-      remainingAmount: newRemaining,
-      collectionStatus: isFullySettled ? "settled" : "partial",
-      status: isFullySettled ? "settled" : "pending", // fallback for legacy compatibility
-      updatedAt: new Date().toISOString(),
-    };
-    
-    if (isFullySettled) {
-      updateData.settledAt = new Date().toISOString();
-    }
-    
-    if (providedBatch) {
-      providedBatch.update(docRef, updateData);
-    } else {
-      await updateDoc(docRef, updateData);
-    }
+
+    const { collectCreditPayment } = await import("@/services/invoices");
+    await collectCreditPayment(
+      invoiceId,
+      amountToSettle,
+      { cash: amountToSettle, upi: 0, card: 0 }
+    );
   } catch (error) {
-    console.error(`Error settling credit balance ${id}:`, error);
+    console.error(`Error in atomic settle for credit balance ${id}:`, error);
     throw error;
   }
 }

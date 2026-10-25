@@ -8,13 +8,12 @@ import { db } from "@/lib/firebase";
 import { collection, query, where, orderBy, getDocs, limit, startAfter } from "firebase/firestore";
 import type { Invoice } from "@/types/invoice";
 
+import { loadAuthoritativeUnifiedCreditTracker } from "@/lib/utils/creditTracker";
+
 export default function PaymentsPage() {
   const [invoices, setInvoices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  const [lastDoc, setLastDoc] = useState<any>(null);
-  const [hasMore, setHasMore] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
 
   // Collect Payment Modal states
   const [modalOpen, setModalOpen] = useState(false);
@@ -27,54 +26,29 @@ export default function PaymentsPage() {
   const loadDueInvoices = async () => {
     setLoading(true);
     try {
-      const q = query(
-        collection(db, "invoices"),
-        where("balanceDue", ">", 0),
-        orderBy("balanceDue", "desc"),
-        limit(10)
-      );
-      const querySnapshot = await getDocs(q);
-      const dues: any[] = [];
-      querySnapshot.forEach((doc) => {
-        dues.push({ id: doc.id, ...doc.data() });
-      });
-      setInvoices(dues);
+      // Reconcile pending credit_balances and invoices into unified authoritative debt list
+      const summary = await loadAuthoritativeUnifiedCreditTracker(db);
 
-      const last = querySnapshot.docs[querySnapshot.docs.length - 1];
-      setLastDoc(last || null);
-      setHasMore(querySnapshot.docs.length === 10);
+      const dues = summary.items.map((item) => ({
+        id: item.invoiceId || item.id,
+        invoiceId: item.invoiceId || item.id,
+        invoiceNo: item.invoiceNumber,
+        invoiceNumber: item.invoiceNumber,
+        customerName: item.customerName,
+        customerPhone: item.customerPhone,
+        dateKey: item.date,
+        grandTotal: item.total,
+        receivedAmount: item.paid,
+        balanceDue: item.due,
+        creditDocIds: item.creditDocIds,
+        isUnlinkedInvoice: item.isUnlinkedInvoice,
+      }));
+
+      setInvoices(dues);
     } catch (error) {
       console.error("Failed to load dues:", error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const loadMoreDues = async () => {
-    if (!lastDoc || loadingMore) return;
-    setLoadingMore(true);
-    try {
-      const q = query(
-        collection(db, "invoices"),
-        where("balanceDue", ">", 0),
-        orderBy("balanceDue", "desc"),
-        startAfter(lastDoc),
-        limit(10)
-      );
-      const querySnapshot = await getDocs(q);
-      const dues: any[] = [];
-      querySnapshot.forEach((doc) => {
-        dues.push({ id: doc.id, ...doc.data() });
-      });
-      setInvoices((prev) => [...prev, ...dues]);
-
-      const last = querySnapshot.docs[querySnapshot.docs.length - 1];
-      setLastDoc(last || null);
-      setHasMore(querySnapshot.docs.length === 10);
-    } catch (error) {
-      console.error("Failed to load more dues:", error);
-    } finally {
-      setLoadingMore(false);
     }
   };
 
@@ -122,11 +96,11 @@ export default function PaymentsPage() {
         text: `Successfully collected ${formatCurrency(amount)} for ${selectedInvoice.invoiceNo || selectedInvoice.invoiceNumber}!`,
       });
 
-      // Reload list
+      // Reload list immediately
+      await loadDueInvoices();
       setTimeout(() => {
         setModalOpen(false);
-        loadDueInvoices();
-      }, 1500);
+      }, 1200);
     } catch (error) {
       console.error("Failed to collect payment:", error);
       setMessage({ type: "error", text: "Failed to log payment transaction." });
@@ -231,18 +205,6 @@ export default function PaymentsPage() {
               </tbody>
             </table>
           </div>
-          {hasMore && (
-            <div className="flex justify-center mt-4">
-              <button
-                type="button"
-                onClick={loadMoreDues}
-                disabled={loadingMore}
-                className="inline-flex h-11 items-center justify-center rounded-xl border border-[#2E2B24] bg-[#131210] px-6 text-sm font-semibold text-[#A89F8C] hover:bg-[#1C1A16] hover:text-[#F5F0E8] hover:border-[#B8962E] transition shadow-xs cursor-pointer disabled:opacity-50"
-              >
-                {loadingMore ? "Loading More..." : "Load More"}
-              </button>
-            </div>
-          )}
         </div>
       )}
 

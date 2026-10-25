@@ -1,4 +1,4 @@
-import { getServiceCommission, calculateDaySettlement } from "./settlements";
+import { getServiceCommission, calculateDaySettlement, calculateInvoiceRetailRevenue, calculateSettlementRangeOverview } from "./settlements";
 import { generateMonthlyReport } from "./monthlyReports";
 import type { Staff } from "@/types/staff";
 
@@ -370,7 +370,218 @@ export function runSettlementScenarioTests() {
     assertEqual(Object.values(payloadFull).includes(undefined), false, "Scenario H: full payload has NO undefined values");
   }
 
-  console.log("\n🎉 ALL SCENARIOS A THROUGH H PASSED SUCCESSFULLY!\n");
+  // Scenario I: Shared Retail Revenue & Owner vs Stylist Supply Separation
+  {
+    console.log("\n--- Scenario I: Retail Revenue & Owner vs Stylist Supply Separation ---");
+
+    // 1. Retail sales allocated 100% to owner, 0% to stylist
+    const retailInv = {
+      id: "inv_ret",
+      grandTotal: 1000,
+      subtotal: 1000,
+      paymentSplit: { cash: 1000, upi: 0, card: 0 },
+      products: [
+        { productName: "Shampoo", price: 600, quantity: 1, amount: 600 },
+        { productName: "Conditioner", price: 400, quantity: 1, amount: 400 },
+      ],
+      services: [],
+    };
+
+    const retailRev = calculateInvoiceRetailRevenue(retailInv);
+    assertEqual(retailRev, 1000, "Scenario I: Retail products revenue is ₹1,000");
+
+    const settlement = calculateDaySettlement([retailInv], testStaff, "2026-10-25");
+    assertEqual(settlement.retailProductsRevenue, 1000, "Scenario I: Settlement retail revenue is ₹1,000");
+    assertEqual(settlement.totalOwnerShare, 1000, "Scenario I: Retail revenue allocated 100% to owner");
+    assertEqual(settlement.totalStaffShare, 0, "Scenario I: Stylist share from retail is ₹0");
+
+    // 2. Retail sales scaled properly by partial payment ratio
+    const partialRetailInv = {
+      id: "inv_ret_partial",
+      grandTotal: 1000,
+      subtotal: 1000,
+      paymentSplit: { cash: 500, upi: 0, card: 0 },
+      products: [
+        { productName: "Hair Wax", amount: 1000 },
+      ],
+      services: [],
+    };
+
+    const partialRetailRev = calculateInvoiceRetailRevenue(partialRetailInv);
+    assertEqual(partialRetailRev, 500, "Scenario I: Partially paid retail scaled by payment ratio (50% = ₹500)");
+  }
+
+  // Scenario J: Settlements Page and Monthly Reports Exact Parity for October 2026 Fixture
+  {
+    console.log("\n--- Scenario J: Settlements & Reports Full Parity (October 2026) ---");
+    const staffList: Staff[] = [
+      { id: "staff_sameer", name: "Sameer", role: "Stylist", status: "Active" },
+      { id: "staff_sohail", name: "Sohail", role: "Stylist", status: "Active" },
+      { id: "staff_owner", name: "Zubair", role: "Owner", status: "Active" },
+    ];
+
+    const octInvoices = [
+      {
+        id: "inv_sohail",
+        dateKey: "2026-10-05",
+        grandTotal: 92880,
+        subtotal: 92880,
+        paymentSplit: { cash: 92880, upi: 0, card: 0 },
+        services: [
+          {
+            serviceName: "Sohail Services",
+            staffId: "staff_sohail",
+            staffName: "Sohail",
+            amount: 92880,
+            usedProductCost: 240,
+          },
+        ],
+      },
+      {
+        id: "inv_sameer",
+        dateKey: "2026-10-10",
+        grandTotal: 14040,
+        subtotal: 14040,
+        paymentSplit: { upi: 14040, cash: 0, card: 0 },
+        services: [
+          {
+            serviceName: "Sameer Services",
+            staffId: "staff_sameer",
+            staffName: "Sameer",
+            amount: 14040,
+            usedProductCost: 0,
+          },
+        ],
+      },
+      {
+        id: "inv_owner",
+        dateKey: "2026-10-15",
+        grandTotal: 31820,
+        subtotal: 31820,
+        paymentSplit: { card: 31820, cash: 0, upi: 0 },
+        services: [
+          {
+            serviceName: "Owner Direct Services",
+            staffId: "staff_owner",
+            staffName: "Zubair",
+            staffRole: "Owner",
+            amount: 31820,
+            usedProductCost: 77,
+          },
+        ],
+      },
+      {
+        id: "inv_retail",
+        dateKey: "2026-10-20",
+        grandTotal: 2845,
+        subtotal: 2845,
+        paymentSplit: { upi: 2845, cash: 0, card: 0 },
+        products: [
+          {
+            productName: "Salon Products",
+            amount: 2845,
+          },
+        ],
+      },
+      {
+        id: "inv_credit_collection",
+        dateKey: "2026-10-22",
+        grandTotal: 0,
+        subtotal: 0,
+        paymentSplit: { cash: 0, upi: 0, card: 0 },
+        collectedCredits: [
+          {
+            originalInvoiceId: "inv_sep_old",
+            originalInvoiceNumber: "EXP-260901-001",
+            collectedAmount: 510,
+            paymentSplit: { cash: 510, upi: 0, card: 0 },
+          },
+        ],
+      },
+      {
+        id: "inv_uncollected",
+        dateKey: "2026-10-25",
+        grandTotal: 1600,
+        subtotal: 1600,
+        balanceDue: 1600,
+        paymentSplit: { cash: 0, upi: 0, card: 0 },
+        services: [
+          {
+            serviceName: "Unpaid Service",
+            staffId: "staff_sohail",
+            staffName: "Sohail",
+            amount: 1600,
+            usedProductCost: 0,
+          },
+        ],
+      },
+    ];
+
+    const drawings = [
+      {
+        id: "drw_sohail",
+        staffId: "staff_sohail",
+        staffName: "Sohail",
+        amount: 1140,
+        date: "2026-10-12",
+        month: "2026-10",
+      },
+    ];
+
+    // 1. Calculate Settlements Page overview
+    const settlementsOverview = calculateSettlementRangeOverview(
+      octInvoices,
+      "2026-10-01",
+      "2026-10-31",
+      staffList
+    );
+
+    // 2. Calculate Monthly Reports overview
+    const monthlyReport = generateMonthlyReport({
+      selectedMonth: "2026-10",
+      invoices: octInvoices,
+      staffDrawings: drawings as any,
+      expenses: [],
+      staffList,
+    });
+
+    // 3. Exact Parity Assertions
+    assertEqual(
+      settlementsOverview.ownerShare,
+      monthlyReport.overview.allocation.totalOwnerShare,
+      "Scenario J Parity: Settlements Owner Share exactly equals Reports Owner Allocation (₹88,755)"
+    );
+    assertEqual(settlementsOverview.ownerShare, 88755, "Scenario J: Owner Share is ₹88,755");
+    assertEqual(settlementsOverview.retailProductsRevenue, 2845, "Scenario J: Retail revenue is ₹2,845");
+    assertEqual(settlementsOverview.serviceSuppliesUsed, 240, "Scenario J: Deductible service supplies is ₹240");
+    assertEqual(settlementsOverview.creditCollectionsRevenue, 510, "Scenario J: Credit collections is ₹510");
+
+    // Staff Card details - Sohail
+    const sohailStats = settlementsOverview.staffSummaryMap["staff_sohail"];
+    assertEqual(sohailStats.revenueGenerated, 92880, "Scenario J: Sohail service revenue is ₹92,880");
+    assertEqual(sohailStats.productCosts, 240, "Scenario J: Sohail product cost used is ₹240");
+    assertEqual(sohailStats.revenueGenerated - sohailStats.productCosts, 92640, "Scenario J: Sohail net service revenue is ₹92,640");
+    assertEqual(sohailStats.netShare, 46320, "Scenario J: Sohail commission earned is ₹46,320");
+    const sohailDrawings = 1140;
+    const sohailPayable = sohailStats.netShare - sohailDrawings;
+    assertEqual(sohailPayable, 45180, "Scenario J: Sohail remaining payable is ₹45,180 (46,320 - 1,140)");
+
+    // Staff Card details - Sameer
+    const sameerStats = settlementsOverview.staffSummaryMap["staff_sameer"];
+    assertEqual(sameerStats.revenueGenerated, 14040, "Scenario J: Sameer service revenue is ₹14,040");
+    assertEqual(sameerStats.productCosts, 0, "Scenario J: Sameer product cost used is ₹0");
+    assertEqual(sameerStats.netShare, 7020, "Scenario J: Sameer commission earned is ₹7,020");
+    const sameerDrawings = 0;
+    const sameerPayable = sameerStats.netShare - sameerDrawings;
+    assertEqual(sameerPayable, 7020, "Scenario J: Sameer remaining payable is ₹7,020 (7,020 - 0)");
+
+    // Idempotency check: Running calculateSettlementRangeOverview twice produces identical output
+    const run2 = calculateSettlementRangeOverview(octInvoices, "2026-10-01", "2026-10-31", staffList);
+    assertEqual(run2.ownerShare, settlementsOverview.ownerShare, "Scenario J Idempotency: Owner share is identical across runs");
+    assertEqual(run2.totalStylistShare, settlementsOverview.totalStylistShare, "Scenario J Idempotency: Stylist shares are identical across runs");
+  }
+
+  console.log("\n🎉 ALL SCENARIOS A THROUGH J PASSED SUCCESSFULLY!\n");
 }
 
 runSettlementScenarioTests();

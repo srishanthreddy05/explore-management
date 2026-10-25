@@ -423,17 +423,23 @@ export default function MonthlyReportsPage() {
             </div>
             <div className="mt-2 space-y-0.5 text-[11px] text-[#8C8270]">
               <div className="flex justify-between">
-                <span>Net Service Pool:</span>
-                <span className="text-[#D8D0C0] font-medium">{formatCurrency(report.overview.netServiceRevenue)}</span>
+                <span>Stylist Net Pool:</span>
+                <span className="text-[#D8D0C0] font-medium">{formatCurrency(report.overview.stylistNetServiceRevenuePool)}</span>
               </div>
               <div className="flex justify-between">
                 <span>Commission Rate:</span>
-                <span className="text-blue-400 font-medium">50% of Net Services</span>
+                <span className="text-blue-400 font-medium">50% of Stylist Net</span>
               </div>
               <div className="flex justify-between">
-                <span>Supplies Deducted:</span>
+                <span>Deductible Supplies:</span>
                 <span className="text-amber-400 font-medium">{formatCurrency(report.overview.totalProductSuppliesCost)}</span>
               </div>
+            </div>
+            <div className="mt-2 pt-1.5 border-t border-[#1C1A16] text-[10px] text-[#6B6358] flex justify-between">
+              <span>Owner Services (100%):</span>
+              <span className="text-[#A89F8C] font-medium">
+                {formatCurrency(report.overview.allocation.ownerDirectServiceShare)} (Excluded)
+              </span>
             </div>
           </div>
 
@@ -618,11 +624,17 @@ export default function MonthlyReportsPage() {
                       </span>
                     </div>
                     <div className="flex items-center justify-between py-1 border-b border-[#1C1A16] text-amber-400/90 pl-3">
-                      <span>− Service Supplies Cost (100% Reimbursed to Owner)</span>
+                      <span>− Deductible Stylist Supplies (100% Reimbursed to Owner)</span>
                       <span>−{formatCurrency(report.overview.totalProductSuppliesCost)}</span>
                     </div>
+                    {report.overview.ownerServiceSuppliesCost > 0 && (
+                      <div className="flex items-center justify-between py-0.5 border-b border-[#1C1A16] text-xs text-[#8C8270] pl-3">
+                        <span>Owner Service Supplies (Internal Inventory Consumption)</span>
+                        <span>{formatCurrency(report.overview.ownerServiceSuppliesCost)}</span>
+                      </div>
+                    )}
                     <div className="flex items-center justify-between py-1 border-b border-[#1C1A16] pl-3 font-medium text-emerald-400">
-                      <span>= Net Service Revenue (Split 50/50)</span>
+                      <span>= Net Salon Service Revenue</span>
                       <span>{formatCurrency(report.overview.netServiceRevenue)}</span>
                     </div>
                     <div className="flex items-center justify-between py-1 border-b border-[#1C1A16]">
@@ -663,7 +675,7 @@ export default function MonthlyReportsPage() {
                   <div className="space-y-3 text-sm">
                     <div className="flex items-center justify-between py-1 border-b border-[#1C1A16]">
                       <span className="text-[#A89F8C] flex items-center gap-2">
-                        <span className="h-2 w-2 rounded-full bg-emerald-400"></span> Cash Collections
+                        <span className="h-2 w-2 rounded-full bg-emerald-400"></span> Cash Collections (Current Invoices)
                       </span>
                       <span className="font-semibold text-[#F5F0E8]">
                         {formatCurrency(report.overview.collections.cash)}
@@ -671,7 +683,7 @@ export default function MonthlyReportsPage() {
                     </div>
                     <div className="flex items-center justify-between py-1 border-b border-[#1C1A16]">
                       <span className="text-[#A89F8C] flex items-center gap-2">
-                        <span className="h-2 w-2 rounded-full bg-blue-400"></span> UPI / QR Payments
+                        <span className="h-2 w-2 rounded-full bg-blue-400"></span> UPI / QR Payments (Current Invoices)
                       </span>
                       <span className="font-semibold text-[#F5F0E8]">
                         {formatCurrency(report.overview.collections.upi)}
@@ -679,7 +691,7 @@ export default function MonthlyReportsPage() {
                     </div>
                     <div className="flex items-center justify-between py-1 border-b border-[#1C1A16]">
                       <span className="text-[#A89F8C] flex items-center gap-2">
-                        <span className="h-2 w-2 rounded-full bg-purple-400"></span> Card Payments
+                        <span className="h-2 w-2 rounded-full bg-purple-400"></span> Card Payments (Current Invoices)
                       </span>
                       <span className="font-semibold text-[#F5F0E8]">
                         {formatCurrency(report.overview.collections.card)}
@@ -693,12 +705,22 @@ export default function MonthlyReportsPage() {
                         {formatCurrency(report.overview.collections.advanceUsed)}
                       </span>
                     </div>
+                    {report.overview.collections.creditCollections > 0 && (
+                      <div className="flex items-center justify-between py-1 border-b border-[#1C1A16]">
+                        <span className="text-[#A89F8C] flex items-center gap-2">
+                          <span className="h-2 w-2 rounded-full bg-cyan-400"></span> Past Customer Credit Collections
+                        </span>
+                        <span className="font-semibold text-[#F5F0E8]">
+                          {formatCurrency(report.overview.collections.creditCollections)}
+                        </span>
+                      </div>
+                    )}
                     <div className="flex items-center justify-between pt-2 text-base font-bold text-emerald-400">
                       <span>Total Realized Collections</span>
                       <span>{formatCurrency(report.overview.collections.totalCollected)}</span>
                     </div>
                     <div className="flex items-center justify-between pt-1 text-xs text-amber-400/80">
-                      <span>Outstanding Balances Due from Customers</span>
+                      <span>Outstanding Balances Due on {monthLabel} Invoices</span>
                       <span>{formatCurrency(report.overview.totalOutstandingReceivables)}</span>
                     </div>
                   </div>

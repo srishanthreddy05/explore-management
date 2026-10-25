@@ -115,6 +115,10 @@ function runMonthlyReportTests() {
     });
 
     assertEqual(report.overview.allocation.ownerDirectServiceShare, 5000, "Test 2: Owner direct service 100% = ₹5000");
+    assertEqual(report.overview.totalProductSuppliesCost, 0, "Test 2: Deductible stylist supplies is ₹0 for owner service");
+    assertEqual(report.overview.ownerServiceSuppliesCost, 500, "Test 2: Owner service supplies tracked separately as ₹500");
+    assertEqual(report.overview.totalSalonSuppliesCost, 500, "Test 2: Total salon supplies consumed is ₹500");
+    assertEqual(report.overview.netServiceRevenue, 5000, "Test 2: Net service revenue does not deduct owner supplies");
     assertEqual(report.overview.retailProductsRevenue, 2000, "Test 2: Retail revenue = ₹2000");
     assertEqual(report.overview.membershipFeesRevenue, 1500, "Test 2: Membership revenue = ₹1500");
     assertEqual(report.overview.allocation.totalStylistShares, 0, "Test 2: Stylist share from Owner/Retail/Membership is ₹0");
@@ -374,6 +378,150 @@ function runMonthlyReportTests() {
     assertEqual(report.overview.expenses.totalExpenses, 8000, "Test 5: Total expenses ₹8000");
     // Salon Net Profit = Owner Share (₹11,000) - Expenses (₹8,000) = ₹3,000
     assertEqual(report.overview.salonNetProfit, 3000, "Test 5: Salon Net Profit is ₹3000 (Owner Share ₹11000 - Expenses ₹8000)");
+  }
+
+  // Test 6: October 2026 Comprehensive Reconciliation
+  // Replicates exact audited figures:
+  // - Stylist Sohail: Gross ₹92,880, Supplies ₹240 -> Net ₹92,640 -> 50% Share ₹46,320
+  // - Stylist Sameer: Gross ₹14,040, Supplies ₹0   -> Net ₹14,040 -> 50% Share ₹7,020
+  // - Owner Zubair:   Gross ₹31,820, Supplies ₹77  -> 100% Owner Allocation ₹31,820
+  // - Retail:         ₹2,845
+  // - Prior Credit:   ₹510
+  // - Uncollected:    ₹1,600 (excluded from cash-factored recognized revenue)
+  {
+    const staffList: Staff[] = [
+      { id: "staff_sameer", name: "Sameer", role: "Stylist", status: "Active" },
+      { id: "staff_sohail", name: "Sohail", role: "Stylist", status: "Active" },
+      { id: "staff_owner", name: "Zubair", role: "Owner", status: "Active" },
+    ];
+
+    const invoices = [
+      {
+        id: "inv_sohail",
+        dateKey: "2026-10-05",
+        grandTotal: 92880,
+        subtotal: 92880,
+        paymentSplit: { cash: 92880, upi: 0, card: 0 },
+        services: [
+          {
+            serviceName: "Sohail Services",
+            staffId: "staff_sohail",
+            staffName: "Sohail",
+            amount: 92880,
+            usedProductCost: 240,
+          },
+        ],
+      },
+      {
+        id: "inv_sameer",
+        dateKey: "2026-10-10",
+        grandTotal: 14040,
+        subtotal: 14040,
+        paymentSplit: { upi: 14040, cash: 0, card: 0 },
+        services: [
+          {
+            serviceName: "Sameer Services",
+            staffId: "staff_sameer",
+            staffName: "Sameer",
+            amount: 14040,
+            usedProductCost: 0,
+          },
+        ],
+      },
+      {
+        id: "inv_owner",
+        dateKey: "2026-10-15",
+        grandTotal: 31820,
+        subtotal: 31820,
+        paymentSplit: { card: 31820, cash: 0, upi: 0 },
+        services: [
+          {
+            serviceName: "Owner Direct Services",
+            staffId: "staff_owner",
+            staffName: "Zubair",
+            staffRole: "Owner",
+            amount: 31820,
+            usedProductCost: 77,
+          },
+        ],
+      },
+      {
+        id: "inv_retail",
+        dateKey: "2026-10-20",
+        grandTotal: 2845,
+        subtotal: 2845,
+        paymentSplit: { upi: 2845, cash: 0, card: 0 },
+        products: [
+          {
+            productName: "Salon Products",
+            amount: 2845,
+          },
+        ],
+      },
+      {
+        id: "inv_credit_collection",
+        dateKey: "2026-10-22",
+        grandTotal: 0,
+        subtotal: 0,
+        paymentSplit: { cash: 0, upi: 0, card: 0 },
+        collectedCredits: [
+          {
+            originalInvoiceId: "inv_sep_old",
+            originalInvoiceNumber: "EXP-260901-001",
+            collectedAmount: 510,
+            paymentSplit: { cash: 510, upi: 0, card: 0 },
+          },
+        ],
+      },
+      {
+        id: "inv_uncollected",
+        dateKey: "2026-10-25",
+        grandTotal: 1600,
+        subtotal: 1600,
+        balanceDue: 1600,
+        paymentSplit: { cash: 0, upi: 0, card: 0 },
+        services: [
+          {
+            serviceName: "Unpaid Service",
+            staffId: "staff_sohail",
+            staffName: "Sohail",
+            amount: 1600,
+            usedProductCost: 0,
+          },
+        ],
+      },
+    ];
+
+    const report = generateMonthlyReport({
+      selectedMonth: "2026-10",
+      invoices,
+      staffDrawings: [],
+      expenses: [],
+      staffList,
+    });
+
+    assertEqual(report.overview.grossServiceRevenue, 138740, "Test 6: Gross service revenue is ₹138,740");
+    assertEqual(report.overview.totalProductSuppliesCost, 240, "Test 6: Deductible stylist supplies is ₹240");
+    assertEqual(report.overview.ownerServiceSuppliesCost, 77, "Test 6: Owner service supplies tracked as ₹77");
+    assertEqual(report.overview.totalSalonSuppliesCost, 317, "Test 6: Total supplies consumed is ₹317 (₹240 + ₹77)");
+    assertEqual(report.overview.netServiceRevenue, 138500, "Test 6: Net salon service revenue is ₹138,500");
+    assertEqual(report.overview.stylistGrossServiceRevenue, 106920, "Test 6: Stylist gross service revenue is ₹106,920");
+    assertEqual(report.overview.stylistNetServiceRevenuePool, 106680, "Test 6: Stylist net service pool is ₹106,680");
+    assertEqual(report.overview.allocation.totalStylistShares, 53340, "Test 6: Stylist commissions pool (50%) is ₹53,340");
+    assertEqual(report.overview.allocation.ownerDirectServiceShare, 31820, "Test 6: Owner direct service share is ₹31,820");
+    assertEqual(report.overview.allocation.ownerNetServiceSplit, 53340, "Test 6: Owner 50% net split is ₹53,340");
+    assertEqual(report.overview.allocation.ownerProductReimbursement, 240, "Test 6: Owner supplies reimbursement is ₹240");
+    assertEqual(report.overview.retailProductsRevenue, 2845, "Test 6: Retail products revenue is ₹2,845");
+    assertEqual(report.overview.creditCollectionsRevenue, 510, "Test 6: Credit collections revenue is ₹510");
+    assertEqual(report.overview.recognizedRevenue, 142095, "Test 6: Recognized revenue is ₹142,095");
+    assertEqual(report.overview.allocation.totalOwnerShare, 88755, "Test 6: Owner allocation is ₹88,755");
+    assertEqual(report.overview.allocation.discrepancy, 0, "Test 6: Discrepancy is strictly ₹0");
+
+    // Collections assertions
+    assertEqual(report.overview.collections.currentInvoiceCollected, 141585, "Test 6: Current-invoice collections is ₹141,585");
+    assertEqual(report.overview.collections.creditCollections, 510, "Test 6: Historical credit collections is ₹510");
+    assertEqual(report.overview.collections.totalCollected, 142095, "Test 6: Total realized collections is ₹142,095");
+    assertEqual(report.overview.totalOutstandingReceivables, 1600, "Test 6: Outstanding receivables is ₹1,600 (not in collections)");
   }
 
   console.log("=== ALL MONTHLY REPORT TESTS COMPLETED SUCCESSFULLY ===");

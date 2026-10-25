@@ -51,6 +51,32 @@ export function getInvoicePaymentRatio(inv: any): number {
 }
 
 /**
+ * Calculates recognized retail products revenue for a single invoice document.
+ * Adheres strictly to post-discount line amount or discountFactor fallback scaled by payment ratio.
+ * Acts as the authoritative shared calculation across Reports and Settlements.
+ */
+export function calculateInvoiceRetailRevenue(inv: any): number {
+  if (!inv || !inv.products || !Array.isArray(inv.products) || inv.products.length === 0) return 0;
+  const ratio = getInvoicePaymentRatio(inv);
+  const discountFactor = inv.subtotal > 0 ? (inv.grandTotal / inv.subtotal) : 1;
+  let total = 0;
+  inv.products.forEach((p: any) => {
+    let amount: number;
+    if (p.amount !== undefined && p.amount !== null) {
+      amount = Number(p.amount);
+    } else {
+      const productBaseAmount = Math.max(
+        (Number(p.price) || 0) * (Number(p.quantity) || 1) - (Number(p.discount) || 0),
+        0
+      );
+      amount = productBaseAmount * discountFactor;
+    }
+    total += amount * ratio;
+  });
+  return total;
+}
+
+/**
  * Calculates stylist and owner splits for a single service transaction item.
  *
  * IMPORTANT: s.amount is the authoritative post-discount amount written by
@@ -181,22 +207,9 @@ export function calculateDaySettlement(
       result.totalOwnerShare += amount;
     });
 
-    const discountFactor = inv.subtotal > 0 ? inv.grandTotal / inv.subtotal : 1;
-
-    (inv.products || []).forEach((p: any) => {
-      let amount: number;
-      if (p.amount !== undefined && p.amount !== null) {
-        amount = Number(p.amount);
-      } else {
-        const productBaseAmount = Math.max(
-          (p.price || 0) * (p.quantity || 1) - (p.discount || 0),
-          0
-        );
-        amount = productBaseAmount * discountFactor;
-      }
-      result.retailProductsRevenue += amount * ratio;
-      result.totalOwnerShare += amount * ratio;
-    });
+    const retailRev = calculateInvoiceRetailRevenue(inv);
+    result.retailProductsRevenue += retailRev;
+    result.totalOwnerShare += retailRev;
 
     (inv.services || []).forEach((s: any) => {
       const comm = getServiceCommission(s, inv);
@@ -258,3 +271,117 @@ export function calculateDaySettlement(
 
   return result;
 }
+
+export interface SettlementRangeOverview {
+  ownerShare: number;
+  membershipAmount: number;
+  retailProductsRevenue: number;
+  serviceSuppliesUsed: number;
+  totalServiceRevenue: number;
+  totalStylistShare: number;
+  creditCollectionsRevenue: number;
+  staffSummaryMap: Record<string, { revenueGenerated: number; productCosts: number; netShare: number }>;
+}
+
+/**
+ * Calculates authoritative financial breakdown for any date range from raw invoices.
+ * Acts as the shared calculation engine between Settlements and Reports.
+ */
+export function calculateSettlementRangeOverview(
+  invoices: any[],
+  dateFrom: string,
+  dateTo: string,
+  staffList: any[] = []
+): SettlementRangeOverview {
+  let ownerShare = 0;
+  let membershipAmount = 0;
+  let retailProductsRevenue = 0;
+  let serviceSuppliesUsed = 0;
+  let totalServiceRevenue = 0;
+  let totalStylistShare = 0;
+  let creditCollectionsRevenue = 0;
+  const staffSummaryMap: Record<string, { revenueGenerated: number; productCosts: number; netShare: number }> = {};
+
+  const registeredCreditCollections = new Set<string>();
+
+  invoices.forEach((inv) => {
+    const dKey = inv.dateKey || (inv.dateString ? inv.dateString.slice(0, 10) : "");
+    const isInDateRange = dKey >= dateFrom && dKey <= dateTo;
+
+    // Check direct credit payment collections recorded on prior invoices
+    const directPayments: any[] = inv.creditPaymentHistory || [];
+    directPayments.forEach((dp: any) => {
+      const payDate = (dp.collectedAt || "").slice(0, 10);
+      if (payDate >= dateFrom && payDate <= dateTo) {
+        const amt = Number(dp.collectedAmount) || 0;
+        const dedupeKey = `${inv.id || inv.invoiceNumber}_${amt}`;
+        if (amt > 0 && !registeredCreditCollections.has(dedupeKey)) {
+          registeredCreditCollections.add(dedupeKey);
+          creditCollectionsRevenue += amt;
+          ownerShare += amt;
+        }
+      }
+    });
+
+    if (!isInDateRange) return;
+
+    const ratio = getInvoicePaymentRatio(inv);
+
+    // Collected credits on this invoice
+    (inv.collectedCredits || []).forEach((cc: any) => {
+      const amt = Number(cc.collectedAmount) || 0;
+      const dedupeKey = `${cc.originalInvoiceId || cc.originalInvoiceNumber}_${amt}`;
+      if (amt > 0 && !registeredCreditCollections.has(dedupeKey)) {
+        registeredCreditCollections.add(dedupeKey);
+        creditCollectionsRevenue += amt;
+        ownerShare += amt;
+      }
+    });
+
+    // Retail revenue
+    const retailRev = calculateInvoiceRetailRevenue(inv);
+    retailProductsRevenue += retailRev;
+    ownerShare += retailRev;
+
+    // Services
+    (inv.services || []).forEach((s: any) => {
+      const staffId = s.staffId || "unassigned";
+      const staffName = s.staffName || "Unassigned";
+      const staffMember = staffList.find((st) => st.id === staffId || st.name === staffName);
+      const role = s.staffRole || staffMember?.role || (staffName === "System" ? "Owner" : "Stylist");
+
+      const comm = getServiceCommission(s, inv);
+      totalServiceRevenue += comm.serviceRevenue * ratio;
+      ownerShare += comm.ownerShare * ratio;
+
+      if (s.serviceId === "membership_fee") {
+        membershipAmount += comm.serviceRevenue * ratio;
+      }
+
+      if (role !== "Owner" && staffId !== "system" && staffName !== "System") {
+        serviceSuppliesUsed += comm.productCost * ratio;
+        totalStylistShare += comm.stylistShare * ratio;
+      }
+
+      const key = staffId !== "unassigned" ? staffId : staffName;
+      if (!staffSummaryMap[key]) {
+        staffSummaryMap[key] = { revenueGenerated: 0, productCosts: 0, netShare: 0 };
+      }
+      staffSummaryMap[key].revenueGenerated += comm.serviceRevenue * ratio;
+      staffSummaryMap[key].productCosts += comm.productCost * ratio;
+      staffSummaryMap[key].netShare += comm.stylistShare * ratio;
+    });
+  });
+
+  return {
+    ownerShare,
+    membershipAmount,
+    retailProductsRevenue,
+    serviceSuppliesUsed,
+    totalServiceRevenue,
+    totalStylistShare,
+    creditCollectionsRevenue,
+    staffSummaryMap,
+  };
+}
+
