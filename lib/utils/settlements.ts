@@ -6,6 +6,8 @@
 export interface CreditCollectionAllocation {
   stylistShare: number;
   ownerShare: number;
+  serviceRevenue: number;
+  productCost: number;
   staff: Array<{ staffId: string; staffName: string; amount: number; serviceRevenue: number; productCost: number }>;
 }
 
@@ -20,8 +22,12 @@ export function calculateCreditCollectionAllocation(inv: any, amount: number, st
   const factor = grandTotal > 0 ? Math.min(1, Math.max(0, amount / grandTotal)) : 0;
   const byStaff = new Map<string, { staffId: string; staffName: string; amount: number; serviceRevenue: number; productCost: number }>();
   let stylistShare = 0;
+  let serviceRevenue = 0;
+  let productCost = 0;
   (inv?.services || []).forEach((service: any) => {
     const commission = getServiceCommission(service, inv);
+    serviceRevenue += commission.serviceRevenue * factor;
+    productCost += commission.productCost * factor;
     const staff = staffList.find((item: any) => item.id === service.staffId || item.name === service.staffName);
     const role = service.staffRole || staff?.role || (service.staffName === "System" ? "Owner" : "Stylist");
     if (service.serviceId === "membership_fee" || role === "Owner") return;
@@ -36,7 +42,7 @@ export function calculateCreditCollectionAllocation(inv: any, amount: number, st
   });
   const roundedStaff = Array.from(byStaff.values()).map((row) => ({ ...row, amount: Math.round(row.amount * 100) / 100, serviceRevenue: Math.round(row.serviceRevenue * 100) / 100, productCost: Math.round(row.productCost * 100) / 100 }));
   const roundedStylist = Math.round(roundedStaff.reduce((sum, row) => sum + row.amount, 0) * 100) / 100;
-  return { stylistShare: roundedStylist, ownerShare: Math.round((amount - roundedStylist) * 100) / 100, staff: roundedStaff };
+  return { stylistShare: roundedStylist, ownerShare: Math.round((amount - roundedStylist) * 100) / 100, serviceRevenue: Math.round(serviceRevenue * 100) / 100, productCost: Math.round(productCost * 100) / 100, staff: roundedStaff };
 }
 export interface InvoicePayments {
   cash: number;
