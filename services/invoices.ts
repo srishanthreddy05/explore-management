@@ -134,6 +134,15 @@ export function applyStatsAndInventoryDiff(
       monthlyChanges[monthKey] = { totalRevenue: 0, totalVisits: 0, cash: 0, upi: 0, card: 0 };
     }
     const oldPayments = getInvoicePayments(oldInv);
+    const oldCreditHistory: any[] = oldInv.creditPaymentHistory || [];
+    const oldCreditSplit = oldCreditHistory.reduce((sum: any, item: any) => ({
+      cash: sum.cash + (Number(item.paymentSplit?.cash) || 0),
+      upi: sum.upi + (Number(item.paymentSplit?.upi) || 0),
+      card: sum.card + (Number(item.paymentSplit?.card) || 0),
+    }), { cash: 0, upi: 0, card: 0 });
+    oldPayments.cash = Math.max(0, oldPayments.cash - oldCreditSplit.cash);
+    oldPayments.upi = Math.max(0, oldPayments.upi - oldCreditSplit.upi);
+    oldPayments.card = Math.max(0, oldPayments.card - oldCreditSplit.card);
     const oldCollected = (oldPayments.cash || 0) + (oldPayments.upi || 0) + (oldPayments.card || 0) + (oldInv.advanceUsed || 0);
 
     monthlyChanges[monthKey].totalRevenue -= oldCollected;
@@ -196,6 +205,15 @@ export function applyStatsAndInventoryDiff(
       monthlyChanges[monthKey] = { totalRevenue: 0, totalVisits: 0, cash: 0, upi: 0, card: 0 };
     }
     const newPayments = getInvoicePayments(newInv);
+    const newCreditHistory: any[] = newInv.creditPaymentHistory || [];
+    const newCreditSplit = newCreditHistory.reduce((sum: any, item: any) => ({
+      cash: sum.cash + (Number(item.paymentSplit?.cash) || 0),
+      upi: sum.upi + (Number(item.paymentSplit?.upi) || 0),
+      card: sum.card + (Number(item.paymentSplit?.card) || 0),
+    }), { cash: 0, upi: 0, card: 0 });
+    newPayments.cash = Math.max(0, newPayments.cash - newCreditSplit.cash);
+    newPayments.upi = Math.max(0, newPayments.upi - newCreditSplit.upi);
+    newPayments.card = Math.max(0, newPayments.card - newCreditSplit.card);
     const newCollected = (newPayments.cash || 0) + (newPayments.upi || 0) + (newPayments.card || 0) + (newInv.advanceUsed || 0);
 
     monthlyChanges[monthKey].totalRevenue += newCollected;
