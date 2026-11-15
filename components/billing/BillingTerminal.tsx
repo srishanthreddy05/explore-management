@@ -1239,9 +1239,11 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
 
         const editInvoiceCashPaid = totalPaid;
         const editInvoiceReceived = Math.round((editInvoiceCashPaid + advanceApplied + historicalCreditPaymentAmount) * 100) / 100;
-        const invoicePaymentStatus = markAsCredit
-          ? (editInvoiceReceived === 0 ? "unpaid" : "partial")
-          : "paid";
+        const invoicePaymentStatus = editInvoiceReceived <= 0
+          ? "unpaid"
+          : editInvoiceReceived + 0.01 >= totals.grandTotal
+            ? "paid"
+            : "partial";
 
         const updatePayload: any = {
           customerId,
