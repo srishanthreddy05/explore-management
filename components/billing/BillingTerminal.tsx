@@ -1115,9 +1115,6 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
         const matchedMapping = serviceProductMappings.find(
           (mapping) => mapping.serviceId === matchedService?.id
         );
-        const matchedProduct = row.usedProductId
-          ? productsList.find((p) => p.id === row.usedProductId)
-          : null;
         // Existing invoice rows retain their historical saved product cost.
         // New billing rows use the current service mapping (no inventory deduction).
         const usedProductName = editInvoiceId
