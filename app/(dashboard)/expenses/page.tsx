@@ -29,6 +29,7 @@ export default function ExpensesPage() {
     amount: 0,
     date: toLocalDateString(new Date()),
     category: "Rent",
+    otherCategory: "",
     type: "monthly" as "daily" | "monthly",
   });
 
@@ -74,6 +75,7 @@ export default function ExpensesPage() {
       amount: 0,
       date: toLocalDateString(new Date()),
       category: "Rent",
+      otherCategory: "",
       type: "monthly",
     });
     setModalOpen(true);
@@ -85,7 +87,8 @@ export default function ExpensesPage() {
       description: e.description,
       amount: e.amount,
       date: e.date,
-      category: e.category || "Rent",
+      category: ["Water","Newspaper","Tissue","AC Service","GHMC","Current Bill","Rent","Products","Utilities","Other"].includes(e.category || "") ? (e.category || "Rent") : "Other",
+      otherCategory: ["Water","Newspaper","Tissue","AC Service","GHMC","Current Bill","Rent","Products","Utilities","Other"].includes(e.category || "") ? "" : (e.category || ""),
       type: e.type || "monthly",
     });
     setModalOpen(true);
@@ -112,9 +115,11 @@ export default function ExpensesPage() {
     e.preventDefault();
     try {
       if (editingExpense?.id) {
-        await expensesService.update(editingExpense.id, formData);
+        const { otherCategory, ...expenseData } = formData;
+        await expensesService.update(editingExpense.id, { ...expenseData, category: formData.category === "Other" ? otherCategory.trim() : formData.category });
       } else {
-        await expensesService.create(formData);
+        const { otherCategory, ...expenseData } = formData;
+        await expensesService.create({ ...expenseData, category: formData.category === "Other" ? otherCategory.trim() : formData.category });
       }
       setModalOpen(false);
       loadExpenses();
@@ -443,20 +448,29 @@ export default function ExpensesPage() {
                   <span className="text-sm font-semibold text-[#A89F8C]">Category</span>
                   <select
                     value={formData.category}
-                    onChange={(e) =>
-                      setFormData({ ...formData, category: e.target.value })
-                    }
+                    onChange={(e) => setFormData({ ...formData, category: e.target.value, otherCategory: "" })}
                     className="mt-2 h-11 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-4 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E] focus:ring-1 focus:ring-[#B8962E]"
                   >
-                    <option value="Rent">Shop Rent</option>
-                    <option value="Utilities">Utilities (Power/Water)</option>
-                    <option value="Salaries">Staff Salaries</option>
-                    <option value="Inventory">Product Inventory Restock</option>
-                    <option value="Marketing">Marketing & Flyers</option>
-                    <option value="Food">Food & Refreshments</option>
-                    <option value="Transport">Transport & Fuel</option>
-                    <option value="Other">Other Expenses</option>
+                    <option value="Water">Water</option>
+                    <option value="Newspaper">Newspaper</option>
+                    <option value="Tissue">Tissue</option>
+                    <option value="AC Service">AC Service</option>
+                    <option value="GHMC">GHMC</option>
+                    <option value="Current Bill">Current Bill</option>
+                    <option value="Rent">Rent</option>
+                    <option value="Products">Products</option>
+                    <option value="Utilities">Utilities</option>
+                    <option value="Other">Other</option>
                   </select>
+                  {formData.category === "Other" && (
+                    <input
+                      required
+                      value={formData.otherCategory}
+                      onChange={(e) => setFormData({ ...formData, otherCategory: e.target.value })}
+                      placeholder="Enter expense category"
+                      className="mt-2 h-11 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-4 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E]"
+                    />
+                  )}
                 </label>
 
                 <label className="block">
