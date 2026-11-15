@@ -1019,7 +1019,7 @@ export default function DashboardPage() {
   }, [loadTodayExpenses, loadTodayDrawings]);
 
   const todayExpensesTotal = useMemo(
-    () => todayExpenses.filter((e) => e.type === "daily").reduce((sum, exp) => sum + exp.amount, 0),
+    () => todayExpenses.reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0),
     [todayExpenses]
   );
   const todayExpensesAllTotal = useMemo(
