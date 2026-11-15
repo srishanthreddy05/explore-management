@@ -43,10 +43,19 @@ export function getInvoicePayments(inv: any): InvoicePayments {
  */
 export function getInvoicePaymentRatio(inv: any): number {
   if (!inv) return 1;
-  const grandTotal = inv.grandTotal || 0;
+  const grandTotal = Number(inv.grandTotal) || 0;
   if (grandTotal <= 0) return 1;
+
   const payments = getInvoicePayments(inv);
-  const collected = (payments.cash || 0) + (payments.upi || 0) + (payments.card || 0) + (inv.advanceUsed || 0);
+  const totalPayments = (payments.cash || 0) + (payments.upi || 0) + (payments.card || 0);
+  // Credit collections are appended to the original invoice's paymentSplit for
+  // balance tracking. Exclude them here: they are recognized on their actual
+  // collection date through creditPaymentHistory, not again on the original bill date.
+  const laterCreditCollections = Array.isArray(inv.creditPaymentHistory)
+    ? inv.creditPaymentHistory.reduce((sum: number, item: any) => sum + (Number(item.collectedAmount) || 0), 0)
+    : 0;
+  const originalPayments = Math.max(0, totalPayments - laterCreditCollections);
+  const collected = originalPayments + (Number(inv.advanceUsed) || 0);
   return Math.min(1, Math.max(0, collected / grandTotal));
 }
 
@@ -201,10 +210,50 @@ export function calculateDaySettlement(
         serviceOrProductName: `Credit Collected (Inv #${cc.originalInvoiceNumber || "?"})`,
         type: "credit",
         share: amount,
+        collectionId: cc.collectionId || null,
       });
 
-      result.ownerDirectRevenue += amount;
-      result.totalOwnerShare += amount;
+      if (Array.isArray(cc.commissionAllocations) && cc.commissionAllocations.length > 0) {
+        cc.commissionAllocations.forEach((allocation: any) => {
+          const serviceRevenue = Number(allocation.serviceRevenue) || 0;
+          const productCost = Number(allocation.productCost) || 0;
+          const stylistShare = Number(allocation.stylistShare) || 0;
+          const ownerShare = Number(allocation.ownerShare) || 0;
+          const staffId = allocation.staffId || "unassigned";
+          const staffName = allocation.staffName || "Unassigned";
+          const role = allocation.staffRole || "Stylist";
+
+          result.totalServiceRevenue += serviceRevenue;
+          result.totalProductCost += productCost;
+          result.totalOwnerShare += ownerShare;
+          if (role === "Owner" || staffId === "system" || staffName === "System") {
+            result.ownerDirectRevenue += ownerShare;
+            return;
+          }
+
+          result.totalStaffShare += stylistShare;
+          result.staffRevenueContribution += stylistShare;
+          result.staffProductReimbursement += productCost;
+          const key = staffId !== "unassigned" ? staffId : staffName;
+          if (!result.staffDetails[key]) {
+            result.staffDetails[key] = {
+              staffId, name: staffName, role, serviceRevenue: 0, productCost: 0,
+              staffShare: 0, ownerShareContribution: 0, collectedCredits: [], collectedCreditsShare: 0,
+            };
+          }
+          const detail = result.staffDetails[key];
+          detail.serviceRevenue += serviceRevenue;
+          detail.productCost += productCost;
+          detail.staffShare += stylistShare;
+          detail.ownerShareContribution += ownerShare;
+          detail.collectedCredits!.push({ invoiceNumber: cc.originalInvoiceNumber || "", amount: stylistShare });
+          detail.collectedCreditsShare = (detail.collectedCreditsShare || 0) + stylistShare;
+        });
+      } else {
+        // Legacy collections pre-date service-level allocation metadata.
+        result.ownerDirectRevenue += amount;
+        result.totalOwnerShare += amount;
+      }
     });
 
     const retailRev = calculateInvoiceRetailRevenue(inv);
@@ -308,17 +357,40 @@ export function calculateSettlementRangeOverview(
     const dKey = inv.dateKey || (inv.dateString ? inv.dateString.slice(0, 10) : "");
     const isInDateRange = dKey >= dateFrom && dKey <= dateTo;
 
-    // Check direct credit payment collections recorded on prior invoices
+    // Credit collection history is the canonical record for later payments.
     const directPayments: any[] = inv.creditPaymentHistory || [];
     directPayments.forEach((dp: any) => {
       const payDate = (dp.collectedAt || "").slice(0, 10);
       if (payDate >= dateFrom && payDate <= dateTo) {
         const amt = Number(dp.collectedAmount) || 0;
-        const dedupeKey = `${inv.id || inv.invoiceNumber}_${amt}`;
+        const dedupeKey = dp.collectionId || `${inv.id || inv.invoiceNumber}_${payDate}_${amt}`;
         if (amt > 0 && !registeredCreditCollections.has(dedupeKey)) {
           registeredCreditCollections.add(dedupeKey);
           creditCollectionsRevenue += amt;
-          ownerShare += amt;
+          if (Array.isArray(dp.commissionAllocations) && dp.commissionAllocations.length > 0) {
+            dp.commissionAllocations.forEach((allocation: any) => {
+              const serviceRevenue = Number(allocation.serviceRevenue) || 0;
+              const productCost = Number(allocation.productCost) || 0;
+              const stylistShare = Number(allocation.stylistShare) || 0;
+              const ownerAmount = Number(allocation.ownerShare) || 0;
+              ownerShare += ownerAmount;
+              const staffId = allocation.staffId || "unassigned";
+              const staffName = allocation.staffName || "Unassigned";
+              const role = allocation.staffRole || "Stylist";
+              totalServiceRevenue += serviceRevenue;
+              if (role !== "Owner" && staffId !== "system" && staffName !== "System") {
+                serviceSuppliesUsed += productCost;
+                totalStylistShare += stylistShare;
+              }
+              const key = staffId !== "unassigned" ? staffId : staffName;
+              if (!staffSummaryMap[key]) staffSummaryMap[key] = { revenueGenerated: 0, productCosts: 0, netShare: 0 };
+              staffSummaryMap[key].revenueGenerated += serviceRevenue;
+              staffSummaryMap[key].productCosts += productCost;
+              staffSummaryMap[key].netShare += stylistShare;
+            });
+          } else {
+            ownerShare += amt;
+          }
         }
       }
     });
@@ -330,11 +402,34 @@ export function calculateSettlementRangeOverview(
     // Collected credits on this invoice
     (inv.collectedCredits || []).forEach((cc: any) => {
       const amt = Number(cc.collectedAmount) || 0;
-      const dedupeKey = `${cc.originalInvoiceId || cc.originalInvoiceNumber}_${amt}`;
+      const dedupeKey = cc.collectionId || `${cc.originalInvoiceId || cc.originalInvoiceNumber}_${(cc.collectedAt || "").slice(0, 10)}_${amt}`;
       if (amt > 0 && !registeredCreditCollections.has(dedupeKey)) {
         registeredCreditCollections.add(dedupeKey);
         creditCollectionsRevenue += amt;
-        ownerShare += amt;
+        if (Array.isArray(cc.commissionAllocations) && cc.commissionAllocations.length > 0) {
+          cc.commissionAllocations.forEach((allocation: any) => {
+            const serviceRevenue = Number(allocation.serviceRevenue) || 0;
+            const productCost = Number(allocation.productCost) || 0;
+            const stylistShare = Number(allocation.stylistShare) || 0;
+            const ownerAmount = Number(allocation.ownerShare) || 0;
+            const staffId = allocation.staffId || "unassigned";
+            const staffName = allocation.staffName || "Unassigned";
+            const role = allocation.staffRole || "Stylist";
+            ownerShare += ownerAmount;
+            totalServiceRevenue += serviceRevenue;
+            if (role !== "Owner" && staffId !== "system" && staffName !== "System") {
+              serviceSuppliesUsed += productCost;
+              totalStylistShare += stylistShare;
+            }
+            const key = staffId !== "unassigned" ? staffId : staffName;
+            if (!staffSummaryMap[key]) staffSummaryMap[key] = { revenueGenerated: 0, productCosts: 0, netShare: 0 };
+            staffSummaryMap[key].revenueGenerated += serviceRevenue;
+            staffSummaryMap[key].productCosts += productCost;
+            staffSummaryMap[key].netShare += stylistShare;
+          });
+        } else {
+          ownerShare += amt;
+        }
       }
     });
 
