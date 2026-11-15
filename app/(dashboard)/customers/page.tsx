@@ -17,7 +17,6 @@ import {
   startAfter,
   orderBy,
 } from "firebase/firestore";
-import { toTitleCase } from "@/lib/utils/text";
 import { toLocalDateString } from "@/lib/utils/date";
 
 
@@ -179,28 +178,7 @@ export default function CustomersPage() {
     }
     setSearchLoading(true);
     try {
-      const isPhone = /^\d+$/.test(queryString);
-      let q;
-      if (isPhone) {
-        q = query(
-          collection(db, "customers"),
-          where("phone", ">=", queryString),
-          where("phone", "<=", queryString + "\uf8ff"),
-          limit(10)
-        );
-      } else {
-        const formatted = toTitleCase(queryString);
-        q = query(
-          collection(db, "customers"),
-          where("name", ">=", formatted),
-          where("name", "<=", formatted + "\uf8ff"),
-          limit(10)
-        );
-      }
-      const snap = await getDocs(q);
-      const results = snap.docs.map(
-        (d) => ({ id: d.id, ...d.data() }) as Customer
-      );
+      const results = await customerService.searchCustomers(queryString);
       setSearchResults(results);
     } catch (error) {
       console.error("Error searching customers:", error);

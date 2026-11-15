@@ -21,6 +21,73 @@ import { toTitleCase } from "@/lib/utils/text";
 const COLLECTION_NAME = "customers";
 const STATS_DOC = doc(db, "stats", "customers");
 
+// Reuse the full customer list briefly while staff type into search fields.
+// This enables contains/suffix matching, which Firestore prefix range queries cannot provide.
+let customerSearchCache: { customers: Customer[]; expiresAt: number } | null = null;
+const CUSTOMER_SEARCH_CACHE_TTL_MS = 30_000;
+
+function normalizeSearchText(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+async function getCustomersForSearch(): Promise<Customer[]> {
+  if (customerSearchCache && customerSearchCache.expiresAt > Date.now()) {
+    return customerSearchCache.customers;
+  }
+  const customers = await getAll();
+  customerSearchCache = {
+    customers,
+    expiresAt: Date.now() + CUSTOMER_SEARCH_CACHE_TTL_MS,
+  };
+  return customers;
+}
+
+function invalidateCustomerSearchCache() {
+  customerSearchCache = null;
+}
+
+/**
+ * Universal customer lookup: matches every name part and any contiguous
+ * sequence of phone digits (including the last digits). Multiple terms must
+ * all match the same customer, allowing inputs such as "Reddy 4321".
+ */
+export async function searchCustomers(searchText: string): Promise<Customer[]> {
+  const rawTerms = searchText.trim().split(/\s+/).filter(Boolean);
+  if (rawTerms.length === 0) return [];
+
+  const customers = await getCustomersForSearch();
+  const terms = rawTerms.map((term) => ({
+    text: normalizeSearchText(term),
+    digits: term.replace(/\D/g, ""),
+  }));
+
+  return customers
+    .filter((customer) => {
+      const name = normalizeSearchText(customer.name || "");
+      const phone = (customer.phone || "").replace(/\D/g, "");
+      return terms.every(({ text, digits }) => {
+        const matchesName = text.length > 0 && name.includes(text);
+        const matchesPhone = digits.length > 0 && phone.includes(digits);
+        return matchesName || matchesPhone;
+      });
+    })
+    .sort((a, b) => {
+      const queryText = normalizeSearchText(searchText);
+      const queryDigits = searchText.replace(/\D/g, "");
+      const aName = normalizeSearchText(a.name || "");
+      const bName = normalizeSearchText(b.name || "");
+      const aPhone = (a.phone || "").replace(/\D/g, "");
+      const bPhone = (b.phone || "").replace(/\D/g, "");
+      const aExact = aName === queryText || (queryDigits.length > 0 && aPhone.endsWith(queryDigits)) ? 0 : 1;
+      const bExact = bName === queryText || (queryDigits.length > 0 && bPhone.endsWith(queryDigits)) ? 0 : 1;
+      return aExact - bExact || aName.localeCompare(bName);
+    });
+}
+
 export async function getStats(): Promise<{ regularCount: number; membershipCount: number }> {
   try {
     const snap = await getDoc(STATS_DOC);
@@ -64,6 +131,7 @@ export async function create(customer: Omit<Customer, "id">): Promise<string> {
     }, { merge: true });
 
     await batch.commit();
+    invalidateCustomerSearchCache();
 
     return newDocRef.id;
   } catch (error) {
@@ -158,6 +226,7 @@ export async function update(
 
       transaction.update(docRef, normalizedData as Record<string, any>);
     });
+    invalidateCustomerSearchCache();
   } catch (error) {
     console.error(`Error updating customer (${id}) in Firestore:`, error);
     throw error;
@@ -199,6 +268,7 @@ async function deleteCustomer(id: string): Promise<void> {
     }
 
     await batch.commit();
+    invalidateCustomerSearchCache();
   } catch (error: any) {
     console.error(`Error deleting customer (${id}) from Firestore:`, error);
     throw error;
