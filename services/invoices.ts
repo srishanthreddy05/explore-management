@@ -618,10 +618,6 @@ async function deleteInvoice(id: string): Promise<void> {
       const oldSnap = await tx.get(docRef);
       if (!oldSnap.exists()) return;
       const oldInv = { id, ...oldSnap.data() } as Invoice;
-      if ((oldInv.creditPaymentHistory || []).length > 0 || (oldInv.collectedCredits || []).length > 0) {
-        throw new Error("This invoice has credit collection history and cannot be deleted. Record a reversal instead.");
-      }
-
       applyStatsAndInventoryDiff(tx, oldInv, null);
       tx.delete(docRef);
     });
