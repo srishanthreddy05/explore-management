@@ -12,13 +12,14 @@ import { X, UserX, AlertCircle, Wallet } from "lucide-react";
 import { Timestamp } from "firebase/firestore";
 
 import * as customerService from "@/services/customers";
-import * as productsService from "@/services/products";
 import * as invoicesService from "@/services/invoices";
 import * as creditBalancesService from "@/services/creditBalances";
 import * as advanceBalancesService from "@/services/advanceBalances";
 import type { CreditBalance } from "@/types/creditBalance";
 import { useAppData } from "@/context/AppDataContext";
 import { toLocalDateString } from "@/lib/utils/date";
+import * as serviceProductMappingsService from "@/services/serviceProductMappings";
+import type { ServiceProductMapping } from "@/services/serviceProductMappings";
 
 
 import type { Customer } from "@/types/customer";
@@ -37,7 +38,7 @@ interface BillingTerminalProps {
 }
 
 export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTerminalProps) {
-  const { services: servicesContextData, products: productsContextData, staff: staffContextData, offers: offersContextData, refreshProducts, loadingAppData } = useAppData();
+  const { services: servicesContextData, products: productsContextData, staff: staffContextData, offers: offersContextData, loadingAppData } = useAppData();
 
   const servicesList = servicesContextData;
   const productsList = productsContextData;
@@ -75,6 +76,8 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
   const [dateString, setDateString] = useState(toLocalDateString(new Date()));
 
   const [services, setServices] = useState<ServiceRow[]>([]);
+  const [serviceProductMappings, setServiceProductMappings] = useState<ServiceProductMapping[]>([]);
+  const [serviceProductMappingsReady, setServiceProductMappingsReady] = useState(false);
   const [products, setProducts] = useState<ProductRow[]>([]);
 
   const [cashAmount, setCashAmount] = useState<number | "">("");
@@ -239,6 +242,27 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
       return () => clearTimeout(t);
     }
   }, [loadingInvoice, editInvoiceId, initialFormSnapshot]);
+
+  useEffect(() => {
+    if (loadingAppData) return;
+    if (servicesList.length === 0) {
+      setServiceProductMappingsReady(true);
+      return;
+    }
+    let active = true;
+    setServiceProductMappingsReady(false);
+    (async () => {
+      try {
+        const mappings = await serviceProductMappingsService.seedDefaultMappings(servicesList);
+        if (active) setServiceProductMappings(mappings);
+      } catch (error) {
+        console.error("Failed to load service product mappings:", error);
+      } finally {
+        if (active) setServiceProductMappingsReady(true);
+      }
+    })();
+    return () => { active = false; };
+  }, [loadingAppData, servicesList]);
 
   // Customer lookup by phone
   useEffect(() => {
@@ -1095,15 +1119,17 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
       const enrichedServices = services.map((row: any) => {
         const matchedService = servicesList.find((s) => s.name === row.service);
         const matchedStaff = staffContextData.find((s) => s.name === row.staff);
-        const matchedProduct = row.usedProductId ? productsList.find((p) => p.id === row.usedProductId) : null;
-        let usedProductCost = 0;
-        if (row.usedProductId) {
-          if (row.usedProductCost !== undefined && row.usedProductCost !== null && !isNaN(Number(row.usedProductCost))) {
-            usedProductCost = Number(row.usedProductCost);
-          } else if (!editInvoiceId && matchedProduct && matchedProduct.amount !== undefined && matchedProduct.amount !== null) {
-            usedProductCost = Number(matchedProduct.amount) || 0;
-          }
-        }
+        const matchedMapping = serviceProductMappings.find(
+          (mapping) => mapping.serviceId === matchedService?.id
+        );
+        // Existing invoice rows retain their historical saved product cost.
+        // New billing rows use the current service mapping (no inventory deduction).
+        const usedProductName = editInvoiceId
+          ? (row.usedProductName ?? null)
+          : (matchedMapping?.productName ?? null);
+        const usedProductCost = editInvoiceId
+          ? (Number(row.usedProductCost) || 0)
+          : (matchedMapping?.usageCost ?? 0);
         const serviceBaseAmount = Math.max((Number(row.price) || 0) - (Number(row.discount) || 0), 0);
         const serviceAmount = Math.round(serviceBaseAmount * serviceBillDiscountFactor * 100) / 100;
         const staffId = matchedStaff?.id ?? "";
@@ -1119,8 +1145,8 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
           price: Number(row.price) || 0,
           discount: Number(row.discount) || 0,
           amount: serviceAmount,
-          usedProductId: row.usedProductId ?? null,
-          usedProductName: row.usedProductName ?? (matchedProduct?.name ?? null),
+          usedProductId: editInvoiceId ? (row.usedProductId ?? null) : (matchedMapping?.serviceId ?? null),
+          usedProductName,
           usedProductCost,
           staffRole,
           stylistShare,
@@ -1404,8 +1430,6 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
         }
       }
 
-      await refreshProducts();
-
       const msgNum = editInvoiceId ? invoiceNumberDisplay : invoiceNumber;
       if (isOnline) {
         setMessage({ type: "success", text: `Invoice ${msgNum} saved successfully!` });
@@ -1440,7 +1464,6 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
         // Local persistent cache handles offline writes, let cashier proceed
         setMessage({ type: "success", text: `Saved locally — will sync when online!` });
         setSaved(true);
-        await refreshProducts();
         if (onSuccess) {
           setTimeout(() => {
             onSuccess();
@@ -1570,15 +1593,10 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
       price: p.price,
     }));
 
-  const serviceProductOptions = useMemo(() => {
-    return productsList
-      .filter((p) => p.type === "service")
-      .map((p) => ({
-        id: p.id || "",
-        name: p.name,
-        amount: Number(p.amount) || 0,
-      }));
-  }, [productsList]);
+  const activeServiceProductMappings = useMemo(
+    () => serviceProductMappings.filter((mapping) => mapping.isActive !== false),
+    [serviceProductMappings]
+  );
 
   const staffOptions = staffList.map((s) => s.name);
 
@@ -1887,8 +1905,8 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
             onRowsChange={handleServicesChange}
             serviceOptions={mappedServicesList}
             staffOptions={staffOptions}
-            serviceProductOptions={serviceProductOptions}
-            disabled={saved}
+            serviceProductMappings={activeServiceProductMappings}
+            disabled={saved || !serviceProductMappingsReady}
           />
 
           {/* Credit Settlement Section */}

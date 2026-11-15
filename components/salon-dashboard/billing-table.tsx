@@ -13,7 +13,7 @@ interface BillingTableProps {
   serviceOptions?: { id?: string; name: string; price: number; category?: string }[];
   staffOptions?: string[];
   disabled?: boolean;
-  serviceProductOptions?: { id: string; name: string; amount?: number; noOfServings?: number }[];
+  serviceProductMappings?: { serviceId: string; serviceName: string; productName: string; usageCost: number }[];
 }
 
 export function BillingTable({
@@ -22,7 +22,7 @@ export function BillingTable({
   serviceOptions = [],
   staffOptions = [],
   disabled = false,
-  serviceProductOptions = [],
+  serviceProductMappings = [],
 }: BillingTableProps) {
   const [showModal, setShowModal] = useState(false);
   const [selectedCat, setSelectedCat] = useState("All");
@@ -70,6 +70,9 @@ export function BillingTable({
       return;
     }
     const newRows = selectedServices.map((svc, index) => {
+      const matchedMapping = serviceProductMappings.find(
+        (mapping) => mapping.serviceId === svc.id
+      );
       return {
         id: Math.max(0, ...rows.map((row) => row.id)) + index + 1,
         service: svc.name,
@@ -77,8 +80,9 @@ export function BillingTable({
         price: svc.price,
         quantity: 1,
         discount: 0,
-        usedProductId: undefined,
-        usedProductName: undefined,
+        usedProductId: matchedMapping?.serviceId,
+        usedProductName: matchedMapping?.productName,
+        usedProductCost: matchedMapping?.usageCost,
       };
     });
     onRowsChange([...rows, ...newRows]);
@@ -177,27 +181,16 @@ export function BillingTable({
                   </select>
                 </td>
                 <td className="px-2 py-2 w-[160px]">
-                  <select
-                    value={row.usedProductId || ""}
-                    disabled={disabled || row.isCreditSettle}
-                    onChange={(event) => {
-                      const val = event.target.value;
-                      const matched = serviceProductOptions.find((p) => p.id === val);
-                      updateRow(row.id, {
-                        usedProductId: val || undefined,
-                        usedProductName: matched?.name || undefined,
-                        usedProductCost: val && matched ? (Number(matched.amount) || 0) : undefined,
-                      });
-                    }}
-                    className="h-10 w-full rounded-xl border border-[#2E2B24] bg-[#131210] px-2.5 text-[#F5F0E8] outline-none transition focus:border-[#B8962E] disabled:bg-[#0E0D0B] disabled:text-[#6B6358] text-xs font-semibold cursor-pointer appearance-none"
-                  >
-                    <option value="" className="bg-[#131210] text-[#F5F0E8]">No Product</option>
-                    {serviceProductOptions.map((option) => (
-                      <option key={option.id} value={option.id} className="bg-[#131210] text-[#F5F0E8]">
-                        {option.name}{option.amount !== undefined && option.amount !== null ? ` (₹${option.amount})` : ""}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="min-h-10 rounded-xl border border-[#2E2B24] bg-[#131210] px-2.5 py-2 text-xs">
+                    {row.usedProductName ? (
+                      <>
+                        <div className="font-semibold text-[#F5F0E8]">{row.usedProductName}</div>
+                        <div className="mt-0.5 text-[#B8962E]">Cost: ₹{Number(row.usedProductCost) || 0}</div>
+                      </>
+                    ) : (
+                      <span className="text-[#6B6358]">No product mapped</span>
+                    )}
+                  </div>
                 </td>
                 <td className="px-2 py-2 w-[90px]">
                   <div className="h-10 w-full rounded-xl border border-[#2E2B24] bg-[#131210] px-2 flex items-center transition focus-within:border-[#B8962E] disabled:bg-[#0E0D0B]">
