@@ -46,7 +46,18 @@ export function getInvoicePaymentRatio(inv: any): number {
   const grandTotal = inv.grandTotal || 0;
   if (grandTotal <= 0) return 1;
   const payments = getInvoicePayments(inv);
-  const collected = (payments.cash || 0) + (payments.upi || 0) + (payments.card || 0) + (inv.advanceUsed || 0);
+  // Legacy credit receipts were added to paymentSplit. New receipts are stored
+  // only in creditPaymentHistory and must not change the original service ratio.
+  const legacyCreditPayments = (inv.creditPaymentHistory || [])
+    .filter((payment: any) => payment.includedInPaymentSplit !== false)
+    .reduce((sum: number, payment: any) => {
+      const split = payment.paymentSplit || {};
+      return sum + (Number(split.cash) || 0) + (Number(split.upi) || 0) + (Number(split.card) || 0);
+    }, 0);
+  const collected = Math.max(0,
+    (payments.cash || 0) + (payments.upi || 0) + (payments.card || 0)
+    - legacyCreditPayments + (inv.advanceUsed || 0)
+  );
   return Math.min(1, Math.max(0, collected / grandTotal));
 }
 
@@ -130,6 +141,29 @@ export function getServiceCommission(s: any, inv: any): ServiceCommission {
     productCost: cost,
     stylistShare,
     ownerShare,
+  };
+}
+
+/**
+ * Allocate a later credit receipt to the original invoice's service performers.
+ * The receipt is distributed in the same proportion as the original invoice value.
+ * Stylist commission is recognized in the collection period, not retroactively.
+ */
+export function calculateCreditCollectionAllocation(inv: any, amount: number, staffList: any[] = []) {
+  const grandTotal = Math.max(0, Number(inv?.grandTotal) || 0);
+  const factor = grandTotal > 0 ? Math.min(1, Math.max(0, amount / grandTotal)) : 0;
+  let stylistShare = 0;
+  (inv?.services || []).forEach((service: any) => {
+    const commission = getServiceCommission(service, inv);
+    const staff = staffList.find((item: any) => item.id === service.staffId || item.name === service.staffName);
+    const role = service.staffRole || staff?.role || (service.staffName === "System" ? "Owner" : "Stylist");
+    if (service.serviceId !== "membership_fee" && role !== "Owner") {
+      stylistShare += commission.stylistShare * factor;
+    }
+  });
+  return {
+    stylistShare: Math.round(stylistShare * 100) / 100,
+    ownerShare: Math.round((amount - stylistShare) * 100) / 100,
   };
 }
 
