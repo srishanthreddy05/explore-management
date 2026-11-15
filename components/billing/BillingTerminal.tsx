@@ -12,7 +12,6 @@ import { X, UserX, AlertCircle, Wallet } from "lucide-react";
 import { Timestamp } from "firebase/firestore";
 
 import * as customerService from "@/services/customers";
-import * as productsService from "@/services/products";
 import * as invoicesService from "@/services/invoices";
 import * as creditBalancesService from "@/services/creditBalances";
 import * as advanceBalancesService from "@/services/advanceBalances";
@@ -39,7 +38,7 @@ interface BillingTerminalProps {
 }
 
 export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTerminalProps) {
-  const { services: servicesContextData, products: productsContextData, staff: staffContextData, offers: offersContextData, refreshProducts, loadingAppData } = useAppData();
+  const { services: servicesContextData, products: productsContextData, staff: staffContextData, offers: offersContextData, loadingAppData } = useAppData();
 
   const servicesList = servicesContextData;
   const productsList = productsContextData;
@@ -1423,8 +1422,6 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
         }
       }
 
-      await refreshProducts();
-
       const msgNum = editInvoiceId ? invoiceNumberDisplay : invoiceNumber;
       if (isOnline) {
         setMessage({ type: "success", text: `Invoice ${msgNum} saved successfully!` });
@@ -1459,7 +1456,6 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
         // Local persistent cache handles offline writes, let cashier proceed
         setMessage({ type: "success", text: `Saved locally — will sync when online!` });
         setSaved(true);
-        await refreshProducts();
         if (onSuccess) {
           setTimeout(() => {
             onSuccess();
