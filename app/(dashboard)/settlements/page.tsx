@@ -107,7 +107,7 @@ interface StaffMonthSummary {
 
 interface Expense {
   date: string;
-  type: string;
+  type?: string;
   amount: number;
 }
 
