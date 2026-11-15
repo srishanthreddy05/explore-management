@@ -31,7 +31,8 @@ export async function addCredit(
   customerName: string,
   customerPhone: string,
   amount: number,
-  invoiceId: string
+  invoiceId: string,
+  idempotencyKey?: string
 ): Promise<void> {
   if (amount <= 0) return;
   const docRef = doc(db, COLLECTION, customerId);
@@ -46,10 +47,12 @@ export async function addCredit(
         const data = snap.data();
         currentBalance = data.balance ?? 0;
         transactions = data.transactions ?? [];
+        if (idempotencyKey && transactions.some((item: any) => item.id === idempotencyKey)) return;
       }
 
       const newBalance = Math.round((currentBalance + amount) * 100) / 100;
       const newTx: AdvanceTransaction = {
+        ...(idempotencyKey ? { id: idempotencyKey } : {}),
         invoiceId,
         type: "credit",
         amount,
@@ -85,7 +88,8 @@ export async function addCredit(
 export async function deductBalance(
   customerId: string,
   amount: number,
-  invoiceId: string
+  invoiceId: string,
+  idempotencyKey?: string
 ): Promise<void> {
   if (amount <= 0) return;
   const docRef = doc(db, COLLECTION, customerId);
@@ -100,6 +104,7 @@ export async function deductBalance(
       const data = snap.data();
       const currentBalance = data.balance ?? 0;
       const transactions = data.transactions ?? [];
+      if (idempotencyKey && transactions.some((item: any) => item.id === idempotencyKey)) return;
 
       if (currentBalance < amount) {
         throw new Error(`Insufficient advance balance. Required: ₹${amount}, Available: ₹${currentBalance}`);
@@ -107,6 +112,7 @@ export async function deductBalance(
 
       const newBalance = Math.round((currentBalance - amount) * 100) / 100;
       const newTx: AdvanceTransaction = {
+        ...(idempotencyKey ? { id: idempotencyKey } : {}),
         invoiceId,
         type: "debit",
         amount,

@@ -1,6 +1,7 @@
 import type { Timestamp } from "firebase/firestore";
 
 export interface AdvanceTransaction {
+  id?: string;
   invoiceId: string;
   type: "credit" | "debit";
   amount: number;

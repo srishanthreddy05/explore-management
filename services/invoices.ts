@@ -134,6 +134,15 @@ export function applyStatsAndInventoryDiff(
       monthlyChanges[monthKey] = { totalRevenue: 0, totalVisits: 0, cash: 0, upi: 0, card: 0 };
     }
     const oldPayments = getInvoicePayments(oldInv);
+    const oldCreditHistory: any[] = oldInv.creditPaymentHistory || [];
+    const oldCreditSplit = oldCreditHistory.reduce((sum: any, item: any) => ({
+      cash: sum.cash + (Number(item.paymentSplit?.cash) || 0),
+      upi: sum.upi + (Number(item.paymentSplit?.upi) || 0),
+      card: sum.card + (Number(item.paymentSplit?.card) || 0),
+    }), { cash: 0, upi: 0, card: 0 });
+    oldPayments.cash = Math.max(0, oldPayments.cash - oldCreditSplit.cash);
+    oldPayments.upi = Math.max(0, oldPayments.upi - oldCreditSplit.upi);
+    oldPayments.card = Math.max(0, oldPayments.card - oldCreditSplit.card);
     const oldCollected = (oldPayments.cash || 0) + (oldPayments.upi || 0) + (oldPayments.card || 0) + (oldInv.advanceUsed || 0);
 
     monthlyChanges[monthKey].totalRevenue -= oldCollected;
@@ -196,6 +205,15 @@ export function applyStatsAndInventoryDiff(
       monthlyChanges[monthKey] = { totalRevenue: 0, totalVisits: 0, cash: 0, upi: 0, card: 0 };
     }
     const newPayments = getInvoicePayments(newInv);
+    const newCreditHistory: any[] = newInv.creditPaymentHistory || [];
+    const newCreditSplit = newCreditHistory.reduce((sum: any, item: any) => ({
+      cash: sum.cash + (Number(item.paymentSplit?.cash) || 0),
+      upi: sum.upi + (Number(item.paymentSplit?.upi) || 0),
+      card: sum.card + (Number(item.paymentSplit?.card) || 0),
+    }), { cash: 0, upi: 0, card: 0 });
+    newPayments.cash = Math.max(0, newPayments.cash - newCreditSplit.cash);
+    newPayments.upi = Math.max(0, newPayments.upi - newCreditSplit.upi);
+    newPayments.card = Math.max(0, newPayments.card - newCreditSplit.card);
     const newCollected = (newPayments.cash || 0) + (newPayments.upi || 0) + (newPayments.card || 0) + (newInv.advanceUsed || 0);
 
     monthlyChanges[monthKey].totalRevenue += newCollected;
@@ -628,172 +646,236 @@ export async function collectCreditPayment(
   collectedAmount: number,
   paymentSplit: { cash: number; upi: number; card: number },
   collectionDate?: Date | string,
-  note?: string
-): Promise<void> {
-  if (collectedAmount <= 0) {
-    throw new Error(`Invalid payment amount: ₹${collectedAmount}. Must be greater than 0.`);
+  note?: string,
+  collectionId?: string
+ ): Promise<any[]> {
+  const roundedAmount = Math.round((Number(collectedAmount) || 0) * 100) / 100;
+  if (roundedAmount <= 0) throw new Error("Collection amount must be greater than zero.");
+  const splitTotal = Math.round(((paymentSplit.cash || 0) + (paymentSplit.upi || 0) + (paymentSplit.card || 0)) * 100) / 100;
+  if (Math.abs(splitTotal - roundedAmount) > 0.01) {
+    throw new Error("Cash, UPI and card split must equal the credit collection amount.");
   }
 
-  try {
-    // 1. Fetch pending credit balance documents for this invoice
-    // Check both originalInvoiceId and legacy invoiceId fields
-    const [q1Snap, q2Snap] = await Promise.all([
-      getDocs(query(
-        collection(db, "credit_balances"),
-        where("originalInvoiceId", "==", originalInvoiceId),
-        where("status", "==", "pending")
-      )),
-      getDocs(query(
-        collection(db, "credit_balances"),
-        where("invoiceId", "==", originalInvoiceId),
-        where("status", "==", "pending")
-      )),
-    ]);
+  const [byOriginalId, byLegacyId] = await Promise.all([
+    getDocs(query(collection(db, "credit_balances"), where("originalInvoiceId", "==", originalInvoiceId), where("status", "==", "pending"))),
+    getDocs(query(collection(db, "credit_balances"), where("invoiceId", "==", originalInvoiceId), where("status", "==", "pending"))),
+  ]);
+  const docIds = [...new Set([...byOriginalId.docs, ...byLegacyId.docs].map((d) => d.id))];
+  const invoiceRef = doc(db, COLLECTION, originalInvoiceId);
+  const now = collectionDate ? new Date(collectionDate) : new Date();
+  const nowIso = now.toISOString();
+  const dateKey = toLocalDateString(now);
+  const monthKey = dateKey.slice(0, 7);
+  const resolvedCollectionId = collectionId || `credit-${originalInvoiceId}-${now.getTime()}-${roundedAmount.toFixed(2)}`;
 
-    const creditDocIdSet = new Set<string>();
-    const creditDocIds: string[] = [];
-    [...q1Snap.docs, ...q2Snap.docs].forEach((d) => {
-      if (!creditDocIdSet.has(d.id)) {
-        creditDocIdSet.add(d.id);
-        creditDocIds.push(d.id);
-      }
+  return await runTransaction(db, async (tx) => {
+    const invoiceSnap = await tx.get(invoiceRef);
+    if (!invoiceSnap.exists()) throw new Error(`Original invoice ${originalInvoiceId} not found.`);
+    const oldInv = { id: originalInvoiceId, ...invoiceSnap.data() } as Invoice;
+    const history: any[] = (oldInv as any).creditPaymentHistory || [];
+
+    // Idempotency: a retried billing save must not collect the same old invoice twice.
+    const existingCollection = history.find((entry) => entry.collectionId === resolvedCollectionId);
+    if (existingCollection) return existingCollection.commissionAllocations || [];
+
+    const creditSnaps: Array<{ id: string; ref: any; data: any }> = [];
+    for (const id of docIds) {
+      const ref = doc(db, "credit_balances", id);
+      const snap = await tx.get(ref);
+      if (snap.exists()) creditSnaps.push({ id, ref, data: snap.data() });
+    }
+    if (creditSnaps.length === 0) {
+      throw new Error("No pending credit ledger records found for this invoice.");
+    }
+
+    const allocation = allocateCreditPayment(
+      creditSnaps.map((item) => ({ id: item.id, ...item.data })),
+      roundedAmount,
+      oldInv
+    );
+
+    const allocationsByLedger = new Map(allocation.allocations.map((item) => [item.docId, item]));
+    const invoiceServices = Array.isArray((oldInv as any).services) ? (oldInv as any).services : [];
+    const legacyServiceAllocations = invoiceServices.map((service: any) => {
+      const commission = getServiceCommission(service, oldInv);
+      return {
+        staffId: service.staffId || "unassigned",
+        staffName: service.staffName || "Unassigned",
+        staffRole: service.staffRole || (service.staffId === "system" || service.staffName === "System" ? "Owner" : "Stylist"),
+        serviceId: service.serviceId || "",
+        serviceName: service.serviceName || "",
+        serviceRevenue: commission.serviceRevenue,
+        productCost: commission.productCost,
+        stylistShare: commission.stylistShare,
+        ownerShare: commission.ownerShare,
+      };
     });
 
-    // 2. Perform the update in an atomic Firestore Transaction
-    await runTransaction(db, async (tx) => {
-      // 2a. Get original invoice inside transaction (reads first)
-      const invoiceRef = doc(db, COLLECTION, originalInvoiceId);
-      const invoiceSnap = await tx.get(invoiceRef);
-      if (!invoiceSnap.exists()) {
-        throw new Error(`Original invoice ${originalInvoiceId} not found`);
-      }
-      const oldInv = { id: originalInvoiceId, ...invoiceSnap.data() } as Invoice;
+    const collectionCommissionAllocations: any[] = [];
+    const daily = { serviceRevenue: 0, productCost: 0, stylistShare: 0, ownerShare: 0 };
+    const staffTotals: Record<string, { revenue: number; productCost: number; stylistShare: number }> = {};
 
-      // 2b. Read all credit balance docs inside transaction
-      let creditSnaps: Array<{ ref: any; data: any; id: string }> = [];
-      for (const creditDocId of creditDocIds) {
-        const creditRef = doc(db, "credit_balances", creditDocId);
-        const creditSnap = await tx.get(creditRef);
-        if (creditSnap.exists()) {
-          creditSnaps.push({ ref: creditRef, data: creditSnap.data(), id: creditDocId });
+    for (const credit of creditSnaps) {
+      const ledgerAllocation = allocationsByLedger.get(credit.id);
+      if (!ledgerAllocation) continue;
+      const originalCreditAmount = Number(credit.data.creditAmount ?? credit.data.amount ?? ledgerAllocation.previousRemaining);
+      if (originalCreditAmount <= 0) continue;
+      const fraction = Math.min(1, ledgerAllocation.allocatedAmount / originalCreditAmount);
+      const savedAllocations = Array.isArray(credit.data.commissionAllocations) && credit.data.commissionAllocations.length
+        ? credit.data.commissionAllocations
+        : legacyServiceAllocations;
+      for (const item of savedAllocations) {
+        const commissionAllocation = {
+          creditDocId: credit.id,
+          staffId: item.staffId || "unassigned",
+          staffName: item.staffName || "Unassigned",
+          staffRole: item.staffRole || "Stylist",
+          serviceId: item.serviceId || "",
+          serviceName: item.serviceName || "",
+          serviceRevenue: Math.round((Number(item.serviceRevenue) || 0) * fraction * 100) / 100,
+          productCost: Math.round((Number(item.productCost) || 0) * fraction * 100) / 100,
+          stylistShare: Math.round((Number(item.stylistShare) || 0) * fraction * 100) / 100,
+          ownerShare: Math.round((Number(item.ownerShare) || 0) * fraction * 100) / 100,
+        };
+        collectionCommissionAllocations.push(commissionAllocation);
+        daily.serviceRevenue += commissionAllocation.serviceRevenue;
+        daily.productCost += commissionAllocation.productCost;
+        daily.stylistShare += commissionAllocation.stylistShare;
+        daily.ownerShare += commissionAllocation.ownerShare;
+        const staffId = commissionAllocation.staffId;
+        if (staffId !== "system" && commissionAllocation.staffRole !== "Owner") {
+          if (!staffTotals[staffId]) staffTotals[staffId] = { revenue: 0, productCost: 0, stylistShare: 0 };
+          staffTotals[staffId].revenue += commissionAllocation.serviceRevenue;
+          staffTotals[staffId].productCost += commissionAllocation.productCost;
+          staffTotals[staffId].stylistShare += commissionAllocation.stylistShare;
         }
       }
+    }
 
-      // Legacy fallback: also check by invoiceNumber if no docs matched by ID
-      if (creditSnaps.length === 0 && oldInv.invoiceNumber) {
-        const numSnap = await getDocs(query(
-          collection(db, "credit_balances"),
-          where("originalInvoiceNumber", "==", oldInv.invoiceNumber),
-          where("status", "==", "pending")
-        ));
-        for (const docSnap of numSnap.docs) {
-          if (!creditDocIdSet.has(docSnap.id)) {
-            const creditRef = doc(db, "credit_balances", docSnap.id);
-            const snap = await tx.get(creditRef);
-            if (snap.exists()) {
-              creditSnaps.push({ ref: creditRef, data: snap.data(), id: docSnap.id });
-            }
-          }
-        }
-      }
-
-      // 2c. Delegate to pure allocation logic (validates bounds and sorts oldest first)
-      const ledgerInput = creditSnaps.map((c) => ({
-        id: c.id,
-        ...c.data,
-      }));
-
-      const allocation = allocateCreditPayment(ledgerInput, collectedAmount, oldInv);
-
-      const now = collectionDate ? new Date(collectionDate) : new Date();
-      const nowIso = now.toISOString();
-      const currentDateKey = toLocalDateString(now);
-      const currentMonthKey = currentDateKey.substring(0, 7);
-
-      // Determine payment method label
-      const methodLabel = paymentSplit.card > 0 && paymentSplit.cash === 0 && paymentSplit.upi === 0
-        ? "Card"
-        : paymentSplit.upi > 0 && paymentSplit.cash === 0 && paymentSplit.card === 0
-          ? "UPI"
-          : paymentSplit.cash > 0 && paymentSplit.upi === 0 && paymentSplit.card === 0
-            ? "Cash"
-            : "Split";
-
-      // 2d. Apply atomic writes to all allocated ledger documents
-      const snapMap = new Map(creditSnaps.map((c) => [c.id, c.ref]));
-      for (const alloc of allocation.allocations) {
-        const ref = snapMap.get(alloc.docId);
-        if (!ref) continue;
-
-        tx.update(ref, {
-          remainingAmount: alloc.newRemaining,
-          status: alloc.status,
-          collectionStatus: alloc.collectionStatus,
-          collectedAmount: alloc.newCollected,
-          settledAt: alloc.isFullySettled ? nowIso : null,
-          lastCollectionDate: nowIso,
-          lastCollectionMethod: methodLabel,
-          updatedAt: nowIso,
+    // Correct rounding drift on the owner allocation so all allocations reconcile to the collected amount.
+    const allocatedCommissionTotal = daily.stylistShare + daily.ownerShare;
+    const roundingDifference = Math.round((roundedAmount - allocatedCommissionTotal) * 100) / 100;
+    if (Math.abs(roundingDifference) >= 0.01) {
+      const ownerEntry = [...collectionCommissionAllocations].reverse().find((item) => item.staffRole === "Owner");
+      if (ownerEntry) {
+        ownerEntry.ownerShare = Math.round((ownerEntry.ownerShare + roundingDifference) * 100) / 100;
+      } else {
+        collectionCommissionAllocations.push({
+          creditDocId: "",
+          staffId: "system",
+          staffName: "System",
+          staffRole: "Owner",
+          serviceId: "",
+          serviceName: "Unallocated invoice balance",
+          serviceRevenue: 0,
+          productCost: 0,
+          stylistShare: 0,
+          ownerShare: roundingDifference,
         });
       }
+      daily.ownerShare += roundingDifference;
+    }
 
-      // 2e. Update invoice document
-      const currentSplit = oldInv.paymentSplit || { cash: 0, upi: 0, card: 0 };
-      const updatedSplit = {
-        cash: (currentSplit.cash || 0) + (paymentSplit.cash || 0),
-        upi: (currentSplit.upi || 0) + (paymentSplit.upi || 0),
-        card: (currentSplit.card || 0) + (paymentSplit.card || 0),
-      };
+    const methodLabel = paymentSplit.card > 0 && paymentSplit.cash === 0 && paymentSplit.upi === 0
+      ? "Card"
+      : paymentSplit.upi > 0 && paymentSplit.cash === 0 && paymentSplit.card === 0
+        ? "UPI"
+        : paymentSplit.cash > 0 && paymentSplit.upi === 0 && paymentSplit.card === 0
+          ? "Cash" : "Split";
 
-      const paymentRecord = {
-        collectedAt: nowIso,
-        collectedAmount,
-        paymentSplit: {
-          cash: paymentSplit.cash || 0,
-          upi: paymentSplit.upi || 0,
-          card: paymentSplit.card || 0,
-        },
-        remainingBalance: allocation.invoiceNextBalance,
-        ...(note ? { note: note.trim() } : {}),
-      };
-
-      const existingHistory = (oldInv as any).creditPaymentHistory || [];
-      const updatedHistory = [...existingHistory, paymentRecord];
-
-      tx.update(invoiceRef, {
-        receivedAmount: allocation.invoiceNextReceived,
-        balanceDue: allocation.invoiceNextBalance,
-        paymentStatus: allocation.invoiceNextStatus,
-        paymentSplit: updatedSplit,
-        creditPaymentHistory: updatedHistory,
-        updatedAt: serverTimestamp(),
+    for (const credit of creditSnaps) {
+      const item = allocationsByLedger.get(credit.id);
+      if (!item) continue;
+      tx.update(credit.ref, {
+        remainingAmount: item.newRemaining,
+        status: item.status,
+        collectionStatus: item.collectionStatus,
+        collectedAmount: item.newCollected,
+        settledAt: item.isFullySettled ? nowIso : null,
+        lastCollectionDate: nowIso,
+        lastCollectionMethod: methodLabel,
+        updatedAt: nowIso,
       });
+    }
 
-      // 2f. Attribute collection to current period statistics
-      const dailyRef = doc(db, "stats", `daily_${currentDateKey}`);
-      tx.set(dailyRef, {
-        dateKey: currentDateKey,
-        totalRevenue: increment(collectedAmount),
-        cash: increment(paymentSplit.cash || 0),
-        upi: increment(paymentSplit.upi || 0),
-        card: increment(paymentSplit.card || 0),
-        ownerShare: increment(collectedAmount), // Old credit collections belong 100% to owner
-        creditCollectionsRevenue: increment(collectedAmount),
-      }, { merge: true });
+    const currentSplit = oldInv.paymentSplit || { cash: 0, upi: 0, card: 0 };
+    const updatedSplit = {
+      cash: (Number(currentSplit.cash) || 0) + (paymentSplit.cash || 0),
+      upi: (Number(currentSplit.upi) || 0) + (paymentSplit.upi || 0),
+      card: (Number(currentSplit.card) || 0) + (paymentSplit.card || 0),
+    };
+    const paymentRecord = {
+      collectionId: resolvedCollectionId,
+      collectedAt: nowIso,
+      collectedAmount: roundedAmount,
+      paymentSplit: { cash: paymentSplit.cash || 0, upi: paymentSplit.upi || 0, card: paymentSplit.card || 0 },
+      remainingBalance: allocation.invoiceNextBalance,
+      commissionAllocations: collectionCommissionAllocations,
+      ...(note ? { note: note.trim() } : {}),
+    };
 
-      const monthlyRef = doc(db, "stats", `revenue_${currentMonthKey}`);
-      tx.set(monthlyRef, {
-        totalRevenue: increment(collectedAmount),
-        cash: increment(paymentSplit.cash || 0),
-        upi: increment(paymentSplit.upi || 0),
-        card: increment(paymentSplit.card || 0),
-        creditCollectionsRevenue: increment(collectedAmount),
-      }, { merge: true });
+    tx.update(invoiceRef, {
+      receivedAmount: allocation.invoiceNextReceived,
+      balanceDue: allocation.invoiceNextBalance,
+      paymentStatus: allocation.invoiceNextStatus,
+      paymentSplit: updatedSplit,
+      creditPaymentHistory: [...history, paymentRecord],
+      updatedAt: serverTimestamp(),
     });
-  } catch (error) {
-    console.error("Error in collectCreditPayment transaction:", error);
-    throw error;
-  }
+
+    const dailyRef = doc(db, "stats", `daily_${dateKey}`);
+    tx.set(dailyRef, {
+      dateKey,
+      totalRevenue: increment(roundedAmount),
+      cash: increment(paymentSplit.cash || 0),
+      upi: increment(paymentSplit.upi || 0),
+      card: increment(paymentSplit.card || 0),
+      serviceRevenue: increment(daily.serviceRevenue),
+      productCost: increment(daily.productCost),
+      stylistShare: increment(daily.stylistShare),
+      ownerShare: increment(daily.ownerShare),
+      creditCollectionsRevenue: increment(roundedAmount),
+    }, { merge: true });
+
+    const monthlyRef = doc(db, "stats", `revenue_${monthKey}`);
+    tx.set(monthlyRef, {
+      totalRevenue: increment(roundedAmount),
+      cash: increment(paymentSplit.cash || 0),
+      upi: increment(paymentSplit.upi || 0),
+      card: increment(paymentSplit.card || 0),
+      creditCollectionsRevenue: increment(roundedAmount),
+    }, { merge: true });
+
+    for (const [staffId, totals] of Object.entries(staffTotals)) {
+      const staffRef = doc(db, "stats", `staff_${staffId}_${monthKey}`);
+      tx.set(staffRef, {
+        revenue: increment(totals.revenue),
+        productCost: increment(totals.productCost),
+        creditCollectionsRevenue: increment(totals.stylistShare),
+      }, { merge: true });
+    }
+    return collectionCommissionAllocations;
+  });
+}
+
+export async function attachCreditCollectionAllocations(
+  invoiceId: string,
+  collectionId: string,
+  commissionAllocations: any[]
+): Promise<void> {
+  const invoiceRef = doc(db, COLLECTION, invoiceId);
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(invoiceRef);
+    if (!snap.exists()) throw new Error(`Invoice ${invoiceId} not found while attaching credit allocation.`);
+    const invoiceData = snap.data();
+    const collectedCredits: any[] = Array.isArray(invoiceData.collectedCredits) ? invoiceData.collectedCredits : [];
+    const index = collectedCredits.findIndex((item) => item.collectionId === collectionId);
+    if (index < 0) throw new Error(`Collection ${collectionId} is not attached to invoice ${invoiceId}.`);
+    if (Array.isArray(collectedCredits[index].commissionAllocations) && collectedCredits[index].commissionAllocations.length) return;
+    const next = [...collectedCredits];
+    next[index] = { ...next[index], commissionAllocations };
+    tx.update(invoiceRef, { collectedCredits: next });
+  });
 }
 
 export { deleteInvoice as delete };

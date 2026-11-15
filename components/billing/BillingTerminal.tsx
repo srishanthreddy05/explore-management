@@ -105,6 +105,9 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
   const [advanceToAdd, setAdvanceToAdd] = useState<number>(0);
   const [customerAdvance, setCustomerAdvance] = useState<any>(null);
   const [advanceApplied, setAdvanceApplied] = useState<number>(0);
+  const [originalAdvanceValues, setOriginalAdvanceValues] = useState<{ added: number; used: number; customerId: string }>({ added: 0, used: 0, customerId: "" });
+  const [historicalCreditPaymentSplit, setHistoricalCreditPaymentSplit] = useState({ cash: 0, upi: 0, card: 0 });
+  const historicalCreditPaymentAmount = historicalCreditPaymentSplit.cash + historicalCreditPaymentSplit.upi + historicalCreditPaymentSplit.card;
 
   // Membership states
   const [addMembership, setAddMembership] = useState(false);
@@ -207,13 +210,27 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
 
             // Populate payment split
             const payments = inv.paymentSplit || {};
-            setCashAmount(payments.cash !== undefined ? payments.cash : "");
-            setUpiAmount(payments.upi !== undefined ? payments.upi : "");
-            setCardAmount(payments.card !== undefined ? payments.card : "");
+            const creditHistorySplit = (inv.creditPaymentHistory || []).reduce((sum: any, item: any) => ({
+              cash: sum.cash + (Number(item.paymentSplit?.cash) || 0),
+              upi: sum.upi + (Number(item.paymentSplit?.upi) || 0),
+              card: sum.card + (Number(item.paymentSplit?.card) || 0),
+            }), { cash: 0, upi: 0, card: 0 });
+            const originalCash = Math.max(0, (Number(payments.cash) || 0) - creditHistorySplit.cash);
+            const originalUpi = Math.max(0, (Number(payments.upi) || 0) - creditHistorySplit.upi);
+            const originalCard = Math.max(0, (Number(payments.card) || 0) - creditHistorySplit.card);
+            setCashAmount(originalCash || "");
+            setUpiAmount(originalUpi || "");
+            setCardAmount(originalCard || "");
+            setHistoricalCreditPaymentSplit(creditHistorySplit);
 
-            const isSplit = (payments.cash > 0 && (payments.upi > 0 || payments.card > 0)) || (payments.upi > 0 && payments.card > 0);
+            const isSplit = (originalCash > 0 && (originalUpi > 0 || originalCard > 0)) || (originalUpi > 0 && originalCard > 0);
             setIsSplitEdited(isSplit || inv.paymentMethod === "Split");
             setIsAmountPaidEdited(true);
+            setAdvanceToAdd(Number(inv.advanceAdded) || 0);
+            setAdvanceApplied(Number(inv.advanceUsed) || 0);
+            setOriginalAdvanceValues({ added: Number(inv.advanceAdded) || 0, used: Number(inv.advanceUsed) || 0, customerId: inv.customerId || "" });
+            setAmountPaid(originalCash + originalUpi + originalCard);
+            setMarkAsCredit(inv.paymentStatus !== "paid" || (Number(inv.balanceDue) || 0) > 0);
 
             if (inv.appliedOffer) {
               setSelectedOfferId(inv.appliedOffer.offerId || "");
@@ -823,7 +840,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
     return collectedCreditsByInvoice.reduce((sum, g) => sum + g.amountCollecting, 0);
   }, [collectedCreditsByInvoice]);
 
-  const amountToCollect = Math.max(0, totals.grandTotal + totalCollectedCreditsAmount - advanceApplied);
+  const amountToCollect = Math.max(0, totals.grandTotal + (editInvoiceId ? 0 : totalCollectedCreditsAmount) - advanceApplied - (editInvoiceId ? historicalCreditPaymentAmount : 0));
 
   useEffect(() => {
     const amt = Number(amountPaid) || 0;
@@ -842,6 +859,22 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
   const upiVal = upiAmount === "" ? 0 : Number(upiAmount);
   const cardVal = cardAmount === "" ? 0 : Number(cardAmount);
   const totalPaid = cashVal + upiVal + cardVal;
+  const creditCollectionPaid = editInvoiceId ? 0 : Math.min(totalCollectedCreditsAmount, totalPaid);
+  const creditCollectionsToProcess = useMemo(() => {
+    let remaining = creditCollectionPaid;
+    return [...collectedCreditsByInvoice]
+      .sort((a, b) => {
+        const dateA = allCustomerPendingCredits.find((c) => (c.originalInvoiceId || c.invoiceId) === a.originalInvoiceId)?.createdAt || "";
+        const dateB = allCustomerPendingCredits.find((c) => (c.originalInvoiceId || c.invoiceId) === b.originalInvoiceId)?.createdAt || "";
+        return dateA.localeCompare(dateB);
+      })
+      .map((group) => {
+        const amountCollecting = Math.min(group.amountCollecting, remaining);
+        remaining = Math.max(0, remaining - amountCollecting);
+        return { ...group, amountCollecting };
+      })
+      .filter((group) => group.amountCollecting > 0);
+  }, [collectedCreditsByInvoice, creditCollectionPaid, allCustomerPendingCredits]);
   const paymentDiff = amountToCollect - totalPaid;
   const change = Math.max(0, (Number(amountPaid) || 0) - amountToCollect);
 
@@ -1063,9 +1096,9 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
         card: cardVal,
       };
 
-      const creditSplit = allocateSplit(enteredSplit, totalCollectedCreditsAmount);
+      const creditSplit = allocateSplit(enteredSplit, creditCollectionPaid);
 
-      let remainingAdvanceDeduction = advanceToAdd;
+      let remainingAdvanceDeduction = editInvoiceId ? 0 : advanceToAdd;
       let savedCash = Math.max(0, enteredSplit.cash - creditSplit.cash);
       let savedUpi = Math.max(0, enteredSplit.upi - creditSplit.upi);
       let savedCard = Math.max(0, enteredSplit.card - creditSplit.card);
@@ -1204,9 +1237,13 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
         const ddStr = String(selectedDate.getDate()).padStart(2, '0');
         const dateKey = `${yyyy}-${mmStr}-${ddStr}`;
 
-        const invoicePaymentStatus = markAsCredit
-          ? ((totalPaid + advanceApplied) === 0 ? "unpaid" : "partial")
-          : "paid";
+        const editInvoiceCashPaid = totalPaid;
+        const editInvoiceReceived = Math.round((editInvoiceCashPaid + advanceApplied + historicalCreditPaymentAmount) * 100) / 100;
+        const invoicePaymentStatus = editInvoiceReceived <= 0
+          ? "unpaid"
+          : editInvoiceReceived + 0.01 >= totals.grandTotal
+            ? "paid"
+            : "partial";
 
         const updatePayload: any = {
           customerId,
@@ -1227,8 +1264,8 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
           billDiscount: billDiscount,
           billDiscountPercent: billDiscountPercent,
           grandTotal: totals.grandTotal,
-          receivedAmount: Math.round((totalPaid + advanceApplied) * 100) / 100,
-          balanceDue: Math.max(0, Math.round((totals.grandTotal - (totalPaid + advanceApplied)) * 100) / 100),
+          receivedAmount: editInvoiceReceived,
+          balanceDue: Math.max(0, Math.round((totals.grandTotal - editInvoiceReceived) * 100) / 100),
 
           appliedOffer: selectedOffer
             ? {
@@ -1244,19 +1281,12 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
           advanceAdded: advanceToAdd,
           advanceUsed: advanceApplied,
           paymentSplit: {
-            cash: savedCash,
-            upi: savedUpi,
-            card: savedCard,
+            cash: savedCash + historicalCreditPaymentSplit.cash,
+            upi: savedUpi + historicalCreditPaymentSplit.upi,
+            card: savedCard + historicalCreditPaymentSplit.card,
           },
           paymentMethod: invoicePaymentMethod,
           paymentStatus: invoicePaymentStatus,
-          collectedCredits: collectedCreditsByInvoice.map((g) => ({
-            originalInvoiceId: g.originalInvoiceId,
-            originalInvoiceNumber: g.originalInvoiceNumber,
-            collectedAmount: g.amountCollecting,
-            paymentSplit: allocateSplit(creditSplit, g.amountCollecting),
-            collectedAt: new Date().toISOString(),
-          })),
           membership: addMembership ? {
             membershipAmount: memAmount,
             membershipDuration: parseInt(membershipDuration) || 0,
@@ -1299,12 +1329,15 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
 
         await invoicesService.update(editInvoiceId, updatePayload);
       } else {
-        const totalPaidAmt = Math.round((totalPaid + advanceApplied) * 100) / 100;
+        const invoiceCashPaid = Math.max(0, totalPaid - creditCollectionPaid - advanceToAdd);
+        const totalPaidAmt = Math.round((invoiceCashPaid + advanceApplied) * 100) / 100;
         const balanceDueAmt = Math.max(0, Math.round((totals.grandTotal - totalPaidAmt) * 100) / 100);
 
-        const invoicePaymentStatus = markAsCredit
-          ? (totalPaidAmt === 0 ? "unpaid" : "partial")
-          : "paid";
+        const invoicePaymentStatus = totalPaidAmt <= 0
+          ? "unpaid"
+          : totalPaidAmt + 0.01 >= totals.grandTotal
+            ? "paid"
+            : "partial";
 
         savedInvoiceId = await invoicesService.create({
           invoiceNumber,
@@ -1350,7 +1383,8 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
           },
           paymentMethod: invoicePaymentMethod,
           paymentStatus: invoicePaymentStatus,
-          collectedCredits: collectedCreditsByInvoice.map((g) => ({
+          collectedCredits: creditCollectionsToProcess.map((g) => ({
+            collectionId: `${savedInvoiceId || invoiceNumber}:${g.originalInvoiceId}`,
             originalInvoiceId: g.originalInvoiceId,
             originalInvoiceNumber: g.originalInvoiceNumber,
             collectedAmount: g.amountCollecting,
@@ -1367,11 +1401,32 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
       }
 
       const invId = savedInvoiceId || editInvoiceId || "";
-      if (advanceToAdd > 0) {
-        await advanceBalancesService.addCredit(customerId, customerName, customerMobile, advanceToAdd, invId);
-      }
-      if (advanceApplied > 0) {
-        await advanceBalancesService.deductBalance(customerId, advanceApplied, invId);
+      if (editInvoiceId) {
+        const previousNetAdvance = originalAdvanceValues.added - originalAdvanceValues.used;
+        const nextNetAdvance = advanceToAdd - advanceApplied;
+        const adjustmentKey = `${invId}:advance-edit:${originalAdvanceValues.added}:${originalAdvanceValues.used}:${advanceToAdd}:${advanceApplied}`;
+        if (originalAdvanceValues.customerId && originalAdvanceValues.customerId !== customerId && previousNetAdvance !== 0) {
+          if (previousNetAdvance > 0) {
+            await advanceBalancesService.deductBalance(originalAdvanceValues.customerId, previousNetAdvance, invId, `${adjustmentKey}:reverse-old`);
+          } else {
+            await advanceBalancesService.addCredit(originalAdvanceValues.customerId, customerName, customerMobile, -previousNetAdvance, invId, `${adjustmentKey}:reverse-old`);
+          }
+        }
+        const delta = originalAdvanceValues.customerId === customerId
+          ? nextNetAdvance - previousNetAdvance
+          : nextNetAdvance;
+        if (delta > 0) {
+          await advanceBalancesService.addCredit(customerId, customerName, customerMobile, delta, invId, adjustmentKey);
+        } else if (delta < 0) {
+          await advanceBalancesService.deductBalance(customerId, -delta, invId, adjustmentKey);
+        }
+      } else {
+        if (advanceToAdd > 0) {
+          await advanceBalancesService.addCredit(customerId, customerName, customerMobile, advanceToAdd, invId, `${invId}:advance-added`);
+        }
+        if (advanceApplied > 0) {
+          await advanceBalancesService.deductBalance(customerId, advanceApplied, invId, `${invId}:advance-used`);
+        }
       }
 
       if (addMembership) {
@@ -1387,7 +1442,8 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
 
       // Step 5: Create a single credit balance record for intentional credit on NEW invoice
       if (markAsCredit && !editInvoiceId) {
-        const creditAmount = Math.max(0, Math.round((totals.grandTotal - (totalPaid + advanceApplied)) * 100) / 100);
+        const invoiceCashPaid = Math.max(0, totalPaid - creditCollectionPaid - advanceToAdd);
+        const creditAmount = Math.max(0, Math.round((totals.grandTotal - (invoiceCashPaid + advanceApplied)) * 100) / 100);
         if (creditAmount > 0 && savedInvoiceId) {
           const invNum = invoiceNumberDisplay === "Auto-assigned on save" ? invoiceNumber : invoiceNumberDisplay;
           await creditBalancesService.create({
@@ -1404,6 +1460,20 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
             originalServiceName: enrichedServices[0]?.serviceName || "",
             originalServiceAmount: totals.grandTotal,
             originalServiceCommission: enrichedServices.reduce((sum: number, s: any) => sum + (s.stylistShare || 0), 0),
+            commissionAllocations: enrichedServices.map((service: any) => {
+              const outstandingRatio = totals.grandTotal > 0 ? creditAmount / totals.grandTotal : 0;
+              return {
+                serviceId: service.serviceId,
+                serviceName: service.serviceName,
+                staffId: service.staffId,
+                staffName: service.staffName,
+                staffRole: service.staffRole,
+                serviceRevenue: Math.round((Number(service.amount) || 0) * outstandingRatio * 100) / 100,
+                productCost: Math.round((Number(service.usedProductCost) || 0) * outstandingRatio * 100) / 100,
+                stylistShare: Math.round((Number(service.stylistShare) || 0) * outstandingRatio * 100) / 100,
+                ownerShare: Math.round((Number(service.ownerShare) || 0) * outstandingRatio * 100) / 100,
+              };
+            }),
             creditAmount,
             remainingAmount: creditAmount,
             collectionStatus: "pending",
@@ -1419,14 +1489,19 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
       }
 
       // Step 6: Settle outstanding credits via Firestore transaction (grouped by original invoice)
-      if (collectedCreditsByInvoice.length > 0) {
-        for (const group of collectedCreditsByInvoice) {
+      if (creditCollectionsToProcess.length > 0) {
+        for (const group of creditCollectionsToProcess) {
           const groupSplit = allocateSplit(creditSplit, group.amountCollecting);
-          await invoicesService.collectCreditPayment(
+          const collectionId = `${invId}:${group.originalInvoiceId}`;
+          const commissionAllocations = await invoicesService.collectCreditPayment(
             group.originalInvoiceId,
             group.amountCollecting,
-            groupSplit
+            groupSplit,
+            undefined,
+            undefined,
+            collectionId
           );
+          await invoicesService.attachCreditCollectionAllocations(invId, collectionId, commissionAllocations);
         }
       }
 
@@ -1508,6 +1583,8 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
     setAdvanceToAdd(0);
     setCustomerAdvance(null);
     setAdvanceApplied(0);
+    setOriginalAdvanceValues({ added: 0, used: 0, customerId: "" });
+    setHistoricalCreditPaymentSplit({ cash: 0, upi: 0, card: 0 });
 
     if (onClose) {
       onClose();
@@ -1834,7 +1911,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
           )}
 
           {/* Outstanding Credit Warning Banner */}
-          {!loadingCredits && groupedCredits.length > 0 && (
+          {!editInvoiceId && !loadingCredits && groupedCredits.length > 0 && (
             <div className="mt-4 rounded-2xl border border-amber-900/40 bg-amber-950/20 p-4 text-sm text-[#D4A935] space-y-2">
               <div className="flex items-center gap-2 font-bold text-amber-500">
                 <AlertCircle size={16} />
@@ -2105,7 +2182,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
             advanceToAdd={advanceToAdd}
             onAddAdvance={setAdvanceToAdd}
             advanceApplied={advanceApplied}
-            totalCollectedCreditsAmount={totalCollectedCreditsAmount}
+            totalCollectedCreditsAmount={creditCollectionPaid}
             amountToCollect={amountToCollect}
           />
 
