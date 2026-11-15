@@ -330,7 +330,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
     let active = true;
     const delayDebounceFn = setTimeout(async () => {
       try {
-        const results = await customerService.searchByPhonePrefix(trimmed);
+        const results = await customerService.searchCustomers(trimmed);
         if (!active) return;
         if (results && results.length > 0) {
           setSuggestions(results.slice(0, 8));
@@ -369,7 +369,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
     let active = true;
     const delayDebounceFn = setTimeout(async () => {
       try {
-        const results = await customerService.searchByNamePrefix(trimmed);
+        const results = await customerService.searchCustomers(trimmed);
         if (!active) return;
         if (results && results.length > 0) {
           setNameSuggestions(results.slice(0, 8));
@@ -1701,7 +1701,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
                       setShowDropdown(true);
                     }
                   }}
-                  placeholder="Type phone number..."
+                  placeholder="Search by phone digits or customer name..."
                   className="h-12 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-4 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E] focus:ring-1 focus:ring-[#B8962E] placeholder-[#6B6358] disabled:bg-stone-900 disabled:text-[#6B6358]"
                 />
                 {showDropdown && suggestions.length > 0 && (
@@ -1769,7 +1769,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
                       setShowNameDropdown(true);
                     }
                   }}
-                  placeholder="Enter customer name..."
+                  placeholder="Search by any part of name or phone..."
                   className="h-12 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-4 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E] focus:ring-1 focus:ring-[#B8962E] placeholder-[#6B6358] disabled:bg-stone-900 disabled:text-[#6B6358]"
                 />
                 {showNameDropdown && nameSuggestions.length > 0 && (
