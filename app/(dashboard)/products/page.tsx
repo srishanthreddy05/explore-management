@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { formatCurrency } from "@/components/salon-dashboard/types";
 import { toast } from "react-hot-toast";
+import { ServiceProductMappings } from "@/components/products/ServiceProductMappings";
 
 export default function ProductsPage() {
   const { products, refreshProducts, loadingAppData } = useAppData();
@@ -306,89 +307,8 @@ export default function ProductsPage() {
             </div>
           </div>
 
-          {/* Service Products Section */}
-          <div className="space-y-4 pt-4">
-            <div className="flex items-center justify-between border-b border-[#2E2B24] pb-2">
-              <div>
-                <h2 className="text-lg font-bold text-[#F5F0E8]">
-                  Service Supplies (Used in Services) ({serviceProducts.length})
-                </h2>
-                <p className="text-xs text-[#6B6358] mt-0.5">
-                  Supplies recorded with name and purchase amount.
-                </p>
-              </div>
-              <button
-                onClick={() => handleOpenAdd("service")}
-                className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#2E2B24] bg-[#131210] px-4 text-xs font-semibold text-[#A89F8C] hover:border-[#B8962E] hover:text-[#B8962E] hover:bg-[#1F1A0F] shadow-sm transition duration-150 cursor-pointer"
-              >
-                <Plus size={15} />
-                Add Service Product
-              </button>
-            </div>
+          <ServiceProductMappings />
 
-            <div className="overflow-x-auto rounded-2xl border border-[#2E2B24] bg-[#131210] shadow-md">
-              <table className="w-full min-w-[700px] border-collapse text-left text-sm text-[#A89F8C]">
-                <thead className="bg-[#0E0D0B] text-[10px] font-bold uppercase tracking-[0.18em] text-[#A89F8C] border-b border-[#2E2B24]">
-                  <tr>
-                    <th className="px-6 py-4 font-bold">Supply Name</th>
-                    <th className="px-6 py-4 font-bold">Amount (₹)</th>
-                    <th className="px-6 py-4 font-bold text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#2E2B24]">
-                  {serviceProducts.length === 0 ? (
-                    <tr>
-                      <td
-                        colSpan={3}
-                        className="px-6 py-8 text-center text-[#6B6358] italic bg-transparent"
-                      >
-                        No service supplies created yet.
-                      </td>
-                    </tr>
-                  ) : (
-                    serviceProducts.map((product) => (
-                      <tr
-                        key={product.id}
-                        className="hover:bg-[#1C1A16] transition bg-transparent text-[#A89F8C]"
-                      >
-                        <td className="px-6 py-4 font-semibold text-[#F5F0E8]">
-                          <div>{product.name}</div>
-                          {(product.brand || product.category) && (
-                            <div className="text-[10px] text-stone-500 font-medium mt-0.5 space-x-1.5">
-                              {product.brand && <span>Brand: {product.brand}</span>}
-                              {product.brand && product.category && <span>•</span>}
-                              {product.category && <span>Category: {product.category}</span>}
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 text-[#F5F0E8] font-semibold">
-                          {formatCurrency(product.amount || 0)}
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <div className="flex justify-end gap-2">
-                            <button
-                              onClick={() => handleOpenEdit(product)}
-                              className="grid size-9 place-items-center rounded-xl bg-[#131210] border border-[#2E2B24] text-[#B8962E] hover:bg-[#1F1A0F] hover:border-[#B8962E] transition cursor-pointer"
-                              title="Edit Details"
-                            >
-                              <Edit2 size={14} />
-                            </button>
-                            <button
-                              onClick={() => product.id && handleDeleteTrigger(product.id)}
-                              className="grid size-9 place-items-center rounded-xl bg-[#131210] border border-[#2E2B24] text-[#E57373] hover:bg-[#131210] hover:border-[#E57373] transition cursor-pointer"
-                              title="Remove"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
         </>
       )}
 
