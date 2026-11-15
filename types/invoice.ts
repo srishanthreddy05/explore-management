@@ -73,6 +73,8 @@ export interface Invoice {
     originalInvoiceId: string;
     originalInvoiceNumber: string;
     collectionId?: string;
+    originalGrandTotal?: number;
+    originalServices?: ServiceRow[];
     collectedAmount: number;
     paymentSplit?: {
       cash: number;
