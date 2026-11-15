@@ -19,7 +19,7 @@ import {
 import type { Invoice } from "@/types/invoice";
 import { toTitleCase } from "@/lib/utils/text";
 import { toLocalDateString } from "@/lib/utils/date";
-import { getInvoicePayments, getInvoicePaymentRatio, getServiceCommission } from "@/lib/utils/settlements";
+import { getInvoicePayments, getInvoicePaymentRatio, getServiceCommission, calculateCreditCollectionAllocation } from "@/lib/utils/settlements";
 import { allocateCreditPayment } from "@/lib/utils/creditTracker";
 
 const COLLECTION = "invoices";
@@ -635,68 +635,29 @@ export async function collectCreditPayment(
   }
 
   try {
-    // 1. Fetch pending credit balance documents for this invoice
-    // Check both originalInvoiceId and legacy invoiceId fields
-    const [q1Snap, q2Snap] = await Promise.all([
-      getDocs(query(
-        collection(db, "credit_balances"),
-        where("originalInvoiceId", "==", originalInvoiceId),
-        where("status", "==", "pending")
-      )),
-      getDocs(query(
-        collection(db, "credit_balances"),
-        where("invoiceId", "==", originalInvoiceId),
-        where("status", "==", "pending")
-      )),
-    ]);
+    // Resolve ledger documents before the transaction; no query reads inside it.
+    const invoiceRef = doc(db, COLLECTION, originalInvoiceId);
+    const initialInvoiceSnap = await getDoc(invoiceRef);
+    if (!initialInvoiceSnap.exists()) throw new Error("Original invoice not found");
+    const initialInvoice = initialInvoiceSnap.data() as Invoice;
+    const ledgerQueries: Promise<any>[] = [
+      getDocs(query(collection(db, "credit_balances"), where("originalInvoiceId", "==", originalInvoiceId), where("status", "==", "pending"))),
+      getDocs(query(collection(db, "credit_balances"), where("invoiceId", "==", originalInvoiceId), where("status", "==", "pending"))),
+    ];
+    if (initialInvoice.invoiceNumber) ledgerQueries.push(getDocs(query(collection(db, "credit_balances"), where("originalInvoiceNumber", "==", initialInvoice.invoiceNumber), where("status", "==", "pending"))));
+    const ledgerResults = await Promise.all(ledgerQueries);
+    const creditDocIds = Array.from(new Set(ledgerResults.flatMap((snap: any) => snap.docs.map((d: any) => d.id))));
 
-    const creditDocIdSet = new Set<string>();
-    const creditDocIds: string[] = [];
-    [...q1Snap.docs, ...q2Snap.docs].forEach((d) => {
-      if (!creditDocIdSet.has(d.id)) {
-        creditDocIdSet.add(d.id);
-        creditDocIds.push(d.id);
-      }
-    });
-
-    // 2. Perform the update in an atomic Firestore Transaction
     await runTransaction(db, async (tx) => {
-      // 2a. Get original invoice inside transaction (reads first)
-      const invoiceRef = doc(db, COLLECTION, originalInvoiceId);
       const invoiceSnap = await tx.get(invoiceRef);
-      if (!invoiceSnap.exists()) {
-        throw new Error(`Original invoice ${originalInvoiceId} not found`);
-      }
+      if (!invoiceSnap.exists()) throw new Error("Original invoice not found");
       const oldInv = { id: originalInvoiceId, ...invoiceSnap.data() } as Invoice;
-
-      // 2b. Read all credit balance docs inside transaction
-      let creditSnaps: Array<{ ref: any; data: any; id: string }> = [];
+      const creditSnaps: Array<{ ref: any; data: any; id: string }> = [];
       for (const creditDocId of creditDocIds) {
         const creditRef = doc(db, "credit_balances", creditDocId);
         const creditSnap = await tx.get(creditRef);
-        if (creditSnap.exists()) {
-          creditSnaps.push({ ref: creditRef, data: creditSnap.data(), id: creditDocId });
-        }
+        if (creditSnap.exists()) creditSnaps.push({ ref: creditRef, data: creditSnap.data(), id: creditDocId });
       }
-
-      // Legacy fallback: also check by invoiceNumber if no docs matched by ID
-      if (creditSnaps.length === 0 && oldInv.invoiceNumber) {
-        const numSnap = await getDocs(query(
-          collection(db, "credit_balances"),
-          where("originalInvoiceNumber", "==", oldInv.invoiceNumber),
-          where("status", "==", "pending")
-        ));
-        for (const docSnap of numSnap.docs) {
-          if (!creditDocIdSet.has(docSnap.id)) {
-            const creditRef = doc(db, "credit_balances", docSnap.id);
-            const snap = await tx.get(creditRef);
-            if (snap.exists()) {
-              creditSnaps.push({ ref: creditRef, data: snap.data(), id: docSnap.id });
-            }
-          }
-        }
-      }
-
       // 2c. Delegate to pure allocation logic (validates bounds and sorts oldest first)
       const ledgerInput = creditSnaps.map((c) => ({
         id: c.id,
@@ -738,25 +699,16 @@ export async function collectCreditPayment(
       }
 
       // 2e. Update invoice document
-      const currentSplit = oldInv.paymentSplit || { cash: 0, upi: 0, card: 0 };
-      const updatedSplit = {
-        cash: (currentSplit.cash || 0) + (paymentSplit.cash || 0),
-        upi: (currentSplit.upi || 0) + (paymentSplit.upi || 0),
-        card: (currentSplit.card || 0) + (paymentSplit.card || 0),
-      };
-
+      // Later receipts are independent events, not part of initial tender split.
       const paymentRecord = {
+        collectionId: doc(collection(db, "credit_collection_ids")).id,
         collectedAt: nowIso,
         collectedAmount,
-        paymentSplit: {
-          cash: paymentSplit.cash || 0,
-          upi: paymentSplit.upi || 0,
-          card: paymentSplit.card || 0,
-        },
+        paymentSplit: { cash: paymentSplit.cash || 0, upi: paymentSplit.upi || 0, card: paymentSplit.card || 0 },
         remainingBalance: allocation.invoiceNextBalance,
+        includedInPaymentSplit: false,
         ...(note ? { note: note.trim() } : {}),
       };
-
       const existingHistory = (oldInv as any).creditPaymentHistory || [];
       const updatedHistory = [...existingHistory, paymentRecord];
 
@@ -764,12 +716,12 @@ export async function collectCreditPayment(
         receivedAmount: allocation.invoiceNextReceived,
         balanceDue: allocation.invoiceNextBalance,
         paymentStatus: allocation.invoiceNextStatus,
-        paymentSplit: updatedSplit,
         creditPaymentHistory: updatedHistory,
         updatedAt: serverTimestamp(),
       });
 
       // 2f. Attribute collection to current period statistics
+      const creditAllocation = calculateCreditCollectionAllocation(oldInv, collectedAmount);
       const dailyRef = doc(db, "stats", `daily_${currentDateKey}`);
       tx.set(dailyRef, {
         dateKey: currentDateKey,
@@ -777,7 +729,8 @@ export async function collectCreditPayment(
         cash: increment(paymentSplit.cash || 0),
         upi: increment(paymentSplit.upi || 0),
         card: increment(paymentSplit.card || 0),
-        ownerShare: increment(collectedAmount), // Old credit collections belong 100% to owner
+        ownerShare: increment(creditAllocation.ownerShare),
+        stylistShare: increment(creditAllocation.stylistShare)
         creditCollectionsRevenue: increment(collectedAmount),
       }, { merge: true });
 
