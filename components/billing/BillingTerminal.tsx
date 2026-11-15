@@ -105,6 +105,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
   const [advanceToAdd, setAdvanceToAdd] = useState<number>(0);
   const [customerAdvance, setCustomerAdvance] = useState<any>(null);
   const [advanceApplied, setAdvanceApplied] = useState<number>(0);
+  const [originalAdvanceValues, setOriginalAdvanceValues] = useState<{ added: number; used: number; customerId: string }>({ added: 0, used: 0, customerId: "" });
 
   // Membership states
   const [addMembership, setAddMembership] = useState(false);
@@ -216,6 +217,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
             setIsAmountPaidEdited(true);
             setAdvanceToAdd(Number(inv.advanceAdded) || 0);
             setAdvanceApplied(Number(inv.advanceUsed) || 0);
+            setOriginalAdvanceValues({ added: Number(inv.advanceAdded) || 0, used: Number(inv.advanceUsed) || 0, customerId: inv.customerId || "" });
 
             if (inv.appliedOffer) {
               setSelectedOfferId(inv.appliedOffer.offerId || "");
@@ -1390,11 +1392,32 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
       }
 
       const invId = savedInvoiceId || editInvoiceId || "";
-      if (advanceToAdd > 0) {
-        await advanceBalancesService.addCredit(customerId, customerName, customerMobile, advanceToAdd, invId);
-      }
-      if (advanceApplied > 0) {
-        await advanceBalancesService.deductBalance(customerId, advanceApplied, invId);
+      if (editInvoiceId) {
+        const previousNetAdvance = originalAdvanceValues.added - originalAdvanceValues.used;
+        const nextNetAdvance = advanceToAdd - advanceApplied;
+        const adjustmentKey = `${invId}:advance-edit:${originalAdvanceValues.added}:${originalAdvanceValues.used}:${advanceToAdd}:${advanceApplied}`;
+        if (originalAdvanceValues.customerId && originalAdvanceValues.customerId !== customerId && previousNetAdvance !== 0) {
+          if (previousNetAdvance > 0) {
+            await advanceBalancesService.deductBalance(originalAdvanceValues.customerId, previousNetAdvance, invId, `${adjustmentKey}:reverse-old`);
+          } else {
+            await advanceBalancesService.addCredit(originalAdvanceValues.customerId, customerName, customerMobile, -previousNetAdvance, invId, `${adjustmentKey}:reverse-old`);
+          }
+        }
+        const delta = originalAdvanceValues.customerId === customerId
+          ? nextNetAdvance - previousNetAdvance
+          : nextNetAdvance;
+        if (delta > 0) {
+          await advanceBalancesService.addCredit(customerId, customerName, customerMobile, delta, invId, adjustmentKey);
+        } else if (delta < 0) {
+          await advanceBalancesService.deductBalance(customerId, -delta, invId, adjustmentKey);
+        }
+      } else {
+        if (advanceToAdd > 0) {
+          await advanceBalancesService.addCredit(customerId, customerName, customerMobile, advanceToAdd, invId, `${invId}:advance-added`);
+        }
+        if (advanceApplied > 0) {
+          await advanceBalancesService.deductBalance(customerId, advanceApplied, invId, `${invId}:advance-used`);
+        }
       }
 
       if (addMembership) {
@@ -1457,14 +1480,16 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
       if (creditCollectionsToProcess.length > 0) {
         for (const group of creditCollectionsToProcess) {
           const groupSplit = allocateSplit(creditSplit, group.amountCollecting);
-          await invoicesService.collectCreditPayment(
+          const collectionId = `${invId}:${group.originalInvoiceId}`;
+          const commissionAllocations = await invoicesService.collectCreditPayment(
             group.originalInvoiceId,
             group.amountCollecting,
             groupSplit,
             undefined,
             undefined,
-            `${invId}:${group.originalInvoiceId}`
+            collectionId
           );
+          await invoicesService.attachCreditCollectionAllocations(invId, collectionId, commissionAllocations);
         }
       }
 
