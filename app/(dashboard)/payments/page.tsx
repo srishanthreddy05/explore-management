@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import * as invoicesService from "@/services/invoices";
 import { formatCurrency } from "@/components/salon-dashboard/types";
 import { Search, WalletCards, DollarSign, X } from "lucide-react";
-import { db } from "@/lib/firebase";
 import { collection, query, where, orderBy, getDocs, limit, startAfter } from "firebase/firestore";
 import type { Invoice } from "@/types/invoice";
 
@@ -27,7 +26,7 @@ export default function PaymentsPage() {
     setLoading(true);
     try {
       // Reconcile pending credit_balances and invoices into unified authoritative debt list
-      const summary = await loadAuthoritativeUnifiedCreditTracker(db);
+      const summary = await loadAuthoritativeUnifiedCreditTracker();
 
       const dues = summary.items.map((item) => ({
         id: item.invoiceId || item.id,
