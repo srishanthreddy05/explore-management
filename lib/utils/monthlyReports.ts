@@ -304,7 +304,7 @@ export function generateMonthlyReport(params: {
     const { monthKey } = getInvoiceDateInfo(inv);
     if (monthKey === selectedMonth) {
       (inv.collectedCredits || []).forEach((cc: any) => {
-        const key = cc.collectionId || `${cc.originalInvoiceId || cc.originalInvoiceNumber}_${Number(cc.collectedAmount) || 0}`;
+        const key = cc.collectionId || `${cc.originalInvoiceId || cc.originalInvoiceNumber}_${cc.collectedAt || "legacy"}_${Number(cc.collectedAmount) || 0}`;
         registeredCreditCollections.add(key);
       });
     }
@@ -328,7 +328,7 @@ export function generateMonthlyReport(params: {
         const payMonth = (dp.collectedAt || "").substring(0, 7);
         if (payMonth === selectedMonth) {
           const amt = Number(dp.collectedAmount) || 0;
-          const dedupeKey = dp.collectionId || `${inv.id || inv.invoiceNumber}_${amt}`;
+          const dedupeKey = dp.collectionId || `${inv.id || inv.invoiceNumber}_${dp.collectedAt || "legacy"}_${amt}`;
           if (amt > 0 && !registeredCreditCollections.has(dedupeKey)) {
             registeredCreditCollections.add(dedupeKey);
             overview.creditCollectionsRevenue += amt;
@@ -405,7 +405,12 @@ export function generateMonthlyReport(params: {
         overview.creditCollectionsRevenue += amt;
         overview.collections.creditCollections += amt;
         const originalInvoice = invoices.find((candidate) => candidate.id === cc.originalInvoiceId || candidate.invoiceNumber === cc.originalInvoiceNumber);
-        const creditAllocation = originalInvoice ? calculateCreditCollectionAllocation(originalInvoice, amt, staffList) : { ownerShare: amt, stylistShare: 0, staff: [] };
+        const allocationSource = originalInvoice || (cc.originalServices && cc.originalGrandTotal
+          ? { grandTotal: cc.originalGrandTotal, services: cc.originalServices }
+          : null);
+        const creditAllocation = allocationSource
+          ? calculateCreditCollectionAllocation(allocationSource, amt, staffList)
+          : { ownerShare: amt, stylistShare: 0, serviceRevenue: 0, productCost: 0, staff: [] };
         overview.allocation.ownerCreditCollectionsShare += creditAllocation.ownerShare;
         overview.allocation.totalOwnerShare += creditAllocation.ownerShare;
         overview.allocation.totalStylistShares += creditAllocation.stylistShare;
