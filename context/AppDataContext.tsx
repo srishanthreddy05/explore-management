@@ -199,12 +199,18 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const loadOffers = useCallback(async (showLoading = false) => {
     if (showLoading) setLoadingAppData(true);
     try {
+      const cached = readCache<Offer>(CACHE_KEYS.offers, CACHE_TTL.offers);
+      if (cached) {
+        setOffers(cached);
+        return cached;
+      }
       const q = query(
         collection(db, "offers"),
         orderBy("code", "asc")
       );
       const snap = await getDocs(q);
       const result = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Offer));
+      writeCache(CACHE_KEYS.offers, result);
       setOffers(result);
       return result;
     } catch (err) {
@@ -219,8 +225,14 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const loadStaff = useCallback(async (showLoading = false) => {
     if (showLoading) setLoadingAppData(true);
     try {
+      const cached = readCache<Staff>(CACHE_KEYS.staff, CACHE_TTL.staff);
+      if (cached) {
+        setStaff(cached);
+        return cached;
+      }
       const snap = await getDocs(collection(db, "staff"));
       const result = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Staff)).sort((a, b) => a.name.localeCompare(b.name));
+      writeCache(CACHE_KEYS.staff, result);
       setStaff(result);
       return result;
     } catch (err) {
@@ -258,6 +270,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   }, [loadProducts]);
 
   const refreshStaff = useCallback(() => {
+    clearCache(CACHE_KEYS.staff);
     return loadStaff(false);
   }, [loadStaff]);
 
@@ -287,7 +300,6 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
           loadServices(false),
           loadProducts(false),
           loadOffers(false),
-          loadStaff(false),
           loadSettings(false),
           loadCategories(false),
         ]);
