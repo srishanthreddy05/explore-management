@@ -72,6 +72,7 @@ export interface Invoice {
   collectedCredits?: Array<{
     originalInvoiceId: string;
     originalInvoiceNumber: string;
+    collectionId?: string;
     collectedAmount: number;
     paymentSplit?: {
       cash: number;
@@ -82,6 +83,8 @@ export interface Invoice {
   }>;
 
   creditPaymentHistory?: Array<{
+    collectionId?: string;
+    includedInPaymentSplit?: boolean;
     collectedAt: string;
     collectedAmount: number;
     paymentSplit: {
