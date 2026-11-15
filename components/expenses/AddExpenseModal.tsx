@@ -17,7 +17,6 @@ export function AddExpenseModal({ onClose, onSuccess }: AddExpenseModalProps) {
   const [date, setDate] = useState(() => toLocalDateString(new Date()));
   const [category, setCategory] = useState("Rent");
   const [otherCategory, setOtherCategory] = useState("");
-  const [type, setType] = useState<"daily" | "monthly">("daily");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -45,7 +44,6 @@ export function AddExpenseModal({ onClose, onSuccess }: AddExpenseModalProps) {
         amount: Number(amount),
         date,
         category: category === "Other" ? otherCategory.trim() : category,
-        type,
       });
       onSuccess();
     } catch (err) {
@@ -92,18 +90,6 @@ export function AddExpenseModal({ onClose, onSuccess }: AddExpenseModalProps) {
               onChange={(e) => setDescription(e.target.value)}
               className="mt-2 h-11 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-4 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E] focus:ring-1 focus:ring-[#B8962E] placeholder-[#6B6358]"
             />
-          </label>
-
-          <label className="block">
-            <span className="text-sm font-semibold text-[#A89F8C]">Expense Type</span>
-            <select
-              value={type}
-              onChange={(e) => setType(e.target.value as "daily" | "monthly")}
-              className="mt-2 h-11 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-4 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E] focus:ring-1 focus:ring-[#B8962E]"
-            >
-              <option value="daily">Daily — tiffin, fuel, misc</option>
-              <option value="monthly">Monthly — rent, electricity, salaries</option>
-            </select>
           </label>
 
           <div className="grid gap-4 sm:grid-cols-2">
