@@ -279,7 +279,8 @@ export function calculateDaySettlement(
         detail.ownerShareContribution += Math.max(0, staffCredit.serviceRevenue - staffCredit.productCost - staffCredit.amount) + staffCredit.productCost;
         detail.collectedCreditsShare += staffCredit.amount;
         detail.collectedCredits.push({ originalInvoiceNumber: cc.originalInvoiceNumber, amount: staffCredit.amount });
-      });;
+      });
+    });
 
     const retailRev = calculateInvoiceRetailRevenue(inv);
     result.retailProductsRevenue += retailRev;
