@@ -1224,6 +1224,7 @@ export default function DashboardPage() {
     let cardToday = 0;
     let advanceToday = 0;
     const uniqueCustomerIds = new Set<string>();
+    const registeredCreditCollections = new Set<string>();
 
     invoices.forEach((inv) => {
       const cash =
@@ -1256,6 +1257,53 @@ export default function DashboardPage() {
         upiToday += upi;
         cardToday += card;
         advanceToday += advance;
+      }
+
+      // Check creditPaymentHistory collected today
+      (inv.creditPaymentHistory || []).forEach((cph: any) => {
+        const payDate = (cph.collectedAt ? toLocalDateString(cph.collectedAt) : "") || (cph.collectedAt || "").slice(0, 10);
+        if (payDate === todayStr) {
+          const amt = Number(cph.collectedAmount) || 0;
+          const dedupeKey = cph.collectionId || `${inv.id || inv.invoiceNumber}_${cph.collectedAt || "legacy"}_${amt}`;
+          if (amt > 0 && !registeredCreditCollections.has(dedupeKey)) {
+            registeredCreditCollections.add(dedupeKey);
+            todayRevenue += amt;
+            const split = cph.paymentSplit || {};
+            const cCash = Number(split.cash) || 0;
+            const cUpi = Number(split.upi) || 0;
+            const cCard = Number(split.card) || 0;
+            if (cCash > 0 || cUpi > 0 || cCard > 0) {
+              cashToday += cCash;
+              upiToday += cUpi;
+              cardToday += cCard;
+            } else {
+              upiToday += amt;
+            }
+          }
+        }
+      });
+
+      // Check collectedCredits on invoices created today
+      if (invDateStr === todayStr) {
+        (inv.collectedCredits || []).forEach((cc: any) => {
+          const amt = Number(cc.collectedAmount) || 0;
+          const dedupeKey = cc.collectionId || `${cc.originalInvoiceId || cc.originalInvoiceNumber}_${cc.collectedAt || "legacy"}_${amt}`;
+          if (amt > 0 && !registeredCreditCollections.has(dedupeKey)) {
+            registeredCreditCollections.add(dedupeKey);
+            todayRevenue += amt;
+            const split = cc.paymentSplit || {};
+            const cCash = Number(split.cash) || 0;
+            const cUpi = Number(split.upi) || 0;
+            const cCard = Number(split.card) || 0;
+            if (cCash > 0 || cUpi > 0 || cCard > 0) {
+              cashToday += cCash;
+              upiToday += cUpi;
+              cardToday += cCard;
+            } else {
+              upiToday += amt;
+            }
+          }
+        });
       }
     });
 
@@ -1354,8 +1402,8 @@ export default function DashboardPage() {
   }, [filteredTodayInvoices, selectedStaffId, staff]);
 
   const todaySettlement = useMemo<DaySettlementDetails>(() => {
-    return calculateDaySettlement(todayInvoices, staff, todayStr);
-  }, [todayInvoices, staff, todayStr]);
+    return calculateDaySettlement(invoices, staff, selectedInvoiceDate);
+  }, [invoices, staff, selectedInvoiceDate]);
 
   const staffSplits = useMemo(() => {
     const stylistStaff = staff.filter(
@@ -1867,7 +1915,7 @@ export default function DashboardPage() {
 
           {/* Settlements Content */}
           <div className="mt-6">
-            {todayInvoices.length === 0 ? (
+            {todayInvoices.length === 0 && todaySettlement.collectedCredits.length === 0 ? (
               <div className="flex flex-col items-center gap-3 py-16 border border-dashed border-[#2E2B24] rounded-2xl bg-[#131210]">
                 <BarChart2 size={40} className="text-[#2E2B24]" />
                 <p className="text-sm font-semibold text-[#6B6358]">
@@ -1891,18 +1939,10 @@ export default function DashboardPage() {
                     { label: "Gross Share", value: todaySettlement.totalOwnerShare },
                     { label: "Today's Expenses", value: todayExpensesTotal, negative: true },
                   ]}
-                  collectedCredits={(todaySettlement.collectedCredits || []).map((c: any) => {
-                    let share = 0;
-                    if (c.staffName === "System" || c.role === "Owner") {
-                      share = c.amount;
-                    } else {
-                      share = 0.5 * c.amount;
-                    }
-                    return {
-                      ...c,
-                      share,
-                    };
-                  })}
+                  collectedCredits={(todaySettlement.collectedCredits || []).map((c: any) => ({
+                    ...c,
+                    share: c.share !== undefined ? c.share : (c.collectedBy === "System" || c.staffName === "System" || c.role === "Owner" ? c.amount : 0.5 * c.amount),
+                  }))}
                 />
 
                 {/* Stylist Cards (3 Vertical Columns side-by-side) */}
@@ -1911,14 +1951,13 @@ export default function DashboardPage() {
                     .filter((sd) => sd.role !== "Owner")
                     .map((sd) => {
                       const collectedCredits = sd.collectedCredits || [];
-                      const collectedCreditsShare = sd.collectedCreditsShare || 0;
-                      const commissionEarned = sd.staffShare + collectedCreditsShare;
+                      const commissionEarned = sd.staffShare;
                       const drawingsDeducted = todayStaffDrawings[sd.staffId] || 0;
                       const remainingPayable = commissionEarned - drawingsDeducted;
 
                       const mappedCollectedCredits = collectedCredits.map((c: any) => ({
                         ...c,
-                        share: 0.5 * c.amount,
+                        share: c.amount,
                       }));
 
                       const serviceRev = sd.serviceRevenue;

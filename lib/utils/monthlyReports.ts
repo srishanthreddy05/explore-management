@@ -321,59 +321,57 @@ export function generateMonthlyReport(params: {
       return;
     }
 
-    // Direct credit payment collections on prior invoices received in current month
-    if (isPriorMonth) {
-      const directPayments: any[] = (inv as any).creditPaymentHistory || [];
-      directPayments.forEach((dp: any) => {
-        const payMonth = (dp.collectedAt || "").substring(0, 7);
-        if (payMonth === selectedMonth) {
-          const amt = Number(dp.collectedAmount) || 0;
-          const dedupeKey = dp.collectionId || `${inv.id || inv.invoiceNumber}_${dp.collectedAt || "legacy"}_${amt}`;
-          if (amt > 0 && !registeredCreditCollections.has(dedupeKey)) {
-            registeredCreditCollections.add(dedupeKey);
-            overview.creditCollectionsRevenue += amt;
-            overview.collections.creditCollections += amt;
-            const creditAllocation = calculateCreditCollectionAllocation(inv, amt, staffList);
-            overview.allocation.ownerCreditCollectionsShare += creditAllocation.ownerShare;
-            overview.allocation.totalOwnerShare += creditAllocation.ownerShare;
-            overview.allocation.totalStylistShares += creditAllocation.stylistShare;
-            creditAllocation.staff.forEach((creditStaff) => {
-              const staffAcc = getOrCreateStaff(creditStaff.staffId, creditStaff.staffName);
-              staffAcc.currentEarnings += creditStaff.amount;
-              staffAcc.currentServicesRevenue += creditStaff.serviceRevenue;
-              staffAcc.currentProductCost += creditStaff.productCost;
-              staffAcc.serviceTransactions.push({
-                invoiceId: inv.id || "",
-                invoiceNumber: inv.invoiceNumber || "—",
-                date: (dp.collectedAt || "").slice(0, 10),
-                customerName: inv.customerName || "Walk-in Guest",
-                serviceName: "Credit collection — original service",
-                amount: creditStaff.serviceRevenue,
-                productCost: creditStaff.productCost,
-                netAmount: creditStaff.serviceRevenue - creditStaff.productCost,
-                stylistShare: creditStaff.amount,
-                ownerShare: Math.max(0, creditStaff.serviceRevenue - creditStaff.productCost - creditStaff.amount) + creditStaff.productCost,
-              });
+    // Direct credit payment collections on prior or current invoices received in current month
+    const directPayments: any[] = (inv as any).creditPaymentHistory || [];
+    directPayments.forEach((dp: any) => {
+      const payMonth = (dp.collectedAt || "").substring(0, 7);
+      if (payMonth === selectedMonth) {
+        const amt = Number(dp.collectedAmount) || 0;
+        const dedupeKey = dp.collectionId || `${inv.id || inv.invoiceNumber}_${dp.collectedAt || "legacy"}_${amt}`;
+        if (amt > 0 && !registeredCreditCollections.has(dedupeKey)) {
+          registeredCreditCollections.add(dedupeKey);
+          overview.creditCollectionsRevenue += amt;
+          overview.collections.creditCollections += amt;
+          const creditAllocation = calculateCreditCollectionAllocation(inv, amt, staffList);
+          overview.allocation.ownerCreditCollectionsShare += creditAllocation.ownerShare;
+          overview.allocation.totalOwnerShare += creditAllocation.ownerShare;
+          overview.allocation.totalStylistShares += creditAllocation.stylistShare;
+          creditAllocation.staff.forEach((creditStaff) => {
+            const staffAcc = getOrCreateStaff(creditStaff.staffId, creditStaff.staffName);
+            staffAcc.currentEarnings += creditStaff.amount;
+            staffAcc.currentServicesRevenue += creditStaff.serviceRevenue;
+            staffAcc.currentProductCost += creditStaff.productCost;
+            staffAcc.serviceTransactions.push({
+              invoiceId: inv.id || "",
+              invoiceNumber: inv.invoiceNumber || "—",
+              date: (dp.collectedAt || "").slice(0, 10),
+              customerName: inv.customerName || "Walk-in Guest",
+              serviceName: "Credit collection — original service",
+              amount: creditStaff.serviceRevenue,
+              productCost: creditStaff.productCost,
+              netAmount: creditStaff.serviceRevenue - creditStaff.productCost,
+              stylistShare: creditStaff.amount,
+              ownerShare: Math.max(0, creditStaff.serviceRevenue - creditStaff.productCost - creditStaff.amount) + creditStaff.productCost,
             });
+          });
 
-            if (dp.paymentSplit) {
-              const cCash = Number(dp.paymentSplit.cash) || 0;
-              const cUpi = Number(dp.paymentSplit.upi) || 0;
-              const cCard = Number(dp.paymentSplit.card) || 0;
-              overview.collections.creditCollectionsTender.cash += cCash;
-              overview.collections.creditCollectionsTender.upi += cUpi;
-              overview.collections.creditCollectionsTender.card += cCard;
-              const accounted = cCash + cUpi + cCard;
-              if (amt > accounted) {
-                overview.collections.creditCollectionsTender.unspecified += (amt - accounted);
-              }
-            } else {
-              overview.collections.creditCollectionsTender.unspecified += amt;
+          if (dp.paymentSplit) {
+            const cCash = Number(dp.paymentSplit.cash) || 0;
+            const cUpi = Number(dp.paymentSplit.upi) || 0;
+            const cCard = Number(dp.paymentSplit.card) || 0;
+            overview.collections.creditCollectionsTender.cash += cCash;
+            overview.collections.creditCollectionsTender.upi += cUpi;
+            overview.collections.creditCollectionsTender.card += cCard;
+            const accounted = cCash + cUpi + cCard;
+            if (amt > accounted) {
+              overview.collections.creditCollectionsTender.unspecified += (amt - accounted);
             }
+          } else {
+            overview.collections.creditCollectionsTender.unspecified += amt;
           }
         }
-      });
-    }
+      }
+    });
 
     const ratio = getInvoicePaymentRatio(inv);
     const payments = getInvoicePayments(inv);
@@ -402,6 +400,9 @@ export function generateMonthlyReport(params: {
       const invCollectedCredits: any[] = inv.collectedCredits || [];
       invCollectedCredits.forEach((cc: any) => {
         const amt = Number(cc.collectedAmount) || 0;
+        const dedupeKey = cc.collectionId || `${cc.originalInvoiceId || cc.originalInvoiceNumber}_${cc.collectedAt || "legacy"}_${amt}`;
+        if (amt <= 0 || registeredCreditCollections.has(dedupeKey)) return;
+        registeredCreditCollections.add(dedupeKey);
         overview.creditCollectionsRevenue += amt;
         overview.collections.creditCollections += amt;
         const originalInvoice = invoices.find((candidate) => candidate.id === cc.originalInvoiceId || candidate.invoiceNumber === cc.originalInvoiceNumber);
@@ -410,7 +411,9 @@ export function generateMonthlyReport(params: {
           : null);
         const creditAllocation = allocationSource
           ? calculateCreditCollectionAllocation(allocationSource, amt, staffList)
-          : { ownerShare: amt, stylistShare: 0, serviceRevenue: 0, productCost: 0, staff: [] };
+          : { ownerShare: amt, ownerDirectShare: amt, ownerStylistShare: 0, stylistShare: 0, serviceRevenue: 0, productCost: 0, staff: [] };
+        console.log('DEBUG monthlyReports creditAllocation', creditAllocation);
+
         overview.allocation.ownerCreditCollectionsShare += creditAllocation.ownerShare;
         overview.allocation.totalOwnerShare += creditAllocation.ownerShare;
         overview.allocation.totalStylistShares += creditAllocation.stylistShare;

@@ -3,9 +3,13 @@
  * This utility acts as the single source of truth across the billing, settlements, and backfill layers.
  */
 
+import { toLocalDateString } from "./date";
+
 export interface CreditCollectionAllocation {
   stylistShare: number;
   ownerShare: number;
+  ownerDirectShare: number;
+  ownerStylistShare: number;
   serviceRevenue: number;
   productCost: number;
   staff: Array<{ staffId: string; staffName: string; amount: number; serviceRevenue: number; productCost: number }>;
@@ -24,15 +28,25 @@ export function calculateCreditCollectionAllocation(inv: any, amount: number, st
   let stylistShare = 0;
   let serviceRevenue = 0;
   let productCost = 0;
+  let ownerDirectShare = 0;
+  let ownerStylistShare = 0;
+
   (inv?.services || []).forEach((service: any) => {
     const commission = getServiceCommission(service, inv);
     serviceRevenue += commission.serviceRevenue * factor;
     productCost += commission.productCost * factor;
     const staff = staffList.find((item: any) => item.id === service.staffId || item.name === service.staffName);
     const role = service.staffRole || staff?.role || (service.staffName === "System" ? "Owner" : "Stylist");
-    if (service.serviceId === "membership_fee" || role === "Owner") return;
+
+    if (service.serviceId === "membership_fee" || role === "Owner") {
+      ownerDirectShare += commission.ownerShare * factor;
+      return;
+    }
+
     const share = commission.stylistShare * factor;
     stylistShare += share;
+    ownerStylistShare += commission.ownerShare * factor;
+
     const key = service.staffId || service.staffName || "unassigned";
     const row = byStaff.get(key) || { staffId: service.staffId || key, staffName: service.staffName || "Unassigned", amount: 0, serviceRevenue: 0, productCost: 0 };
     row.amount += share;
@@ -40,9 +54,38 @@ export function calculateCreditCollectionAllocation(inv: any, amount: number, st
     row.productCost += commission.productCost * factor;
     byStaff.set(key, row);
   });
-  const roundedStaff = Array.from(byStaff.values()).map((row) => ({ ...row, amount: Math.round(row.amount * 100) / 100, serviceRevenue: Math.round(row.serviceRevenue * 100) / 100, productCost: Math.round(row.productCost * 100) / 100 }));
+
+  const roundedStaff = Array.from(byStaff.values()).map((row) => ({
+    ...row,
+    amount: Math.round(row.amount * 100) / 100,
+    serviceRevenue: Math.round(row.serviceRevenue * 100) / 100,
+    productCost: Math.round(row.productCost * 100) / 100,
+  }));
   const roundedStylist = Math.round(roundedStaff.reduce((sum, row) => sum + row.amount, 0) * 100) / 100;
-  return { stylistShare: roundedStylist, ownerShare: Math.round((amount - roundedStylist) * 100) / 100, serviceRevenue: Math.round(serviceRevenue * 100) / 100, productCost: Math.round(productCost * 100) / 100, staff: roundedStaff };
+  const totalOwner = Math.round((amount - roundedStylist) * 100) / 100;
+
+  let roundedOwnerDirect = Math.round(ownerDirectShare * 100) / 100;
+  let roundedOwnerStylist = Math.round(ownerStylistShare * 100) / 100;
+
+  if (byStaff.size === 0) {
+    roundedOwnerDirect = totalOwner;
+    roundedOwnerStylist = 0;
+  } else if (ownerDirectShare === 0) {
+    roundedOwnerDirect = 0;
+    roundedOwnerStylist = totalOwner;
+  } else {
+    roundedOwnerStylist = Math.round((totalOwner - roundedOwnerDirect) * 100) / 100;
+  }
+
+  return {
+    stylistShare: roundedStylist,
+    ownerShare: totalOwner,
+    ownerDirectShare: roundedOwnerDirect,
+    ownerStylistShare: roundedOwnerStylist,
+    serviceRevenue: Math.round(serviceRevenue * 100) / 100,
+    productCost: Math.round(productCost * 100) / 100,
+    staff: roundedStaff,
+  };
 }
 export interface InvoicePayments {
   cash: number;
@@ -205,6 +248,7 @@ export interface DaySettlementDetails {
   staffRevenueContribution: number;
   staffProductReimbursement: number;
   retailProductsRevenue: number;
+  creditCollectionsRevenue: number;
   staffDetails: Record<string, StaffDetail>;
   collectedCredits: any[];
 }
@@ -224,92 +268,72 @@ export function calculateDaySettlement(
     staffRevenueContribution: 0,
     staffProductReimbursement: 0,
     retailProductsRevenue: 0,
+    creditCollectionsRevenue: 0,
     staffDetails: {},
     collectedCredits: [],
   };
 
-  dayInvoices.forEach((inv) => {
-    const ratio = getInvoicePaymentRatio(inv);
+  const registeredCreditCollections = new Set<string>();
 
-    const invCollectedCredits: any[] = inv.collectedCredits || [];
-    invCollectedCredits.forEach((cc: any) => {
-      const amount = cc.collectedAmount || 0;
-      const method = cc.paymentSplit
-        ? (cc.paymentSplit.cash > 0 && cc.paymentSplit.upi === 0 && cc.paymentSplit.card === 0 ? "CASH"
-          : cc.paymentSplit.upi > 0 && cc.paymentSplit.cash === 0 && cc.paymentSplit.card === 0 ? "UPI"
-          : cc.paymentSplit.card > 0 && cc.paymentSplit.cash === 0 && cc.paymentSplit.upi === 0 ? "CARD"
-          : "SPLIT")
-        : inv.paymentMethod || "UPI";
+  const processCreditCollection = (
+    allocationSource: any,
+    amount: number,
+    collectionId: string | undefined,
+    originalInvoiceNumber: string,
+    collectedAtDate: string,
+    paymentSplit: any,
+    fallbackKey: string
+  ) => {
+    const dedupeKey = collectionId || fallbackKey;
+    if (amount <= 0 || registeredCreditCollections.has(dedupeKey)) return;
+    registeredCreditCollections.add(dedupeKey);
 
-      const sourceInvoice = cc.originalServices && cc.originalGrandTotal
-        ? { grandTotal: cc.originalGrandTotal, services: cc.originalServices }
-        : null;
-      const creditAllocation = sourceInvoice
-        ? calculateCreditCollectionAllocation(sourceInvoice, amount, staffList)
-        : { ownerShare: amount, stylistShare: 0, serviceRevenue: 0, productCost: 0, staff: [] };
-      result.collectedCredits.push({
-        originalBillDate: cc.collectedAt || dateStr,
-        originalInvoiceNumber: cc.originalInvoiceNumber || "",
-        collectionDate: dateStr,
-        collectionMethod: method,
-        collectedBy: "System",
-        amount,
-        serviceOrProductName: `Credit Collected (Inv #${cc.originalInvoiceNumber || "?"})`,
-        type: "credit",
-        share: creditAllocation.ownerShare,
-      });
-      result.totalServiceRevenue += creditAllocation.serviceRevenue;
-      result.totalProductCost += creditAllocation.productCost;
-      result.ownerDirectRevenue += creditAllocation.ownerShare;
-      result.totalOwnerShare += creditAllocation.ownerShare;
-      result.totalStaffShare += creditAllocation.stylistShare;
-      result.staffRevenueContribution += creditAllocation.stylistShare;
-      creditAllocation.staff.forEach((staffCredit) => {
-        const staffMember = staffList.find((st) => st.id === staffCredit.staffId || st.name === staffCredit.staffName);
-        const key = staffCredit.staffId || staffCredit.staffName;
-        if (!result.staffDetails[key]) {
-          result.staffDetails[key] = {
-            staffId: staffCredit.staffId, name: staffCredit.staffName, role: staffMember?.role || "Stylist",
-            serviceRevenue: 0, productCost: 0, staffShare: 0, ownerShareContribution: 0,
-            collectedCredits: [], collectedCreditsShare: 0,
-          };
-        }
-        const detail = result.staffDetails[key];
-        detail.serviceRevenue += staffCredit.serviceRevenue;
-        detail.productCost += staffCredit.productCost;
-        detail.staffShare += staffCredit.amount;
-        detail.ownerShareContribution += Math.max(0, staffCredit.serviceRevenue - staffCredit.productCost - staffCredit.amount) + staffCredit.productCost;
-        detail.collectedCreditsShare = (detail.collectedCreditsShare || 0) + staffCredit.amount;
-        detail.collectedCredits = [...(detail.collectedCredits || []), { originalInvoiceNumber: cc.originalInvoiceNumber, amount: staffCredit.amount }];
-      });
+    const creditAllocation = allocationSource
+      ? calculateCreditCollectionAllocation(allocationSource, amount, staffList)
+      : {
+          stylistShare: 0,
+          ownerShare: amount,
+          ownerDirectShare: amount,
+          ownerStylistShare: 0,
+          serviceRevenue: 0,
+          productCost: 0,
+          staff: [],
+        };
+
+    const method = paymentSplit
+      ? (paymentSplit.cash > 0 && paymentSplit.upi === 0 && paymentSplit.card === 0 ? "CASH"
+        : paymentSplit.upi > 0 && paymentSplit.cash === 0 && paymentSplit.card === 0 ? "UPI"
+        : paymentSplit.card > 0 && paymentSplit.cash === 0 && paymentSplit.upi === 0 ? "CARD"
+        : "SPLIT")
+      : "UPI";
+
+    result.collectedCredits.push({
+      originalBillDate: collectedAtDate,
+      originalInvoiceNumber,
+      collectionDate: dateStr,
+      collectionMethod: method,
+      collectedBy: "System",
+      amount,
+      serviceOrProductName: `Credit Collected (Inv #${originalInvoiceNumber || "?"})`,
+      type: "credit",
+      share: creditAllocation.ownerShare,
     });
 
-    const retailRev = calculateInvoiceRetailRevenue(inv);
-    result.retailProductsRevenue += retailRev;
-    result.totalOwnerShare += retailRev;
+    result.creditCollectionsRevenue += amount;
+    result.totalProductCost += creditAllocation.productCost;
+    result.ownerDirectRevenue += creditAllocation.ownerDirectShare;
+    result.staffRevenueContribution += creditAllocation.ownerStylistShare;
+    result.totalOwnerShare += creditAllocation.ownerShare;
+    result.totalStaffShare += creditAllocation.stylistShare;
 
-    (inv.services || []).forEach((s: any) => {
-      const comm = getServiceCommission(s, inv);
-      const staffId = s.staffId || "unassigned";
-      const staffName = s.staffName || "Unassigned";
-
-      const staffMember = staffList.find(
-        (st) => st.id === staffId || st.name === staffName
-      );
-      const role = s.staffRole || staffMember?.role || "Stylist";
-
-      if (s.serviceId === "membership_fee") {
-        result.totalMembershipAmount += comm.serviceRevenue * ratio;
-        result.totalOwnerShare += comm.serviceRevenue * ratio;
-        return;
-      }
-
-      const key = staffId !== "unassigned" ? staffId : staffName;
+    creditAllocation.staff.forEach((staffCredit) => {
+      const staffMember = staffList.find((st) => st.id === staffCredit.staffId || st.name === staffCredit.staffName);
+      const key = staffCredit.staffId || staffCredit.staffName;
       if (!result.staffDetails[key]) {
         result.staffDetails[key] = {
-          staffId,
-          name: staffName,
-          role,
+          staffId: staffCredit.staffId,
+          name: staffCredit.staffName,
+          role: staffMember?.role || "Stylist",
           serviceRevenue: 0,
           productCost: 0,
           staffShare: 0,
@@ -318,32 +342,124 @@ export function calculateDaySettlement(
           collectedCreditsShare: 0,
         };
       }
-      const sd = result.staffDetails[key];
+      const detail = result.staffDetails[key];
+      detail.serviceRevenue += staffCredit.serviceRevenue;
+      detail.productCost += staffCredit.productCost;
+      detail.staffShare += staffCredit.amount;
+      detail.ownerShareContribution += Math.max(0, staffCredit.serviceRevenue - staffCredit.productCost - staffCredit.amount) + staffCredit.productCost;
+      detail.collectedCreditsShare = (detail.collectedCreditsShare || 0) + staffCredit.amount;
+      detail.collectedCredits = [...(detail.collectedCredits || []), { originalInvoiceNumber, amount: staffCredit.amount }];
+    });
+  };
 
-      result.totalServiceRevenue += comm.serviceRevenue * ratio;
-      result.totalProductCost += comm.productCost * ratio;
-
-      if (role === "Owner") {
-        result.ownerDirectRevenue += comm.ownerShare * ratio;
-        result.totalOwnerShare += comm.ownerShare * ratio;
-
-        sd.serviceRevenue += comm.serviceRevenue * ratio;
-        sd.productCost += comm.productCost * ratio;
-        sd.ownerShareContribution += comm.ownerShare * ratio;
-      } else {
-        const remainingService = comm.serviceRevenue - comm.productCost;
-        result.staffRevenueContribution += 0.5 * remainingService * ratio;
-        result.staffProductReimbursement += comm.productCost * ratio;
-
-        result.totalStaffShare += comm.stylistShare * ratio;
-        result.totalOwnerShare += comm.ownerShare * ratio;
-
-        sd.serviceRevenue += comm.serviceRevenue * ratio;
-        sd.productCost += comm.productCost * ratio;
-        sd.staffShare += comm.stylistShare * ratio;
-        sd.ownerShareContribution += comm.ownerShare * ratio;
+  dayInvoices.forEach((inv) => {
+    // 1. Direct credit payment history on prior or current invoices collected on dateStr
+    (inv.creditPaymentHistory || []).forEach((cph: any) => {
+      const payDate = (cph.collectedAt ? toLocalDateString(cph.collectedAt) : "") || (cph.collectedAt || "").slice(0, 10);
+      if (payDate === dateStr) {
+        const amt = Number(cph.collectedAmount) || 0;
+        const fallbackKey = `${inv.id || inv.invoiceNumber}_${cph.collectedAt || "legacy"}_${amt}`;
+        processCreditCollection(
+          inv,
+          amt,
+          cph.collectionId,
+          inv.invoiceNumber || "",
+          cph.collectedAt || dateStr,
+          cph.paymentSplit,
+          fallbackKey
+        );
       }
     });
+
+    const invDateStr = inv.dateKey || (inv.date ? toLocalDateString(inv.date) : "");
+    const isCurrentDay = !invDateStr || invDateStr === dateStr;
+
+    // 2. Process collectedCredits and current services on invoices for dateStr
+    if (isCurrentDay) {
+      (inv.collectedCredits || []).forEach((cc: any) => {
+        const amt = Number(cc.collectedAmount) || 0;
+        const fallbackKey = `${cc.originalInvoiceId || cc.originalInvoiceNumber}_${cc.collectedAt || "legacy"}_${amt}`;
+        const originalInvoice = dayInvoices.find(
+          (candidate) => candidate.id === cc.originalInvoiceId || candidate.invoiceNumber === cc.originalInvoiceNumber
+        );
+        const allocationSource = originalInvoice || (cc.originalServices && cc.originalGrandTotal
+          ? { grandTotal: cc.originalGrandTotal, services: cc.originalServices }
+          : null);
+
+        processCreditCollection(
+          allocationSource,
+          amt,
+          cc.collectionId,
+          cc.originalInvoiceNumber || "",
+          cc.collectedAt || dateStr,
+          cc.paymentSplit,
+          fallbackKey
+        );
+      });
+
+      const retailRev = calculateInvoiceRetailRevenue(inv);
+      result.retailProductsRevenue += retailRev;
+      result.totalOwnerShare += retailRev;
+
+      const ratio = getInvoicePaymentRatio(inv);
+
+      (inv.services || []).forEach((s: any) => {
+        const comm = getServiceCommission(s, inv);
+        const staffId = s.staffId || "unassigned";
+        const staffName = s.staffName || "Unassigned";
+
+        const staffMember = staffList.find(
+          (st) => st.id === staffId || st.name === staffName
+        );
+        const role = s.staffRole || staffMember?.role || "Stylist";
+
+        if (s.serviceId === "membership_fee") {
+          result.totalMembershipAmount += comm.serviceRevenue * ratio;
+          result.totalOwnerShare += comm.serviceRevenue * ratio;
+          return;
+        }
+
+        const key = staffId !== "unassigned" ? staffId : staffName;
+        if (!result.staffDetails[key]) {
+          result.staffDetails[key] = {
+            staffId,
+            name: staffName,
+            role,
+            serviceRevenue: 0,
+            productCost: 0,
+            staffShare: 0,
+            ownerShareContribution: 0,
+            collectedCredits: [],
+            collectedCreditsShare: 0,
+          };
+        }
+        const sd = result.staffDetails[key];
+
+        result.totalServiceRevenue += comm.serviceRevenue * ratio;
+        result.totalProductCost += comm.productCost * ratio;
+
+        if (role === "Owner") {
+          result.ownerDirectRevenue += comm.ownerShare * ratio;
+          result.totalOwnerShare += comm.ownerShare * ratio;
+
+          sd.serviceRevenue += comm.serviceRevenue * ratio;
+          sd.productCost += comm.productCost * ratio;
+          sd.ownerShareContribution += comm.ownerShare * ratio;
+        } else {
+          const remainingService = comm.serviceRevenue - comm.productCost;
+          result.staffRevenueContribution += 0.5 * remainingService * ratio;
+          result.staffProductReimbursement += comm.productCost * ratio;
+
+          result.totalStaffShare += comm.stylistShare * ratio;
+          result.totalOwnerShare += comm.ownerShare * ratio;
+
+          sd.serviceRevenue += comm.serviceRevenue * ratio;
+          sd.productCost += comm.productCost * ratio;
+          sd.staffShare += comm.stylistShare * ratio;
+          sd.ownerShareContribution += comm.ownerShare * ratio;
+        }
+      });
+    }
   });
 
   return result;

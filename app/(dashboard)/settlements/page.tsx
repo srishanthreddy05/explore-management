@@ -1257,6 +1257,88 @@ export default function SettlementsPage() {
       const dailyStats: Record<string, any> = {};
       const staffStats: Record<string, any> = {};
 
+      const registeredCreditCollections = new Set<string>();
+
+      const applyCreditCollectionToStats = (
+        sourceInvoice: any,
+        amt: number,
+        collectionId: string | undefined,
+        cDateKey: string,
+        paymentSplit: any,
+        fallbackKey: string
+      ) => {
+        const dedupeKey = collectionId || fallbackKey;
+        if (amt <= 0 || registeredCreditCollections.has(dedupeKey)) return;
+        registeredCreditCollections.add(dedupeKey);
+
+        const cMonthKey = cDateKey.slice(0, 7);
+        const creditAllocation = sourceInvoice
+          ? calculateCreditCollectionAllocation(sourceInvoice, amt, staff)
+          : {
+              stylistShare: 0,
+              ownerShare: amt,
+              ownerDirectShare: amt,
+              ownerStylistShare: 0,
+              serviceRevenue: 0,
+              productCost: 0,
+              staff: [],
+            };
+
+        if (!dailyStats[cDateKey]) {
+          dailyStats[cDateKey] = {
+            dateKey: cDateKey,
+            totalRevenue: 0,
+            totalVisits: 0,
+            cash: 0,
+            upi: 0,
+            card: 0,
+            serviceRevenue: 0,
+            productCost: 0,
+            stylistShare: 0,
+            ownerShare: 0,
+            totalMembershipAmount: 0,
+            retailProductsRevenue: 0,
+          };
+        }
+
+        const cCash = Number(paymentSplit?.cash) || 0;
+        const cUpi = Number(paymentSplit?.upi) || 0;
+        const cCard = Number(paymentSplit?.card) || 0;
+        const tenderTotal = cCash + cUpi + cCard;
+
+        dailyStats[cDateKey].ownerShare += creditAllocation.ownerShare;
+        dailyStats[cDateKey].stylistShare += creditAllocation.stylistShare;
+        dailyStats[cDateKey].totalRevenue += amt;
+        if (tenderTotal > 0) {
+          dailyStats[cDateKey].cash += cCash;
+          dailyStats[cDateKey].upi += cUpi;
+          dailyStats[cDateKey].card += cCard;
+        } else {
+          dailyStats[cDateKey].upi += amt;
+        }
+
+        if (!monthlyStats[cMonthKey]) {
+          monthlyStats[cMonthKey] = { totalRevenue: 0, totalVisits: 0, cash: 0, upi: 0, card: 0 };
+        }
+        monthlyStats[cMonthKey].totalRevenue += amt;
+        if (tenderTotal > 0) {
+          monthlyStats[cMonthKey].cash += cCash;
+          monthlyStats[cMonthKey].upi += cUpi;
+          monthlyStats[cMonthKey].card += cCard;
+        } else {
+          monthlyStats[cMonthKey].upi += amt;
+        }
+
+        creditAllocation.staff.forEach((st) => {
+          const staffMonthKey = `${st.staffId}_${cMonthKey}`;
+          if (!staffStats[staffMonthKey]) {
+            staffStats[staffMonthKey] = { revenue: 0, servicesCount: 0, productCost: 0 };
+          }
+          staffStats[staffMonthKey].revenue += st.serviceRevenue;
+          staffStats[staffMonthKey].productCost += st.productCost;
+        });
+      };
+
       allInvoices.forEach((inv: any) => {
         const { dateKey, monthKey } = getInvoiceDateKeys(inv);
         const payments = getInvoicePayments(inv);
@@ -1334,40 +1416,24 @@ export default function SettlementsPage() {
         });
 
         // Track historical credit collections realized in current period
-        (inv.collectedCredits || []).forEach((cc: any) => {
-          const amount = Number(cc.collectedAmount) || 0;
-          dailyStats[dateKey].ownerShare += amount;
-          monthlyStats[monthKey].totalRevenue += amount;
+        (inv.creditPaymentHistory || []).forEach((cph: any) => {
+          const amt = Number(cph.collectedAmount) || 0;
+          const cDateKey = (cph.collectedAt ? toLocalDateString(cph.collectedAt) : "") || (cph.collectedAt || dateKey).slice(0, 10);
+          const fallbackKey = `${inv.id || inv.invoiceNumber}_${cph.collectedAt || "legacy"}_${amt}`;
+          applyCreditCollectionToStats(inv, amt, cph.collectionId, cDateKey, cph.paymentSplit, fallbackKey);
         });
 
-        (inv.creditPaymentHistory || []).forEach((cph: any) => {
-          const amount = Number(cph.collectedAmount) || 0;
-          const cDateKey = (cph.collectedAt || dateKey).slice(0, 10);
-          const cMonthKey = cDateKey.slice(0, 7);
-          if (amount > 0) {
-            if (!dailyStats[cDateKey]) {
-              dailyStats[cDateKey] = {
-                dateKey: cDateKey,
-                totalRevenue: 0,
-                totalVisits: 0,
-                cash: 0,
-                upi: 0,
-                card: 0,
-                serviceRevenue: 0,
-                productCost: 0,
-                stylistShare: 0,
-                ownerShare: 0,
-                totalMembershipAmount: 0,
-                retailProductsRevenue: 0,
-              };
-            }
-            dailyStats[cDateKey].ownerShare += amount;
-            dailyStats[cDateKey].totalRevenue += amount;
-            if (!monthlyStats[cMonthKey]) {
-              monthlyStats[cMonthKey] = { totalRevenue: 0, totalVisits: 0, cash: 0, upi: 0, card: 0 };
-            }
-            monthlyStats[cMonthKey].totalRevenue += amount;
-          }
+        (inv.collectedCredits || []).forEach((cc: any) => {
+          const amt = Number(cc.collectedAmount) || 0;
+          const cDateKey = (cc.collectedAt ? toLocalDateString(cc.collectedAt) : "") || (cc.collectedAt || dateKey).slice(0, 10);
+          const fallbackKey = `${cc.originalInvoiceId || cc.originalInvoiceNumber}_${cc.collectedAt || "legacy"}_${amt}`;
+          const originalInvoice = allInvoices.find(
+            (candidate: any) => candidate.id === cc.originalInvoiceId || candidate.invoiceNumber === cc.originalInvoiceNumber
+          );
+          const allocationSource = originalInvoice || (cc.originalServices && cc.originalGrandTotal
+            ? { grandTotal: cc.originalGrandTotal, services: cc.originalServices }
+            : null);
+          applyCreditCollectionToStats(allocationSource, amt, cc.collectionId, cDateKey, cc.paymentSplit, fallbackKey);
         });
 
         const staffInvoiceSummary: Record<string, any> = {};
@@ -1944,18 +2010,10 @@ export default function SettlementsPage() {
                                     negative: true,
                                   },
                                 ]}
-                                collectedCredits={(details.collectedCredits || []).map((c: any) => {
-                                  let share = 0;
-                                  if (c.staffName === "System" || c.role === "Owner") {
-                                    share = c.amount;
-                                  } else {
-                                    share = 0.5 * c.amount;
-                                  }
-                                  return {
-                                    ...c,
-                                    share,
-                                  };
-                                })}
+                                collectedCredits={(details.collectedCredits || []).map((c: any) => ({
+                                  ...c,
+                                  share: c.share !== undefined ? c.share : (c.collectedBy === "System" || c.staffName === "System" || c.role === "Owner" ? c.amount : 0.5 * c.amount),
+                                }))}
                               />
 
                               {/* Stylist Cards (3 Vertical Columns side-by-side) */}
@@ -1964,12 +2022,11 @@ export default function SettlementsPage() {
                                   .filter((sd) => sd.role !== "Owner")
                                   .map((sd) => {
                                     const collectedCredits = sd.collectedCredits || [];
-                                    const collectedCreditsShare = sd.collectedCreditsShare || 0;
-                                    const totalShare = sd.staffShare + collectedCreditsShare;
+                                    const totalShare = sd.staffShare;
 
                                     const mappedCollectedCredits = collectedCredits.map((c: any) => ({
                                       ...c,
-                                      share: 0.5 * c.amount,
+                                      share: c.amount,
                                     }));
 
                                     return (
