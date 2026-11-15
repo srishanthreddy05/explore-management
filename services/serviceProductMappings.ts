@@ -47,7 +47,7 @@ const DEFAULT_MAPPINGS = [
 ] as const;
 
 const normalize = (value: string) =>
-  value.toLowerCase().normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+  value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
 
 export async function getAll(): Promise<ServiceProductMapping[]> {
   const snapshot = await getDocs(
@@ -86,6 +86,19 @@ export async function seedDefaultMappings(services: Service[]): Promise<ServiceP
   const existing = await getAll();
   const existingIds = new Set(existing.map((item) => item.serviceId));
   const byName = new Map(services.map((service) => [normalize(service.name), service]));
+
+  // Apply the shared facial product cost to every facial service/category.
+  for (const service of services) {
+    const isFacial = normalize(service.category || "").includes("facial") || normalize(service.name).includes("facial");
+    if (!isFacial || !service.id || existingIds.has(service.id)) continue;
+    await save({
+      serviceId: service.id,
+      serviceName: service.name,
+      productName: "All Facials",
+      usageCost: 100,
+    });
+    existingIds.add(service.id);
+  }
 
   for (const defaults of DEFAULT_MAPPINGS) {
     const service = byName.get(normalize(defaults.serviceName));
