@@ -184,7 +184,7 @@ export default function ProductsPage() {
             Inventory
           </p>
           <h1 className="mt-2 text-3xl font-extrabold tracking-[-0.03em] text-[#F5F0E8]">
-            Products & Supplies ({products.length})
+            Products ({retailProducts.length})
           </h1>
         </div>
       </div>
