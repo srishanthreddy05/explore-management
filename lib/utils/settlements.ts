@@ -167,10 +167,12 @@ export function getServiceCommission(s: any, inv: any): ServiceCommission {
     stylistShare = 0;
     ownerShare = amount;
   } else {
-    // Business rule: Remove product cost first, then split remaining 50/50.
-    const remainingService = amount - cost;
+    // Business rule: deduct supplies before the 50/50 split. A supply cost
+    // greater than the service revenue must never create a negative stylist
+    // commission or make the owner/stylist allocation exceed collected revenue.
+    const remainingService = Math.max(0, amount - cost);
     stylistShare = remainingService * 0.5;
-    ownerShare   = (remainingService * 0.5) + cost;
+    ownerShare = amount - stylistShare;
   }
 
   return {
