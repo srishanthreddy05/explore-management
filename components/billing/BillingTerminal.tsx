@@ -77,6 +77,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
 
   const [services, setServices] = useState<ServiceRow[]>([]);
   const [serviceProductMappings, setServiceProductMappings] = useState<ServiceProductMapping[]>([]);
+  const [serviceProductMappingsReady, setServiceProductMappingsReady] = useState(false);
   const [products, setProducts] = useState<ProductRow[]>([]);
 
   const [cashAmount, setCashAmount] = useState<number | "">("");
@@ -243,14 +244,21 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
   }, [loadingInvoice, editInvoiceId, initialFormSnapshot]);
 
   useEffect(() => {
-    if (loadingAppData || servicesList.length === 0) return;
+    if (loadingAppData) return;
+    if (servicesList.length === 0) {
+      setServiceProductMappingsReady(true);
+      return;
+    }
     let active = true;
+    setServiceProductMappingsReady(false);
     (async () => {
       try {
         const mappings = await serviceProductMappingsService.seedDefaultMappings(servicesList);
         if (active) setServiceProductMappings(mappings);
       } catch (error) {
         console.error("Failed to load service product mappings:", error);
+      } finally {
+        if (active) setServiceProductMappingsReady(true);
       }
     })();
     return () => { active = false; };
@@ -1898,7 +1906,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
             serviceOptions={mappedServicesList}
             staffOptions={staffOptions}
             serviceProductMappings={activeServiceProductMappings}
-            disabled={saved}
+            disabled={saved || !serviceProductMappingsReady}
           />
 
           {/* Credit Settlement Section */}
