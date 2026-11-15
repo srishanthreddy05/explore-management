@@ -389,11 +389,20 @@ export function calculateSettlementRangeOverview(
       const payDate = (dp.collectedAt || "").slice(0, 10);
       if (payDate >= dateFrom && payDate <= dateTo) {
         const amt = Number(dp.collectedAmount) || 0;
-        const dedupeKey = `${inv.id || inv.invoiceNumber}_${amt}`;
+        const dedupeKey = dp.collectionId || `${inv.id || inv.invoiceNumber}_${dp.collectedAt || "legacy"}_${amt}`;
         if (amt > 0 && !registeredCreditCollections.has(dedupeKey)) {
           registeredCreditCollections.add(dedupeKey);
           creditCollectionsRevenue += amt;
-          ownerShare += amt;
+          const allocation = calculateCreditCollectionAllocation(inv, amt, staffList);
+          ownerShare += allocation.ownerShare;
+          totalStylistShare += allocation.stylistShare;
+          allocation.staff.forEach((staffCredit) => {
+            const key = staffCredit.staffId || staffCredit.staffName || "unassigned";
+            if (!staffSummaryMap[key]) staffSummaryMap[key] = { revenueGenerated: 0, productCosts: 0, netShare: 0 };
+            staffSummaryMap[key].revenueGenerated += staffCredit.serviceRevenue;
+            staffSummaryMap[key].productCosts += staffCredit.productCost;
+            staffSummaryMap[key].netShare += staffCredit.amount;
+          });
         }
       }
     });
@@ -405,11 +414,26 @@ export function calculateSettlementRangeOverview(
     // Collected credits on this invoice
     (inv.collectedCredits || []).forEach((cc: any) => {
       const amt = Number(cc.collectedAmount) || 0;
-      const dedupeKey = `${cc.originalInvoiceId || cc.originalInvoiceNumber}_${amt}`;
+      const dedupeKey = cc.collectionId || `${cc.originalInvoiceId || cc.originalInvoiceNumber}_${cc.collectedAt || "legacy"}_${amt}`;
       if (amt > 0 && !registeredCreditCollections.has(dedupeKey)) {
         registeredCreditCollections.add(dedupeKey);
         creditCollectionsRevenue += amt;
-        ownerShare += amt;
+        const originalInvoice = invoices.find((candidate) => candidate.id === cc.originalInvoiceId || candidate.invoiceNumber === cc.originalInvoiceNumber);
+        const allocationSource = originalInvoice || (cc.originalServices && cc.originalGrandTotal
+          ? { grandTotal: cc.originalGrandTotal, services: cc.originalServices }
+          : null);
+        const allocation = allocationSource
+          ? calculateCreditCollectionAllocation(allocationSource, amt, staffList)
+          : { ownerShare: amt, stylistShare: 0, staff: [] };
+        ownerShare += allocation.ownerShare;
+        totalStylistShare += allocation.stylistShare;
+        allocation.staff.forEach((staffCredit) => {
+          const key = staffCredit.staffId || staffCredit.staffName || "unassigned";
+          if (!staffSummaryMap[key]) staffSummaryMap[key] = { revenueGenerated: 0, productCosts: 0, netShare: 0 };
+          staffSummaryMap[key].revenueGenerated += staffCredit.serviceRevenue;
+          staffSummaryMap[key].productCosts += staffCredit.productCost;
+          staffSummaryMap[key].netShare += staffCredit.amount;
+        });
       }
     });
 
