@@ -1574,6 +1574,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
     setAdvanceToAdd(0);
     setCustomerAdvance(null);
     setAdvanceApplied(0);
+    setOriginalAdvanceValues({ added: 0, used: 0, customerId: "" });
 
     if (onClose) {
       onClose();
@@ -2171,7 +2172,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
             advanceToAdd={advanceToAdd}
             onAddAdvance={setAdvanceToAdd}
             advanceApplied={advanceApplied}
-            totalCollectedCreditsAmount={totalCollectedCreditsAmount}
+            totalCollectedCreditsAmount={creditCollectionPaid}
             amountToCollect={amountToCollect}
           />
 
