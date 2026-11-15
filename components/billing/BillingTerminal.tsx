@@ -1222,8 +1222,10 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
         const ddStr = String(selectedDate.getDate()).padStart(2, '0');
         const dateKey = `${yyyy}-${mmStr}-${ddStr}`;
 
+        const editInvoiceCashPaid = Math.max(0, totalPaid - creditCollectionPaid - advanceToAdd);
+        const editInvoiceReceived = Math.round((editInvoiceCashPaid + advanceApplied) * 100) / 100;
         const invoicePaymentStatus = markAsCredit
-          ? ((totalPaid + advanceApplied) === 0 ? "unpaid" : "partial")
+          ? (editInvoiceReceived === 0 ? "unpaid" : "partial")
           : "paid";
 
         const updatePayload: any = {
@@ -1269,7 +1271,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
           paymentMethod: invoicePaymentMethod,
           paymentStatus: invoicePaymentStatus,
           collectedCredits: creditCollectionsToProcess.map((g) => ({
-            collectionId: `${invId || editInvoiceId}:${g.originalInvoiceId}`,
+            collectionId: `${editInvoiceId}:${g.originalInvoiceId}`,
             originalInvoiceId: g.originalInvoiceId,
             originalInvoiceNumber: g.originalInvoiceNumber,
             collectedAmount: g.amountCollecting,
