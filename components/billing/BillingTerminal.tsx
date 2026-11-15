@@ -805,13 +805,14 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
       originalInvoiceNumber: string;
       amountCollecting: number;
       creditIds: string[];
+      collectionId: string;
     }> = {};
     for (const c of selectedCreds) {
       const origId = c.originalInvoiceId || c.invoiceId || "";
       const origNum = c.originalInvoiceNumber || c.invoiceNumber || "";
       const amt = c.remainingAmount !== undefined ? c.remainingAmount : (c.amount ?? 0);
       if (!byInvoice[origId]) {
-        byInvoice[origId] = { originalInvoiceId: origId, originalInvoiceNumber: origNum, amountCollecting: 0, creditIds: [] };
+        byInvoice[origId] = { originalInvoiceId: origId, originalInvoiceNumber: origNum, amountCollecting: 0, creditIds: [], collectionId: `credit_${origId}_${selectedCreds.map((item) => item.id).sort().join("_")}` };
       }
       byInvoice[origId].amountCollecting += amt;
       byInvoice[origId].creditIds.push(c.id!);
@@ -1253,6 +1254,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
           collectedCredits: collectedCreditsByInvoice.map((g) => ({
             originalInvoiceId: g.originalInvoiceId,
             originalInvoiceNumber: g.originalInvoiceNumber,
+            collectionId: g.collectionId,
             collectedAmount: g.amountCollecting,
             paymentSplit: allocateSplit(creditSplit, g.amountCollecting),
             collectedAt: new Date().toISOString(),
@@ -1425,7 +1427,10 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
           await invoicesService.collectCreditPayment(
             group.originalInvoiceId,
             group.amountCollecting,
-            groupSplit
+            groupSplit,
+            undefined,
+            undefined,
+            group.collectionId
           );
         }
       }
