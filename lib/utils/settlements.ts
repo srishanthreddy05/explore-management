@@ -45,7 +45,9 @@ export function getInvoicePaymentRatio(inv: any): number {
   if (!inv) return 1;
   const grandTotal = inv.grandTotal || 0;
   if (grandTotal <= 0) return 1;
-  const payments = getInvoicePayments(inv);
+  // Credit collections are separate dated payment events. Exclude them from the
+  // original invoice's sale-date recognition to avoid counting them twice.
+  const payments = inv.initialPaymentSplit || getInvoicePayments(inv);
   const collected = (payments.cash || 0) + (payments.upi || 0) + (payments.card || 0) + (inv.advanceUsed || 0);
   return Math.min(1, Math.max(0, collected / grandTotal));
 }
@@ -307,19 +309,46 @@ export function calculateSettlementRangeOverview(
     const dKey = inv.dateKey || (inv.dateString ? inv.dateString.slice(0, 10) : "");
     const isInDateRange = dKey >= dateFrom && dKey <= dateTo;
 
-    // Check direct credit payment collections recorded on prior invoices
+    // Credit payments are recognized on their collection date, not again on
+    // the original invoice date. Attribute each collection using the original
+    // invoice's service/retail mix and the original performers.
     const directPayments: any[] = inv.creditPaymentHistory || [];
     directPayments.forEach((dp: any) => {
       const payDate = (dp.collectedAt || "").slice(0, 10);
-      if (payDate >= dateFrom && payDate <= dateTo) {
-        const amt = Number(dp.collectedAmount) || 0;
-        const dedupeKey = `${inv.id || inv.invoiceNumber}_${amt}`;
-        if (amt > 0 && !registeredCreditCollections.has(dedupeKey)) {
-          registeredCreditCollections.add(dedupeKey);
-          creditCollectionsRevenue += amt;
-          ownerShare += amt;
+      const amt = Number(dp.collectedAmount) || 0;
+      const paymentId = dp.id || dp.paymentId || dp.transactionId;
+      const dedupeKey = paymentId ? String(paymentId) : `${inv.id || inv.invoiceNumber}_${dp.collectedAt || ""}_${amt}`;
+      if (payDate < dateFrom || payDate > dateTo || amt <= 0 || registeredCreditCollections.has(dedupeKey)) return;
+      registeredCreditCollections.add(dedupeKey);
+      creditCollectionsRevenue += amt;
+      const invoiceTotal = Number(inv.grandTotal) || 0;
+      const allocationRatio = invoiceTotal > 0 ? Math.min(1, amt / invoiceTotal) : 0;
+      (inv.services || []).forEach((s: any) => {
+        const role = resolveServiceRole(s, staffList);
+        const comm = getServiceCommission(s, inv, role);
+        const ownerPart = comm.ownerShare * allocationRatio;
+        const stylistPart = comm.stylistShare * allocationRatio;
+        ownerShare += ownerPart;
+        totalServiceRevenue += comm.serviceRevenue * allocationRatio;
+        if (s.serviceId === "membership_fee") membershipAmount += comm.serviceRevenue * allocationRatio;
+        if (role !== "Owner") {
+          serviceSuppliesUsed += comm.productCost * allocationRatio;
+          totalStylistShare += stylistPart;
         }
-      }
+        const staffId = s.staffId || "unassigned";
+        const staffName = s.staffName || "Unassigned";
+        const key = staffId !== "unassigned" ? staffId : staffName;
+        if (!staffSummaryMap[key]) staffSummaryMap[key] = { revenueGenerated: 0, productCosts: 0, netShare: 0 };
+        staffSummaryMap[key].revenueGenerated += comm.serviceRevenue * allocationRatio;
+        staffSummaryMap[key].productCosts += comm.productCost * allocationRatio;
+        staffSummaryMap[key].netShare += stylistPart;
+      });
+      const retail = calculateInvoiceRetailRevenue({ ...inv, initialPaymentSplit: { cash: 0, upi: 0, card: 0 }, paymentSplit: { cash: 0, upi: 0, card: 0 }, creditPaymentHistory: [] });
+      // Retail is owner revenue; allocate the same invoice-level collection fraction.
+      const retailBase = (inv.products || []).reduce((sum: number, p: any) => sum + Number(p.amount ?? ((Number(p.price) || 0) * (Number(p.quantity) || 1) - (Number(p.discount) || 0))), 0);
+      const retailPart = Math.max(0, retailBase) * allocationRatio;
+      retailProductsRevenue += retailPart;
+      ownerShare += retailPart;
     });
 
     if (!isInDateRange) return;
