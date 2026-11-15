@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import * as invoicesService from "@/services/invoices";
 import * as expensesService from "@/services/expenses";
 import * as staffDrawingsService from "@/services/staffDrawings";
-import { getInvoicePayments, getInvoicePaymentRatio, getServiceCommission, calculateDaySettlement, DaySettlementDetails, calculateInvoiceRetailRevenue, calculateSettlementRangeOverview } from "@/lib/utils/settlements";
+import { getInvoicePayments, getInvoicePaymentRatio, getServiceCommission, calculateDaySettlement, DaySettlementDetails, calculateInvoiceRetailRevenue, calculateSettlementRangeOverview, calculateCreditCollectionAllocation } from "@/lib/utils/settlements";
 import { useAppData } from "@/context/AppDataContext";
 import { formatCurrency } from "@/components/salon-dashboard/types";
 import { format } from "date-fns";
