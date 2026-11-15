@@ -628,7 +628,8 @@ export async function collectCreditPayment(
   collectedAmount: number,
   paymentSplit: { cash: number; upi: number; card: number },
   collectionDate?: Date | string,
-  note?: string
+  note?: string,
+  collectionId?: string
 ): Promise<void> {
   if (collectedAmount <= 0) {
     throw new Error(`Invalid payment amount: ₹${collectedAmount}. Must be greater than 0.`);
@@ -652,6 +653,8 @@ export async function collectCreditPayment(
       const invoiceSnap = await tx.get(invoiceRef);
       if (!invoiceSnap.exists()) throw new Error("Original invoice not found");
       const oldInv = { id: originalInvoiceId, ...invoiceSnap.data() } as Invoice;
+      const eventId = collectionId || doc(collection(db, "credit_collection_ids")).id;
+      if ((oldInv.creditPaymentHistory || []).some((payment: any) => payment.collectionId === eventId)) return;
       const creditSnaps: Array<{ ref: any; data: any; id: string }> = [];
       for (const creditDocId of creditDocIds) {
         const creditRef = doc(db, "credit_balances", creditDocId);
@@ -701,7 +704,7 @@ export async function collectCreditPayment(
       // 2e. Update invoice document
       // Later receipts are independent events, not part of initial tender split.
       const paymentRecord = {
-        collectionId: doc(collection(db, "credit_collection_ids")).id,
+        collectionId: eventId,
         collectedAt: nowIso,
         collectedAmount,
         paymentSplit: { cash: paymentSplit.cash || 0, upi: paymentSplit.upi || 0, card: paymentSplit.card || 0 },
