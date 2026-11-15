@@ -1019,9 +1019,21 @@ export default function DashboardPage() {
   }, [loadTodayExpenses, loadTodayDrawings]);
 
   const todayExpensesTotal = useMemo(
-    () => todayExpenses.filter((e) => e.type === "daily").reduce((sum, exp) => sum + exp.amount, 0),
+    () => todayExpenses.reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0),
     [todayExpenses]
   );
+  const todayExpensesAllTotal = useMemo(
+    () => todayExpenses.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0),
+    [todayExpenses]
+  );
+  const todayExpenseCategoryTotals = useMemo(() => {
+    const totals: Record<string, number> = {};
+    todayExpenses.forEach((expense) => {
+      const category = expense.category || "Other";
+      totals[category] = (totals[category] || 0) + (Number(expense.amount) || 0);
+    });
+    return Object.entries(totals).sort((a, b) => b[1] - a[1]);
+  }, [todayExpenses]);
 
   const fetchMonthlyStats = useCallback(async (force = false) => {
     try {
@@ -1712,6 +1724,41 @@ export default function DashboardPage() {
               accent="blue"
             />
           </div>
+
+          {/* Today's Expenses */}
+          <section className="rounded-2xl border border-[#2E2B24] bg-[#1C1A16] p-5 shadow-sm">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-base font-bold text-[#F5F0E8]">Today's Expenses</h2>
+                <p className="mt-1 text-xs text-[#6B6358]">Expense breakdown by category</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Link href="/expenses" className="text-xs font-semibold text-[#B8962E] hover:underline">View all</Link>
+                <button onClick={() => openModal("expense")} className="rounded-lg bg-[#B8962E] px-3 py-2 text-xs font-bold text-[#0E0D0B] hover:bg-[#D4A935]">+ Add Expense</button>
+              </div>
+            </div>
+            <div className="mb-4 flex items-end justify-between gap-4">
+              <div className="text-2xl font-extrabold tracking-tight text-[#E57373]">{formatCurrency(todayExpensesAllTotal)}</div>
+              <div className="text-[10px] text-[#6B6358]">{todayExpenses.length} entries today</div>
+            </div>
+            {todayExpenseCategoryTotals.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-[#2E2B24] px-4 py-6 text-center text-xs text-[#6B6358]">No expenses recorded today</p>
+            ) : (
+              <div className="space-y-3">
+                {todayExpenseCategoryTotals.map(([category, amount]) => (
+                  <div key={category}>
+                    <div className="mb-1 flex items-center justify-between text-xs">
+                      <span className="font-medium text-[#A89F8C]">{category}</span>
+                      <span className="font-semibold tabular-nums text-[#F5F0E8]">{formatCurrency(amount)}</span>
+                    </div>
+                    <div className="h-2 overflow-hidden rounded-full bg-[#0E0D0B]">
+                      <div className="h-full rounded-full bg-[#B8962E]" style={{ width: `${todayExpensesAllTotal > 0 ? (amount / todayExpensesAllTotal) * 100 : 0}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
         </div>
 
         {/* Right Column — Staff */}

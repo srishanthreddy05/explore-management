@@ -17,7 +17,6 @@ export default function ExpensesPage() {
   const firstDayStr = toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1));
   const todayStr = toLocalDateString(now);
 
-  const [typeFilter, setTypeFilter] = useState<"all" | "daily" | "fixed">("all");
   const [dateFrom, setDateFrom] = useState(firstDayStr);
   const [dateTo, setDateTo] = useState(todayStr);
 
@@ -29,7 +28,7 @@ export default function ExpensesPage() {
     amount: 0,
     date: toLocalDateString(new Date()),
     category: "Rent",
-    type: "monthly" as "daily" | "monthly",
+    otherCategory: "",
   });
 
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -74,7 +73,7 @@ export default function ExpensesPage() {
       amount: 0,
       date: toLocalDateString(new Date()),
       category: "Rent",
-      type: "monthly",
+      otherCategory: "",
     });
     setModalOpen(true);
   };
@@ -85,8 +84,8 @@ export default function ExpensesPage() {
       description: e.description,
       amount: e.amount,
       date: e.date,
-      category: e.category || "Rent",
-      type: e.type || "monthly",
+      category: ["Water","Newspaper","Tissue","AC Service","GHMC","Current Bill","Rent","Products","Utilities","Other"].includes(e.category || "") ? (e.category || "Rent") : "Other",
+      otherCategory: ["Water","Newspaper","Tissue","AC Service","GHMC","Current Bill","Rent","Products","Utilities","Other"].includes(e.category || "") ? "" : (e.category || ""),
     });
     setModalOpen(true);
   };
@@ -112,9 +111,11 @@ export default function ExpensesPage() {
     e.preventDefault();
     try {
       if (editingExpense?.id) {
-        await expensesService.update(editingExpense.id, formData);
+        const { otherCategory, ...expenseData } = formData;
+        await expensesService.update(editingExpense.id, { ...expenseData, category: formData.category === "Other" ? otherCategory.trim() : formData.category });
       } else {
-        await expensesService.create(formData);
+        const { otherCategory, ...expenseData } = formData;
+        await expensesService.create({ ...expenseData, category: formData.category === "Other" ? otherCategory.trim() : formData.category });
       }
       setModalOpen(false);
       loadExpenses();
@@ -125,52 +126,25 @@ export default function ExpensesPage() {
 
   // ── Summary card calculations ─────────────────────────────────────────────
   // expenses[] is already filtered by the selected dateFrom/dateTo via loadExpenses
-  const summary = useMemo(() => {
-    let rangeDaily = 0;
-    let rangeFixed = 0;
-
-    expenses.forEach((exp) => {
-      const typeStr = (exp.type || "").toLowerCase();
-      const amount = Number(exp.amount) || 0;
-      const inRange = (!dateFrom || exp.date >= dateFrom) && (!dateTo || exp.date <= dateTo);
-
-      if (!inRange) return;
-
-      if (typeStr === "daily") {
-        rangeDaily += amount;
-      }
-      if (typeStr === "monthly" || typeStr === "fixed") {
-        rangeFixed += amount;
-      }
-    });
-
-    return { rangeDaily, rangeFixed, total: rangeDaily + rangeFixed };
-  }, [expenses, dateFrom, dateTo]);
+  const summary = useMemo(() => ({
+    total: expenses.reduce((sum, expense) => {
+      const inRange = (!dateFrom || expense.date >= dateFrom) && (!dateTo || expense.date <= dateTo);
+      return sum + (inRange ? Number(expense.amount) || 0 : 0);
+    }, 0),
+  }), [expenses, dateFrom, dateTo]);
 
   // ── Filter logic ──────────────────────────────────────────────────────────
   const filteredExpenses = useMemo(() => {
     return expenses.filter((e) => {
       const desc = (e.description || "").toLowerCase();
       const cat = (e.category || "").toLowerCase();
-      const typeS = (e.type || "").toLowerCase();
       const sQ = searchQuery.toLowerCase();
-
-      const matchesSearch =
-        desc.includes(sQ) ||
-        cat.includes(sQ) ||
-        typeS.includes(sQ);
-
-      const matchesType =
-        typeFilter === "all" ||
-        (typeFilter === "daily" && typeS === "daily") ||
-        (typeFilter === "fixed" && (typeS === "fixed" || typeS === "monthly"));
-
+      const matchesSearch = desc.includes(sQ) || cat.includes(sQ);
       const matchesFrom = !dateFrom || e.date >= dateFrom;
       const matchesTo = !dateTo || e.date <= dateTo;
-
-      return matchesSearch && matchesType && matchesFrom && matchesTo;
+      return matchesSearch && matchesFrom && matchesTo;
     });
-  }, [expenses, searchQuery, typeFilter, dateFrom, dateTo]);
+  }, [expenses, searchQuery, dateFrom, dateTo]);
 
   return (
     <div className="w-full text-[#A89F8C]">
@@ -218,39 +192,11 @@ export default function ExpensesPage() {
       ) : (
         <>
           {/* ── Summary cards ──────────────────────────────────────────── */}
-          <div className="mb-6 grid gap-4 sm:grid-cols-3">
+          <div className="mb-8 grid gap-4 sm:grid-cols-1">
             <div className="rounded-2xl border border-[#2E2B24] bg-[#131210] p-5 shadow-sm">
-              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#A89F8C]">
-                Total Daily Expenses
-              </p>
-              <p className="mt-2 text-2xl font-extrabold tracking-[-0.04em] text-[#E57373]">
-                {formatCurrency(summary.rangeDaily)}
-              </p>
-              <p className="mt-1 text-xs text-[#6B6358]">
-                Daily expenses in selected period
-              </p>
-            </div>
-            <div className="rounded-2xl border border-[#2E2B24] bg-[#131210] p-5 shadow-sm">
-              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#A89F8C]">
-                This Month's Fixed Costs
-              </p>
-              <p className="mt-2 text-2xl font-extrabold tracking-[-0.04em] text-[#E57373]">
-                {formatCurrency(summary.rangeFixed)}
-              </p>
-              <p className="mt-1 text-xs text-[#6B6358]">
-                Rent, electricity, salaries
-              </p>
-            </div>
-            <div className="rounded-2xl border border-[#2E2B24] bg-[#131210] p-5 shadow-sm">
-              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#A89F8C]">
-                Total Expenses
-              </p>
-              <p className="mt-2 text-2xl font-extrabold tracking-[-0.04em] text-[#F5F0E8]">
-                {formatCurrency(summary.total)}
-              </p>
-              <p className="mt-1 text-xs text-[#6B6358]">
-                Daily + fixed costs in selected period
-              </p>
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#A89F8C]">Total Expenses</p>
+              <p className="mt-2 text-2xl font-extrabold tracking-[-0.04em] text-[#F5F0E8]">{formatCurrency(summary.total)}</p>
+              <p className="mt-1 text-xs text-[#6B6358]">All expense categories in the selected period</p>
             </div>
           </div>
 
@@ -267,17 +213,6 @@ export default function ExpensesPage() {
                 className="w-full bg-transparent text-sm text-[#F5F0E8] outline-none placeholder:text-[#6B6358]"
               />
             </div>
-
-            {/* Type filter */}
-            <select
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value as "all" | "daily" | "fixed")}
-              className="h-11 rounded-xl border border-[#2E2B24] bg-[#131210] px-4 text-sm font-semibold text-[#A89F8C] shadow-sm outline-none focus:border-[#B8962E] transition"
-            >
-              <option value="all">All Types</option>
-              <option value="daily">Daily</option>
-              <option value="fixed">Fixed</option>
-            </select>
 
             {/* Date Selector */}
             <div className="flex items-center gap-2 flex-wrap bg-[#131210] p-2 rounded-xl border border-[#2E2B24] shadow-sm">
@@ -298,9 +233,9 @@ export default function ExpensesPage() {
             </div>
 
             {/* Clear filters */}
-            {(typeFilter !== "all" || dateFrom !== firstDayStr || dateTo !== todayStr) && (
+            {(dateFrom !== firstDayStr || dateTo !== todayStr) && (
               <button
-                onClick={() => { setTypeFilter("all"); setDateFrom(firstDayStr); setDateTo(todayStr); }}
+                onClick={() => { setDateFrom(firstDayStr); setDateTo(todayStr); }}
                 className="h-11 rounded-xl border border-[#2E2B24] bg-[#131210] px-4 text-sm font-semibold text-[#A89F8C] hover:border-[#B8962E] hover:text-[#B8962E] hover:bg-[#1F1A0F] shadow-sm transition cursor-pointer"
               >
                 Reset
@@ -310,11 +245,10 @@ export default function ExpensesPage() {
 
           {/* ── Table ──────────────────────────────────────────────────── */}
           <div className="overflow-x-auto rounded-2xl border border-[#2E2B24] bg-[#131210] shadow-md">
-            <table className="w-full min-w-[800px] border-collapse text-left text-sm text-[#A89F8C]">
+            <table className="w-full min-w-[700px] border-collapse text-left text-sm text-[#A89F8C]">
               <thead className="bg-[#0E0D0B] text-[10px] font-bold uppercase tracking-[0.18em] text-[#A89F8C] border-b border-[#2E2B24]">
                 <tr>
                   <th className="px-6 py-4 font-bold">Description</th>
-                  <th className="px-6 py-4 font-bold">Type</th>
                   <th className="px-6 py-4 font-bold">Category</th>
                   <th className="px-6 py-4 font-bold">Date</th>
                   <th className="px-6 py-4 font-bold">Amount</th>
@@ -324,7 +258,7 @@ export default function ExpensesPage() {
               <tbody className="divide-y divide-[#2E2B24]">
                 {filteredExpenses.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-8 text-center text-[#6B6358] italic bg-transparent">
+                    <td colSpan={5} className="px-6 py-8 text-center text-[#6B6358] italic bg-transparent">
                       No expenses match your filters.
                     </td>
                   </tr>
@@ -336,17 +270,6 @@ export default function ExpensesPage() {
                     >
                       <td className="px-6 py-4 font-semibold text-[#F5F0E8]">
                         {expense.description}
-                      </td>
-                      <td className="px-6 py-4">
-                        <span
-                          className={`inline-block rounded-full px-3 py-1 text-xs font-bold border ${
-                            (expense.type || "").toLowerCase() === "daily"
-                              ? "bg-[#1F1A0F] text-[#B8962E] border-[#B8962E]/20"
-                              : "bg-[#1C1A16] text-[#A89F8C] border-[#2E2B24]"
-                          }`}
-                        >
-                          {(expense.type || "").toLowerCase() === "daily" ? "Daily" : "Fixed"}
-                        </span>
                       </td>
                       <td className="px-6 py-4">
                         <span className="inline-block rounded-full bg-[#0E0D0B] border border-[#2E2B24] px-3 py-1 text-xs text-[#A89F8C]">
@@ -418,45 +341,34 @@ export default function ExpensesPage() {
                 />
               </label>
 
-              {/* Type selector */}
-              <label className="block">
-                <span className="text-sm font-semibold text-[#A89F8C]">
-                  Expense Type
-                </span>
-                <select
-                  value={formData.type}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      type: e.target.value as "daily" | "monthly",
-                    })
-                  }
-                  className="mt-2 h-11 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-4 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E] focus:ring-1 focus:ring-[#B8962E]"
-                >
-                  <option value="daily">Daily — tiffin, fuel, misc</option>
-                  <option value="monthly">Fixed — rent, electricity, salaries</option>
-                </select>
-              </label>
-
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="block">
                   <span className="text-sm font-semibold text-[#A89F8C]">Category</span>
                   <select
                     value={formData.category}
-                    onChange={(e) =>
-                      setFormData({ ...formData, category: e.target.value })
-                    }
+                    onChange={(e) => setFormData({ ...formData, category: e.target.value, otherCategory: "" })}
                     className="mt-2 h-11 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-4 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E] focus:ring-1 focus:ring-[#B8962E]"
                   >
-                    <option value="Rent">Shop Rent</option>
-                    <option value="Utilities">Utilities (Power/Water)</option>
-                    <option value="Salaries">Staff Salaries</option>
-                    <option value="Inventory">Product Inventory Restock</option>
-                    <option value="Marketing">Marketing & Flyers</option>
-                    <option value="Food">Food & Refreshments</option>
-                    <option value="Transport">Transport & Fuel</option>
-                    <option value="Other">Other Expenses</option>
+                    <option value="Water">Water</option>
+                    <option value="Newspaper">Newspaper</option>
+                    <option value="Tissue">Tissue</option>
+                    <option value="AC Service">AC Service</option>
+                    <option value="GHMC">GHMC</option>
+                    <option value="Current Bill">Current Bill</option>
+                    <option value="Rent">Rent</option>
+                    <option value="Products">Products</option>
+                    <option value="Utilities">Utilities</option>
+                    <option value="Other">Other</option>
                   </select>
+                  {formData.category === "Other" && (
+                    <input
+                      required
+                      value={formData.otherCategory}
+                      onChange={(e) => setFormData({ ...formData, otherCategory: e.target.value })}
+                      placeholder="Enter expense category"
+                      className="mt-2 h-11 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-4 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E]"
+                    />
+                  )}
                 </label>
 
                 <label className="block">

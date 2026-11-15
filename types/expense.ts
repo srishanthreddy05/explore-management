@@ -4,6 +4,6 @@ export interface Expense {
   amount: number;
   date: string;
   category: string;
-  type: "daily" | "monthly";
+  type?: "daily" | "monthly";
   createdAt?: string;
 }
