@@ -19,6 +19,17 @@ export interface CreditBalance {
   originalServiceName: string;
   originalServiceAmount: number;
   originalServiceCommission: number;
+  commissionAllocations?: Array<{
+    serviceId: string;
+    serviceName: string;
+    staffId: string;
+    staffName: string;
+    staffRole: string;
+    serviceRevenue: number;
+    productCost: number;
+    stylistShare: number;
+    ownerShare: number;
+  }>;
   
   // Outstanding Debt Ledgers
   creditAmount: number;
