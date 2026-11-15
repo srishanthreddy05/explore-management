@@ -125,15 +125,16 @@ function InvoicesContent() {
   }, [appliedDateFrom, appliedDateTo]);
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm("Are you sure you want to delete this invoice? This will revert stats and product quantities.")) {
+    if (!window.confirm("Delete this invoice permanently? This will remove the invoice and reverse its original invoice statistics and product quantities. Related credit collection records and collection-date statistics may need separate cleanup.")) {
       return;
     }
     try {
       await invoicesService.delete(id);
       setInvoices((prev) => prev.filter((inv) => inv.id !== id));
     } catch (error) {
-      alert("Failed to delete invoice. Please try again.");
-      console.error(error);
+      console.error("Failed to delete invoice:", error);
+      const message = error instanceof Error ? error.message : "Unknown error";
+      alert(`Failed to delete invoice: ${message}`);
     }
   };
 
