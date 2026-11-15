@@ -503,6 +503,11 @@ export async function update(
         throw new Error("Invoice does not exist");
       }
       const oldInv = { id, ...oldSnap.data() } as Invoice;
+      const hasCreditEvents = (oldInv.creditPaymentHistory || []).length > 0 || (oldInv.collectedCredits || []).length > 0;
+      const protectedFinancialFields = ["services", "products", "totalServices", "totalProducts", "subtotal", "totalDiscount", "billDiscount", "grandTotal", "paymentSplit", "paymentMethod", "paymentStatus", "receivedAmount", "balanceDue", "advanceUsed", "collectedCredits"];
+      if (hasCreditEvents && protectedFinancialFields.some((field) => Object.prototype.hasOwnProperty.call(normalizedData, field))) {
+        throw new Error("This invoice has credit collection history. Its financial details cannot be edited; create an adjustment or reversal instead.");
+      }
       const newInv = { ...oldInv, ...normalizedData } as Invoice;
 
       applyStatsAndInventoryDiff(tx, oldInv, newInv);
@@ -613,6 +618,9 @@ async function deleteInvoice(id: string): Promise<void> {
       const oldSnap = await tx.get(docRef);
       if (!oldSnap.exists()) return;
       const oldInv = { id, ...oldSnap.data() } as Invoice;
+      if ((oldInv.creditPaymentHistory || []).length > 0 || (oldInv.collectedCredits || []).length > 0) {
+        throw new Error("This invoice has credit collection history and cannot be deleted. Record a reversal instead.");
+      }
 
       applyStatsAndInventoryDiff(tx, oldInv, null);
       tx.delete(docRef);
