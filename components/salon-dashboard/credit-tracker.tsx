@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Wallet, Sparkles, User, Calendar, X, Check, DollarSign } from "lucide-react";
 import { formatCurrency } from "@/components/salon-dashboard/types";
@@ -43,7 +43,6 @@ export default function CreditTracker() {
     void refreshOutstandingCredits();
   }, []);
 
-  const isReady = creditsLoaded && invoicesLoaded && !queryError;
   const loading = !creditsLoaded || !invoicesLoaded;
 
   const totalPendingCount = summary.totalInvoicesCount;
