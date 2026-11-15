@@ -303,33 +303,53 @@ export function buildUnifiedCreditTracker(
 }
 
 /**
- * Loads all pending credit balances and all invoices from Firestore and builds
- * the authoritative unified credit tracker read-model.
- * Shared across credit-tracker.tsx, payments/page.tsx, and audit tools.
+ * Reads only outstanding credit documents and invoices that may still be due.
+ * Legacy records are queried through their older amount/paymentStatus fields.
+ * Results are briefly cached in memory so the navbar tracker and Payments page
+ * do not immediately download the same records twice.
  */
+let outstandingCreditCache: { expiresAt: number; value: UnifiedCreditSummary } | null = null;
+export function invalidateOutstandingCreditCache() {
+  outstandingCreditCache = null;
+}
+
 export async function loadAuthoritativeUnifiedCreditTracker(
-  firestoreDb?: any
+  firestoreDb?: any,
+  forceRefresh = false
 ): Promise<UnifiedCreditSummary> {
+  if (!forceRefresh && !firestoreDb && outstandingCreditCache && outstandingCreditCache.expiresAt > Date.now()) {
+    return outstandingCreditCache.value;
+  }
+
   const { db } = await import("@/lib/firebase");
   const activeDb = firestoreDb || db;
   const { collection, getDocs, query, where } = await import("firebase/firestore");
 
-  const [creditSnap, invoiceSnap] = await Promise.all([
-    getDocs(collection(activeDb, "credit_balances")),
-    getDocs(collection(activeDb, "invoices")),
+  const creditCollection = collection(activeDb, "credit_balances");
+  const invoiceCollection = collection(activeDb, "invoices");
+
+  // New ledger schema and legacy ledger schema are queried separately.
+  const [remainingCreditSnap, legacyCreditSnap, balanceDueSnap, unpaidInvoiceSnap, partialInvoiceSnap] = await Promise.all([
+    getDocs(query(creditCollection, where("remainingAmount", ">", 0))),
+    getDocs(query(creditCollection, where("amount", ">", 0))),
+    getDocs(query(invoiceCollection, where("balanceDue", ">", 0))),
+    getDocs(query(invoiceCollection, where("paymentStatus", "==", "unpaid"))),
+    getDocs(query(invoiceCollection, where("paymentStatus", "==", "partial"))),
   ]);
 
-  const creditList: CreditBalance[] = [];
-  creditSnap.forEach((doc) => {
-    creditList.push({ id: doc.id, ...doc.data() } as CreditBalance);
-  });
+  const creditMap = new Map<string, CreditBalance>();
+  [remainingCreditSnap, legacyCreditSnap].forEach((snap) => snap.forEach((doc) => {
+    creditMap.set(doc.id, { id: doc.id, ...doc.data() } as CreditBalance);
+  }));
 
-  const invoiceList: Invoice[] = [];
-  invoiceSnap.forEach((doc) => {
-    invoiceList.push({ id: doc.id, ...doc.data() } as Invoice);
-  });
+  const invoiceMap = new Map<string, Invoice>();
+  [balanceDueSnap, unpaidInvoiceSnap, partialInvoiceSnap].forEach((snap) => snap.forEach((doc) => {
+    invoiceMap.set(doc.id, { id: doc.id, ...doc.data() } as Invoice);
+  }));
 
-  return buildUnifiedCreditTracker(creditList, invoiceList);
+  const value = buildUnifiedCreditTracker([...creditMap.values()], [...invoiceMap.values()]);
+  if (!firestoreDb) outstandingCreditCache = { value, expiresAt: Date.now() + 15_000 };
+  return value;
 }
 
 export interface LedgerAllocationResult {
