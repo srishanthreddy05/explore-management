@@ -963,6 +963,12 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
 
     try {
       const isOnline = typeof navigator !== "undefined" ? navigator.onLine : true;
+      const creditInvoiceSnapshots = await Promise.all(collectedCreditsByInvoice.map(async (group) => {
+        const original = await invoicesService.getById(group.originalInvoiceId);
+        if (!original) throw new Error(`Original invoice ${group.originalInvoiceNumber} could not be loaded. Credit collection was not saved.`);
+        return [group.originalInvoiceId, { grandTotal: original.grandTotal, services: original.services || [] }] as const;
+      }));
+      const creditSnapshotMap = new Map(creditInvoiceSnapshots);
 
       // Step 1: Resolve or create customer
       let customerId = foundCustomerId;
@@ -1255,6 +1261,8 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
             originalInvoiceId: g.originalInvoiceId,
             originalInvoiceNumber: g.originalInvoiceNumber,
             collectionId: g.collectionId,
+            originalGrandTotal: creditSnapshotMap.get(g.originalInvoiceId)?.grandTotal || 0,
+            originalServices: creditSnapshotMap.get(g.originalInvoiceId)?.services || [],
             collectedAmount: g.amountCollecting,
             paymentSplit: allocateSplit(creditSplit, g.amountCollecting),
             collectedAt: new Date().toISOString(),
