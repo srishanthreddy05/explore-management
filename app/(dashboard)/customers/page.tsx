@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import * as customerService from "@/services/customers";
 import * as invoicesService from "@/services/invoices";
 import type { Customer } from "@/types/customer";
-import { Plus, Search, Edit2, Trash2, X, Users, Eye } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, X, Users, Eye, Star } from "lucide-react";
 import CustomerDetailModal from "@/components/customers/CustomerDetailModal";
 import { db } from "@/lib/firebase";
 import { toast } from "react-hot-toast";
@@ -248,6 +248,31 @@ export default function CustomersPage() {
     }
   };
 
+  const handleRatingChange = async (customer: Customer, rating: number) => {
+    if (!customer.id) return;
+    const previousRating = customer.rating ?? 0;
+    const nextRating = previousRating === rating ? 0 : rating;
+
+    const updateList = (list: Customer[]) =>
+      list.map((item) => item.id === customer.id ? { ...item, rating: nextRating } : item);
+    setRegularCustomers(updateList);
+    setMembershipCustomers(updateList);
+    setSearchResults(updateList);
+
+    try {
+      await customerService.update(customer.id, { rating: nextRating });
+      toast.success(nextRating ? `Rated ${customer.name} ${nextRating}/5` : `Rating cleared for ${customer.name}`);
+    } catch (error) {
+      console.error("Failed to update customer rating:", error);
+      const restoreList = (list: Customer[]) =>
+        list.map((item) => item.id === customer.id ? { ...item, rating: previousRating } : item);
+      setRegularCustomers(restoreList);
+      setMembershipCustomers(restoreList);
+      setSearchResults(restoreList);
+      toast.error("Could not save customer rating.");
+    }
+  };
+
   const calculateMembershipEnd = (start: string, months: number): string => {
     const d = new Date(start);
     d.setMonth(d.getMonth() + months);
@@ -434,13 +459,14 @@ export default function CustomersPage() {
                     <tr>
                       <th className="px-4 py-3.5 font-bold">Name</th>
                       <th className="px-4 py-3.5 font-bold">Phone</th>
+                      <th className="px-4 py-3.5 font-bold">Rating</th>
                       <th className="px-4 py-3.5 font-bold text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#2E2B24]">
                     {regularToDisplay.length === 0 ? (
                       <tr>
-                        <td colSpan={3} className="px-4 py-8 text-center text-[#6B6358] font-medium italic bg-transparent">
+                        <td colSpan={4} className="px-4 py-8 text-center text-[#6B6358] font-medium italic bg-transparent">
                           {debouncedQuery.trim()
                             ? "No matching regular customers."
                             : "No regular customers."}
@@ -451,6 +477,27 @@ export default function CustomersPage() {
                         <tr key={customer.id} className="hover:bg-[#1C1A16] transition bg-transparent text-[#A89F8C]">
                           <td className="px-4 py-3 font-semibold text-[#F5F0E8]">{customer.name}</td>
                           <td className="px-4 py-3 font-medium">{customer.phone}</td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-0.5" role="group" aria-label={`Rate ${customer.name}`}>
+                              {[1, 2, 3, 4, 5].map((star) => (
+                                <button
+                                  key={star}
+                                  type="button"
+                                  onClick={() => handleRatingChange(customer, star)}
+                                  className="rounded p-0.5 transition hover:scale-110 focus:outline-none focus:ring-1 focus:ring-[#B8962E]"
+                                  title={`Rate ${star} out of 5`}
+                                  aria-label={`Rate ${customer.name} ${star} out of 5 stars`}
+                                  aria-pressed={(customer.rating ?? 0) >= star}
+                                >
+                                  <Star
+                                    size={15}
+                                    className={(customer.rating ?? 0) >= star ? "fill-[#D4A935] text-[#D4A935]" : "text-[#6B6358]"}
+                                  />
+                                </button>
+                              ))}
+                              <span className="ml-1 text-[10px] text-[#A89F8C] tabular-nums">{customer.rating ? `${customer.rating}/5` : "—"}</span>
+                            </div>
+                          </td>
                           <td className="px-4 py-3 text-right">
                             <div className="flex justify-end gap-1.5">
                               <button
@@ -515,7 +562,7 @@ export default function CustomersPage() {
                   <tbody className="divide-y divide-[#2E2B24]">
                     {membershipToDisplay.length === 0 ? (
                       <tr>
-                        <td colSpan={3} className="px-4 py-8 text-center text-[#6B6358] font-medium italic bg-transparent">
+                        <td colSpan={4} className="px-4 py-8 text-center text-[#6B6358] font-medium italic bg-transparent">
                           {debouncedQuery.trim()
                             ? "No matching membership customers."
                             : "No membership customers."}
@@ -526,6 +573,27 @@ export default function CustomersPage() {
                         <tr key={customer.id} className="hover:bg-[#1C1A16] transition bg-transparent text-[#A89F8C]">
                           <td className="px-4 py-3 font-semibold text-[#F5F0E8]">{customer.name}</td>
                           <td className="px-4 py-3 font-medium">{customer.phone}</td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-0.5" role="group" aria-label={`Rate ${customer.name}`}>
+                              {[1, 2, 3, 4, 5].map((star) => (
+                                <button
+                                  key={star}
+                                  type="button"
+                                  onClick={() => handleRatingChange(customer, star)}
+                                  className="rounded p-0.5 transition hover:scale-110 focus:outline-none focus:ring-1 focus:ring-[#B8962E]"
+                                  title={`Rate ${star} out of 5`}
+                                  aria-label={`Rate ${customer.name} ${star} out of 5 stars`}
+                                  aria-pressed={(customer.rating ?? 0) >= star}
+                                >
+                                  <Star
+                                    size={15}
+                                    className={(customer.rating ?? 0) >= star ? "fill-[#D4A935] text-[#D4A935]" : "text-[#6B6358]"}
+                                  />
+                                </button>
+                              ))}
+                              <span className="ml-1 text-[10px] text-[#A89F8C] tabular-nums">{customer.rating ? `${customer.rating}/5` : "—"}</span>
+                            </div>
+                          </td>
                           <td className="px-4 py-3 text-right">
                             <div className="flex justify-end gap-1.5">
                               <button
