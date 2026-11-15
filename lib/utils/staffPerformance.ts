@@ -1,95 +1,39 @@
 import { toLocalDateString } from "./date";
-
-export interface ServiceBreakdownItem {
-  name: string;
-  count: number;
+export interface ServiceBreakdownItem { name: string; count: number; totalCost?: number; }
+export interface StaffPerformanceSummary { servicesTotal: number; servicesBreakdown: ServiceBreakdownItem[]; productsUsedTotal: number; productsUsedBreakdown: ServiceBreakdownItem[]; serviceRevenue: number; }
+function invoiceDateKey(invoice: any): string {
+  if (typeof invoice.dateKey === "string" && invoice.dateKey) return invoice.dateKey;
+  if (invoice.date) return toLocalDateString(invoice.date);
+  if (invoice.billDate) return toLocalDateString(invoice.billDate);
+  return "";
 }
-
-export interface StaffPerformanceSummary {
-  todayTotal: number;
-  todayBreakdown: ServiceBreakdownItem[];
-  monthlyTotal: number;
-  monthlyBreakdown: ServiceBreakdownItem[];
-  todayDistinctTypes: number;
-  monthlyDistinctTypes: number;
+function matchesStaff(line: any, staff: { id?: string; name: string }): boolean {
+  const name = staff.name.trim().toLowerCase();
+  return Boolean((staff.id && line.staffId === staff.id) || (line.staffName && String(line.staffName).trim().toLowerCase() === name) || (line.staff && String(line.staff).trim().toLowerCase() === name));
 }
-
-/**
- * Computes exact daily and monthly service performance for a given staff member
- * from authoritative invoice records.
- *
- * Rules:
- * - Count every valid service line assigned to the staff member.
- * - Respect line item quantity (defaults to 1).
- * - Filter by today's date (`YYYY-MM-DD`) and current month (`YYYY-MM`).
- * - Exclude membership fee line items (`serviceId === "membership_fee"`).
- */
-export function computeStaffPerformance(
-  invoices: any[],
-  staffMember: { id?: string; name: string },
-  todayStr: string = toLocalDateString(new Date())
-): StaffPerformanceSummary {
-  const currentMonthStr = todayStr.slice(0, 7); // e.g. "2026-08"
-
-  const todayCounts: Record<string, number> = {};
-  const monthlyCounts: Record<string, number> = {};
-
-  let todayTotal = 0;
-  let monthlyTotal = 0;
-
-  invoices.forEach((inv) => {
-    const invDateStr =
-      inv.dateKey ||
-      (inv.date ? toLocalDateString(inv.date) : "") ||
-      (inv.billDate ? toLocalDateString(inv.billDate) : "");
-    if (!invDateStr) return;
-
-    const isToday = invDateStr === todayStr;
-    const isThisMonth = invDateStr.slice(0, 7) === currentMonthStr;
-
-    if (!isToday && !isThisMonth) return;
-
-    (inv.services || []).forEach((s: any) => {
-      // Exclude membership fee line items
-      if (s.serviceId === "membership_fee") return;
-
-      const isMatch =
-        (staffMember.id && s.staffId === staffMember.id) ||
-        (s.staffName && s.staffName.toLowerCase() === staffMember.name.toLowerCase()) ||
-        (s.staff && s.staff.toLowerCase() === staffMember.name.toLowerCase());
-
-      if (!isMatch) return;
-
-      const qty = Math.max(1, Number(s.quantity) || 1);
-      const rawName = s.serviceName || s.service || s.name || "Service";
-      const serviceName = rawName.trim();
-
-      if (isToday) {
-        todayTotal += qty;
-        todayCounts[serviceName] = (todayCounts[serviceName] || 0) + qty;
-      }
-
-      if (isThisMonth) {
-        monthlyTotal += qty;
-        monthlyCounts[serviceName] = (monthlyCounts[serviceName] || 0) + qty;
-      }
+/** Uses service line consumables only; retail invoice products are excluded. */
+export function computeStaffPerformance(invoices: any[], staffMember: { id?: string; name: string }, startDate: string, endDate: string): StaffPerformanceSummary {
+  const serviceCounts: Record<string, number> = {};
+  const productCounts: Record<string, { count: number; totalCost: number }> = {};
+  let servicesTotal = 0; let serviceRevenue = 0;
+  invoices.forEach((invoice) => {
+    const dateKey = invoiceDateKey(invoice);
+    if (!dateKey || dateKey < startDate || dateKey > endDate) return;
+    (invoice.services || []).forEach((line: any) => {
+      if (line.serviceId === "membership_fee" || !matchesStaff(line, staffMember)) return;
+      const quantity = Math.max(1, Number(line.quantity) || 1);
+      const serviceName = String(line.serviceName || line.service || line.name || "Service").trim();
+      servicesTotal += quantity;
+      serviceCounts[serviceName] = (serviceCounts[serviceName] || 0) + quantity;
+      serviceRevenue += Math.max(0, Number(line.amount) || 0);
+      const productName = String(line.usedProductName || "").trim();
+      if (!productName) return;
+      if (!productCounts[productName]) productCounts[productName] = { count: 0, totalCost: 0 };
+      productCounts[productName].count += quantity;
+      productCounts[productName].totalCost += Math.max(0, Number(line.usedProductCost) || 0);
     });
   });
-
-  const todayBreakdown: ServiceBreakdownItem[] = Object.entries(todayCounts)
-    .map(([name, count]) => ({ name, count }))
-    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
-
-  const monthlyBreakdown: ServiceBreakdownItem[] = Object.entries(monthlyCounts)
-    .map(([name, count]) => ({ name, count }))
-    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
-
-  return {
-    todayTotal,
-    todayBreakdown,
-    monthlyTotal,
-    monthlyBreakdown,
-    todayDistinctTypes: todayBreakdown.length,
-    monthlyDistinctTypes: monthlyBreakdown.length,
-  };
+  const servicesBreakdown = Object.entries(serviceCounts).map(([name, count]) => ({ name, count })).sort((a,b) => b.count-a.count || a.name.localeCompare(b.name));
+  const productsUsedBreakdown = Object.entries(productCounts).map(([name, value]) => ({ name, count: value.count, totalCost: value.totalCost })).sort((a,b) => b.count-a.count || a.name.localeCompare(b.name));
+  return { servicesTotal, servicesBreakdown, productsUsedTotal: productsUsedBreakdown.reduce((sum,item)=>sum+item.count,0), productsUsedBreakdown, serviceRevenue };
 }
