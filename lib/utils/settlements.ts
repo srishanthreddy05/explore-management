@@ -277,8 +277,8 @@ export function calculateDaySettlement(
         detail.productCost += staffCredit.productCost;
         detail.staffShare += staffCredit.amount;
         detail.ownerShareContribution += Math.max(0, staffCredit.serviceRevenue - staffCredit.productCost - staffCredit.amount) + staffCredit.productCost;
-        detail.collectedCreditsShare += staffCredit.amount;
-        detail.collectedCredits.push({ originalInvoiceNumber: cc.originalInvoiceNumber, amount: staffCredit.amount });
+        detail.collectedCreditsShare = (detail.collectedCreditsShare || 0) + staffCredit.amount;
+        detail.collectedCredits = [...(detail.collectedCredits || []), { originalInvoiceNumber: cc.originalInvoiceNumber, amount: staffCredit.amount }];
       });
     });
 
