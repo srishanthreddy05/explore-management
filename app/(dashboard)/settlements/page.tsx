@@ -188,7 +188,7 @@ function MetricCard({
                 {title}
               </h4>
               <span className="inline-block rounded-full border border-[#D4A935]/20 bg-[#D4A935]/5 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider mt-1 text-[#D4A935]">
-                Owner
+                Sai Kiran
               </span>
             </div>
           </div>
@@ -800,7 +800,7 @@ function DayHeader({
             </div>
             <div className="rounded-xl bg-[#2E1A47]/60 border border-[#5E3E8C]/40 px-3 py-1.5">
               <span className="text-[10px] font-bold uppercase tracking-wider text-[#C084FC]">
-                Owner{" "}
+                Sai Kiran{" "}
                 <span className="text-[#C084FC] font-extrabold ml-1">
                   {formatCurrency(day.totalOwnerShare)}
                 </span>
@@ -1778,12 +1778,12 @@ export default function SettlementsPage() {
         </div>
       </header>
 
-      {/* Owner & Staff Splits */}
+      {/* Sai Kiran & Staff Splits */}
       <section className="space-y-4">
         <div className="flex items-center gap-2">
           <Wallet size={16} className="text-[#B8962E]" />
           <h2 className="text-xs font-bold uppercase tracking-[0.15em] text-[#A89F8C]">
-            Owner & Staff Splits
+            Sai Kiran & Staff Splits
           </h2>
         </div>
         <div className="flex flex-col gap-4">
