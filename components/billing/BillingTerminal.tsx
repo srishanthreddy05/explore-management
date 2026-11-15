@@ -229,7 +229,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
             setAdvanceToAdd(Number(inv.advanceAdded) || 0);
             setAdvanceApplied(Number(inv.advanceUsed) || 0);
             setOriginalAdvanceValues({ added: Number(inv.advanceAdded) || 0, used: Number(inv.advanceUsed) || 0, customerId: inv.customerId || "" });
-            setAmountPaid(originalCash + originalUpi + originalCard + (Number(inv.advanceAdded) || 0));
+            setAmountPaid(originalCash + originalUpi + originalCard);
             setMarkAsCredit(inv.paymentStatus !== "paid" || (Number(inv.balanceDue) || 0) > 0);
 
             if (inv.appliedOffer) {
@@ -1333,9 +1333,11 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
         const totalPaidAmt = Math.round((invoiceCashPaid + advanceApplied) * 100) / 100;
         const balanceDueAmt = Math.max(0, Math.round((totals.grandTotal - totalPaidAmt) * 100) / 100);
 
-        const invoicePaymentStatus = markAsCredit
-          ? (totalPaidAmt === 0 ? "unpaid" : "partial")
-          : "paid";
+        const invoicePaymentStatus = totalPaidAmt <= 0
+          ? "unpaid"
+          : totalPaidAmt + 0.01 >= totals.grandTotal
+            ? "paid"
+            : "partial";
 
         savedInvoiceId = await invoicesService.create({
           invoiceNumber,
