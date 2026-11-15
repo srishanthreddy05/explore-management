@@ -28,22 +28,24 @@ const COLLECTION = "serviceProductMappings";
 // Initial salon configuration. These records are written to Firestore once per
 // matching service; billing reads the saved documents, not this defaults list.
 const DEFAULT_MAPPINGS = [
-  { serviceName: "All Facials", productName: "All Facials", usageCost: 100 },
-  { serviceName: "Beard Colour", productName: "Beard Color", usageCost: 20 },
-  { serviceName: "Beard Colour (L'Oréal)", productName: "Beard Color L'Oréal", usageCost: 40 },
-  { serviceName: "Natural Hair Colour", productName: "Natural Color", usageCost: 30 },
-  { serviceName: "Burgundy Colour", productName: "Burgundy", usageCost: 50 },
-  { serviceName: "Creative Colour", productName: "Creative Color", usageCost: 100 },
-  { serviceName: "L'Oréal Hair Colour", productName: "L'Oréal", usageCost: 50 },
-  { serviceName: "Matrix Hair Colour", productName: "Matrix", usageCost: 40 },
-  { serviceName: "Streax Hair Colour", productName: "Streax", usageCost: 40 },
-  { serviceName: "Botox", productName: "Botox", usageCost: 300 },
-  { serviceName: "Botox (Extra Length)", productName: "Botox Extra Length", usageCost: 100 },
+  // Hair colour services — names match the live Services catalogue.
+  { serviceName: "Beard Color Regular", productName: "Beard Color", usageCost: 20 },
+  { serviceName: "Beard Color Lorea'l", productName: "Beard Color L'Oréal", usageCost: 40 },
+  { serviceName: "Natural Color", productName: "Natural Color", usageCost: 30 },
+  { serviceName: "Burgandy", productName: "Burgundy", usageCost: 50 },
+  { serviceName: "Creative Colors", productName: "Creative Color", usageCost: 100 },
+  { serviceName: "Lorea'l", productName: "L'Oréal", usageCost: 50 },
+  { serviceName: "Matrix Ammonia", productName: "Matrix", usageCost: 40 },
+  { serviceName: "Streax", productName: "Streax", usageCost: 40 },
+
+  // Hair treatment services — names match the live Services catalogue.
+  { serviceName: "Botox Apl", productName: "Botox", usageCost: 300 },
+  { serviceName: "Botox Extra Lenght", productName: "Botox Extra Length", usageCost: 100 },
   { serviceName: "Dandruff Treatment", productName: "Dandruff Treatment", usageCost: 100 },
-  { serviceName: "Hairfall Treatment", productName: "Hairfall Treatment", usageCost: 100 },
-  { serviceName: "Keratin", productName: "Keratin", usageCost: 250 },
-  { serviceName: "Regular Hair Spa", productName: "Regular Spa", usageCost: 50 },
-  { serviceName: "Hair Straightening", productName: "Straightening", usageCost: 250 },
+  { serviceName: "Hair Fall Treatment", productName: "Hairfall Treatment", usageCost: 100 },
+  { serviceName: "Keratin Apl", productName: "Keratin", usageCost: 250 },
+  { serviceName: "Regular Spa", productName: "Regular Spa", usageCost: 50 },
+  { serviceName: "Straightening", productName: "Straightening", usageCost: 250 },
 ] as const;
 
 const normalize = (value: string) =>
