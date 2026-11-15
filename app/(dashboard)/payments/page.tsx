@@ -8,7 +8,7 @@ import { db } from "@/lib/firebase";
 import { collection, query, where, orderBy, getDocs, limit, startAfter } from "firebase/firestore";
 import type { Invoice } from "@/types/invoice";
 
-import { loadAuthoritativeUnifiedCreditTracker } from "@/lib/utils/creditTracker";
+import { loadAuthoritativeUnifiedCreditTracker, invalidateOutstandingCreditCache } from "@/lib/utils/creditTracker";
 
 export default function PaymentsPage() {
   const [invoices, setInvoices] = useState<any[]>([]);
@@ -96,7 +96,8 @@ export default function PaymentsPage() {
         text: `Successfully collected ${formatCurrency(amount)} for ${selectedInvoice.invoiceNo || selectedInvoice.invoiceNumber}!`,
       });
 
-      // Reload list immediately
+      // Invalidate the shared short-lived read model after a successful write.
+      invalidateOutstandingCreditCache();
       await loadDueInvoices();
       setTimeout(() => {
         setModalOpen(false);
