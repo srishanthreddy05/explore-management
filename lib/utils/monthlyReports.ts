@@ -13,7 +13,7 @@
  *    Closing Balance (M) strictly equals Opening Balance (M + 1).
  */
 
-import { getInvoicePayments, getInvoicePaymentRatio, getServiceCommission, calculateInvoiceRetailRevenue } from "./settlements";
+import { getInvoicePayments, getInvoicePaymentRatio, getServiceCommission, calculateInvoiceRetailRevenue, resolveServiceRole } from "./settlements";
 import type { StaffDrawing } from "@/services/staffDrawings";
 import type { Expense } from "@/types/expense";
 import type { Staff } from "@/types/staff";
@@ -333,8 +333,30 @@ export function generateMonthlyReport(params: {
             registeredCreditCollections.add(dedupeKey);
             overview.creditCollectionsRevenue += amt;
             overview.collections.creditCollections += amt;
-            overview.allocation.ownerCreditCollectionsShare += amt;
-            overview.allocation.totalOwnerShare += amt;
+            const invoiceTotal = Number(inv.grandTotal) || 0;
+            const allocationRatio = invoiceTotal > 0 ? Math.min(1, amt / invoiceTotal) : 0;
+            let ownerCreditShare = 0;
+            (inv.services || []).forEach((service: any) => {
+              const role = resolveServiceRole(service, staffList);
+              const commission = getServiceCommission(service, inv, role);
+              ownerCreditShare += commission.ownerShare * allocationRatio;
+              if (service.serviceId !== "membership_fee" && role !== "Owner") {
+                const staffId = service.staffId || "unassigned";
+                const staffName = service.staffName || "Unassigned";
+                const staffAcc = getOrCreateStaff(staffId, staffName, role);
+                const stylistPart = commission.stylistShare * allocationRatio;
+                staffAcc.currentEarnings += stylistPart;
+                staffAcc.currentServicesRevenue += commission.serviceRevenue * allocationRatio;
+                staffAcc.currentProductCost += commission.productCost * allocationRatio;
+                staffAcc.currentServicesCount += 1;
+              }
+            });
+            const retailBase = (inv.products || []).reduce((sum: number, product: any) =>
+              sum + Number(product.amount ?? ((Number(product.price) || 0) * (Number(product.quantity) || 1) - (Number(product.discount) || 0))), 0);
+            ownerCreditShare += Math.max(0, retailBase) * allocationRatio;
+            overview.allocation.ownerCreditCollectionsShare += ownerCreditShare;
+            overview.allocation.totalOwnerShare += ownerCreditShare;
+            overview.allocation.totalStylistShares += Math.max(0, amt - ownerCreditShare);
 
             if (dp.paymentSplit) {
               const cCash = Number(dp.paymentSplit.cash) || 0;
@@ -414,11 +436,11 @@ export function generateMonthlyReport(params: {
     const visitedStaffOnThisInv = new Set<string>();
 
     (inv.services || []).forEach((s: any) => {
-      const comm = getServiceCommission(s, inv);
       const staffId = s.staffId || "unassigned";
       const staffName = s.staffName || "Unassigned";
-      const staffAcc = getOrCreateStaff(staffId, staffName, s.staffRole);
-      const role = s.staffRole || staffAcc.role;
+      const role = resolveServiceRole(s, staffList);
+      const comm = getServiceCommission(s, inv, role);
+      const staffAcc = getOrCreateStaff(staffId, staffName, role);
 
       // Membership fee service check
       if (s.serviceId === "membership_fee") {
