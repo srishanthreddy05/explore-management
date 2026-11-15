@@ -46,6 +46,8 @@ export interface Invoice {
   };
 
   // ── Payment ───────────────────────────────────────────────────────────────
+  // Immutable tender received on the original sale; later credit receipts live in creditPaymentHistory.
+  initialPaymentSplit?: { cash: number; upi: number; card: number };
   paymentSplit: {                   // was stored as "payments"
     upi: number;
     cash: number;
