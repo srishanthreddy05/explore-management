@@ -81,7 +81,7 @@ export default function CreditTracker() {
         top: rect.bottom + 8,
         right: window.innerWidth - rect.right,
       });
-      void refreshOutstandingCredits(true);
+      void refreshOutstandingCredits(false);
     }
     setIsOpen((prev) => !prev);
   };
