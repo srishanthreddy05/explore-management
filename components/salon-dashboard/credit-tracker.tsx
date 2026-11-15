@@ -4,16 +4,11 @@ import { useEffect, useRef, useState, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { Wallet, Sparkles, User, Calendar, X, Check, DollarSign } from "lucide-react";
 import { formatCurrency } from "@/components/salon-dashboard/types";
-import { db } from "@/lib/firebase";
-import { collection, query, where, onSnapshot, getDocs } from "firebase/firestore";
-import type { CreditBalance } from "@/types/creditBalance";
-import type { Invoice } from "@/types/invoice";
-import { buildUnifiedCreditTracker, UnifiedCreditItem } from "@/lib/utils/creditTracker";
+import { loadAuthoritativeUnifiedCreditTracker, invalidateOutstandingCreditCache, UnifiedCreditItem, UnifiedCreditSummary } from "@/lib/utils/creditTracker";
 import * as invoicesService from "@/services/invoices";
 
 export default function CreditTracker() {
-  const [pendingCredits, setPendingCredits] = useState<CreditBalance[]>([]);
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [summary, setSummary] = useState<UnifiedCreditSummary>({ items: [], totalDue: 0, totalCredit: 0, totalPaid: 0, totalInvoicesCount: 0 });
   const [creditsLoaded, setCreditsLoaded] = useState(false);
   const [invoicesLoaded, setInvoicesLoaded] = useState(false);
   const [queryError, setQueryError] = useState<string | null>(null);
@@ -29,102 +24,35 @@ export default function CreditTracker() {
   const [isCollecting, setIsCollecting] = useState(false);
   const [paymentFeedback, setPaymentFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  // 1. Real-time listeners on credit_balances and invoices collections
-  useEffect(() => {
-    let isMounted = true;
-
-    const unsubCredits = onSnapshot(
-      collection(db, "credit_balances"),
-      (snapshot) => {
-        if (!isMounted) return;
-        const list: CreditBalance[] = [];
-        snapshot.forEach((doc) => {
-          list.push({ id: doc.id, ...doc.data() } as CreditBalance);
-        });
-        setPendingCredits(list);
-        setCreditsLoaded(true);
-      },
-      (error) => {
-        console.error("Error listening to credit_balances:", error);
-        if (!isMounted) return;
-        setQueryError("Failed to load credit balances.");
-        setCreditsLoaded(true);
-      }
-    );
-
-    const unsubInvoices = onSnapshot(
-      collection(db, "invoices"),
-      (snapshot) => {
-        if (!isMounted) return;
-        const invList: Invoice[] = [];
-        snapshot.forEach((d) => {
-          invList.push({ id: d.id, ...d.data() } as Invoice);
-        });
-        setInvoices(invList);
-        setInvoicesLoaded(true);
-      },
-      (error) => {
-        console.error("Error listening to invoices:", error);
-        if (!isMounted) return;
-        setQueryError("Failed to load invoices.");
-        setInvoicesLoaded(true);
-      }
-    );
-
-    return () => {
-      isMounted = false;
-      unsubCredits();
-      unsubInvoices();
-    };
-  }, []);
-
-  const refreshInvoices = async () => {
+  // Load only outstanding credits and invoices. No whole-collection listeners.
+  const refreshOutstandingCredits = async (forceRefresh = false) => {
     try {
-      const snap = await getDocs(collection(db, "invoices"));
-      const invList: Invoice[] = [];
-      snap.forEach((d) => {
-        invList.push({ id: d.id, ...d.data() } as Invoice);
-      });
-      setInvoices(invList);
-    } catch (e) {
-      console.error("Failed to load invoices for credit tracker:", e);
+      const nextSummary = await loadAuthoritativeUnifiedCreditTracker(undefined, forceRefresh);
+      setSummary(nextSummary);
+      setQueryError(null);
+    } catch (error) {
+      console.error("Failed to load outstanding credits:", error);
+      setQueryError("Failed to load credit balances.");
+    } finally {
+      setCreditsLoaded(true);
+      setInvoicesLoaded(true);
     }
   };
 
+  useEffect(() => {
+    void refreshOutstandingCredits();
+  }, []);
+
   const isReady = creditsLoaded && invoicesLoaded && !queryError;
   const loading = !creditsLoaded || !invoicesLoaded;
-
-  // 3. Build unified, grouped credit tracker view
-  const summary = useMemo(() => {
-    if (!isReady) {
-      return {
-        items: [],
-        totalDue: 0,
-        totalCredit: 0,
-        totalPaid: 0,
-        totalInvoicesCount: 0,
-      };
-    }
-    return buildUnifiedCreditTracker(pendingCredits, invoices);
-  }, [isReady, pendingCredits, invoices]);
 
   const totalPendingCount = summary.totalInvoicesCount;
 
   // Development-only diagnostics for navbar badge verification
   useEffect(() => {
-    const rawCreditDocCount = pendingCredits.length;
-    const pendingLedgerDocCount = pendingCredits.filter((c) => {
-      const remaining = Number(c.remainingAmount !== undefined ? c.remainingAmount : (c.amount ?? 0));
-      const statusLower = String(c.status || "").toLowerCase();
-      const collectionStatusLower = String(c.collectionStatus || "").toLowerCase();
-      return remaining > 0 && statusLower !== "settled" && collectionStatusLower !== "settled";
-    }).length;
-    const settledLedgerDocCount = pendingCredits.filter((c) => {
-      const remaining = Number(c.remainingAmount !== undefined ? c.remainingAmount : (c.amount ?? 0));
-      const statusLower = String(c.status || "").toLowerCase();
-      const collectionStatusLower = String(c.collectionStatus || "").toLowerCase();
-      return remaining <= 0 || statusLower === "settled" || collectionStatusLower === "settled";
-    }).length;
+    const rawCreditDocCount = summary.items.reduce((n, item) => n + item.creditDocIds.length, 0);
+    const pendingLedgerDocCount = rawCreditDocCount;
+    const settledLedgerDocCount = 0;
     const uniqueInvoiceCount = summary.items.length;
     const uniqueInvoicesWithDuePositive = summary.items.filter((it) => it.due > 0).length;
     const unlinkedItems = summary.items.filter((i) => i.isUnlinkedInvoice);
@@ -144,7 +72,7 @@ export default function CreditTracker() {
     if (unlinkedCount > 0) {
       console.table(unlinkedItems);
     }
-  }, [pendingCredits, invoices, summary, totalPendingCount]);
+  }, [summary, totalPendingCount]);
 
   // Recalculate dropdown position whenever it opens
   const handleToggle = () => {
@@ -154,7 +82,7 @@ export default function CreditTracker() {
         top: rect.bottom + 8,
         right: window.innerWidth - rect.right,
       });
-      refreshInvoices();
+      void refreshOutstandingCredits(true);
     }
     setIsOpen((prev) => !prev);
   };
@@ -222,7 +150,8 @@ export default function CreditTracker() {
       });
 
       // Refresh invoices and close modal after brief delay
-      await refreshInvoices();
+      invalidateOutstandingCreditCache();
+      await refreshOutstandingCredits(true);
       setTimeout(() => {
         setSelectedItemForPayment(null);
         setIsCollecting(false);
