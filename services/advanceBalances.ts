@@ -47,6 +47,7 @@ export async function addCredit(
         const data = snap.data();
         currentBalance = data.balance ?? 0;
         transactions = data.transactions ?? [];
+        if (idempotencyKey && transactions.some((item: any) => item.id === idempotencyKey)) return;
       }
 
       const newBalance = Math.round((currentBalance + amount) * 100) / 100;
