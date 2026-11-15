@@ -87,7 +87,18 @@ export function calculateInvoiceRetailRevenue(inv: any): number {
  * The discountFactor path is a fallback only for legacy invoice records
  * that pre-date the s.amount field (i.e., s.amount is absent/null).
  */
-export function getServiceCommission(s: any, inv: any): ServiceCommission {
+export function resolveServiceRole(s: any, staffList: any[] = []): string {
+  if (!s) return "Stylist";
+  if (s.staffRole) return s.staffRole;
+  if (s.serviceId === "membership_fee" || s.staffId === "system" || s.staffName === "System") return "Owner";
+  const staff = staffList.find((member) =>
+    (s.staffId && member.id === s.staffId) ||
+    (s.staffName && String(member.name || "").toLowerCase() === String(s.staffName).toLowerCase())
+  );
+  return staff?.role || "Stylist";
+}
+
+export function getServiceCommission(s: any, inv: any, resolvedRole?: string): ServiceCommission {
   if (!s) return { serviceRevenue: 0, productCost: 0, stylistShare: 0, ownerShare: 0 };
 
   // Use s.amount when present — it is already the correct post-discount value.
@@ -101,16 +112,8 @@ export function getServiceCommission(s: any, inv: any): ServiceCommission {
     amount = serviceBaseAmount * discountFactor;
   }
 
-  const cost = s.usedProductCost || 0;
-
-  let role = s.staffRole;
-  if (!role) {
-    if (s.serviceId === "membership_fee" || s.staffId === "system" || s.staffName === "System") {
-      role = "Owner";
-    } else {
-      role = "Stylist";
-    }
-  }
+  const cost = Math.min(Math.max(Number(s.usedProductCost) || 0, 0), Math.max(amount, 0));
+  const role = resolvedRole || resolveServiceRole(s);
 
   let stylistShare = 0;
   let ownerShare = 0;
@@ -212,14 +215,10 @@ export function calculateDaySettlement(
     result.totalOwnerShare += retailRev;
 
     (inv.services || []).forEach((s: any) => {
-      const comm = getServiceCommission(s, inv);
       const staffId = s.staffId || "unassigned";
       const staffName = s.staffName || "Unassigned";
-
-      const staffMember = staffList.find(
-        (st) => st.id === staffId || st.name === staffName
-      );
-      const role = s.staffRole || staffMember?.role || "Stylist";
+      const role = resolveServiceRole(s, staffList);
+      const comm = getServiceCommission(s, inv, role);
 
       if (s.serviceId === "membership_fee") {
         result.totalMembershipAmount += comm.serviceRevenue * ratio;
@@ -347,10 +346,8 @@ export function calculateSettlementRangeOverview(
     (inv.services || []).forEach((s: any) => {
       const staffId = s.staffId || "unassigned";
       const staffName = s.staffName || "Unassigned";
-      const staffMember = staffList.find((st) => st.id === staffId || st.name === staffName);
-      const role = s.staffRole || staffMember?.role || (staffName === "System" ? "Owner" : "Stylist");
-
-      const comm = getServiceCommission(s, inv);
+      const role = resolveServiceRole(s, staffList);
+      const comm = getServiceCommission(s, inv, role);
       totalServiceRevenue += comm.serviceRevenue * ratio;
       ownerShare += comm.ownerShare * ratio;
 
