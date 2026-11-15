@@ -13,7 +13,7 @@
  *    Closing Balance (M) strictly equals Opening Balance (M + 1).
  */
 
-import { getInvoicePayments, getInvoicePaymentRatio, getServiceCommission, calculateInvoiceRetailRevenue } from "./settlements";
+import { getInvoicePayments, getInvoicePaymentRatio, getServiceCommission, calculateInvoiceRetailRevenue, calculateCreditCollectionAllocation } from "./settlements";
 import type { StaffDrawing } from "@/services/staffDrawings";
 import type { Expense } from "@/types/expense";
 import type { Staff } from "@/types/staff";
@@ -333,8 +333,28 @@ export function generateMonthlyReport(params: {
             registeredCreditCollections.add(dedupeKey);
             overview.creditCollectionsRevenue += amt;
             overview.collections.creditCollections += amt;
-            overview.allocation.ownerCreditCollectionsShare += amt;
-            overview.allocation.totalOwnerShare += amt;
+            const creditAllocation = calculateCreditCollectionAllocation(inv, amt, staffList);
+            overview.allocation.ownerCreditCollectionsShare += creditAllocation.ownerShare;
+            overview.allocation.totalOwnerShare += creditAllocation.ownerShare;
+            overview.allocation.totalStylistShares += creditAllocation.stylistShare;
+            creditAllocation.staff.forEach((creditStaff) => {
+              const staffAcc = getOrCreateStaff(creditStaff.staffId, creditStaff.staffName);
+              staffAcc.currentEarnings += creditStaff.amount;
+              staffAcc.currentServicesRevenue += creditStaff.serviceRevenue;
+              staffAcc.currentProductCost += creditStaff.productCost;
+              staffAcc.serviceTransactions.push({
+                invoiceId: inv.id || "",
+                invoiceNumber: inv.invoiceNumber || "—",
+                date: (dp.collectedAt || "").slice(0, 10),
+                customerName: inv.customerName || "Walk-in Guest",
+                serviceName: "Credit collection — original service",
+                amount: creditStaff.serviceRevenue,
+                productCost: creditStaff.productCost,
+                netAmount: creditStaff.serviceRevenue - creditStaff.productCost,
+                stylistShare: creditStaff.amount,
+                ownerShare: Math.max(0, creditStaff.serviceRevenue - creditStaff.productCost - creditStaff.amount) + creditStaff.productCost,
+              });
+            });
 
             if (dp.paymentSplit) {
               const cCash = Number(dp.paymentSplit.cash) || 0;
@@ -384,8 +404,29 @@ export function generateMonthlyReport(params: {
         const amt = Number(cc.collectedAmount) || 0;
         overview.creditCollectionsRevenue += amt;
         overview.collections.creditCollections += amt;
-        overview.allocation.ownerCreditCollectionsShare += amt;
-        overview.allocation.totalOwnerShare += amt;
+        const originalInvoice = invoices.find((candidate) => candidate.id === cc.originalInvoiceId || candidate.invoiceNumber === cc.originalInvoiceNumber);
+        const creditAllocation = originalInvoice ? calculateCreditCollectionAllocation(originalInvoice, amt, staffList) : { ownerShare: amt, stylistShare: 0, staff: [] };
+        overview.allocation.ownerCreditCollectionsShare += creditAllocation.ownerShare;
+        overview.allocation.totalOwnerShare += creditAllocation.ownerShare;
+        overview.allocation.totalStylistShares += creditAllocation.stylistShare;
+        creditAllocation.staff.forEach((creditStaff) => {
+          const staffAcc = getOrCreateStaff(creditStaff.staffId, creditStaff.staffName);
+          staffAcc.currentEarnings += creditStaff.amount;
+          staffAcc.currentServicesRevenue += creditStaff.serviceRevenue;
+          staffAcc.currentProductCost += creditStaff.productCost;
+          staffAcc.serviceTransactions.push({
+            invoiceId: cc.originalInvoiceId || "",
+            invoiceNumber: cc.originalInvoiceNumber || "—",
+            date: (cc.collectedAt || dateKey).slice(0, 10),
+            customerName: inv.customerName || "Walk-in Guest",
+            serviceName: "Credit collection — original service",
+            amount: creditStaff.serviceRevenue,
+            productCost: creditStaff.productCost,
+            netAmount: creditStaff.serviceRevenue - creditStaff.productCost,
+            stylistShare: creditStaff.amount,
+            ownerShare: Math.max(0, creditStaff.serviceRevenue - creditStaff.productCost - creditStaff.amount) + creditStaff.productCost,
+          });
+        });
 
         if (cc.paymentSplit) {
           const cCash = Number(cc.paymentSplit.cash) || 0;
