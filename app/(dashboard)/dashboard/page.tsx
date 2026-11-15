@@ -69,6 +69,16 @@ interface Invoice {
   billDate?: Timestamp;
   advanceAdded?: number;
   advanceUsed?: number;
+  collectedCredits?: Array<{
+    collectionId?: string;
+    originalInvoiceId?: string;
+    originalInvoiceNumber?: string;
+    originalGrandTotal?: number;
+    originalServices?: ServiceItem[];
+    collectedAmount?: number;
+    collectedAt?: string;
+    paymentSplit?: { cash?: number; upi?: number; card?: number };
+  }>;
   creditPaymentHistory?: Array<{
     collectionId?: string;
     collectedAt?: string;
