@@ -106,6 +106,8 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
   const [customerAdvance, setCustomerAdvance] = useState<any>(null);
   const [advanceApplied, setAdvanceApplied] = useState<number>(0);
   const [originalAdvanceValues, setOriginalAdvanceValues] = useState<{ added: number; used: number; customerId: string }>({ added: 0, used: 0, customerId: "" });
+  const [historicalCreditPaymentSplit, setHistoricalCreditPaymentSplit] = useState({ cash: 0, upi: 0, card: 0 });
+  const historicalCreditPaymentAmount = historicalCreditPaymentSplit.cash + historicalCreditPaymentSplit.upi + historicalCreditPaymentSplit.card;
 
   // Membership states
   const [addMembership, setAddMembership] = useState(false);
@@ -208,16 +210,27 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
 
             // Populate payment split
             const payments = inv.paymentSplit || {};
-            setCashAmount(payments.cash !== undefined ? payments.cash : "");
-            setUpiAmount(payments.upi !== undefined ? payments.upi : "");
-            setCardAmount(payments.card !== undefined ? payments.card : "");
+            const creditHistorySplit = (inv.creditPaymentHistory || []).reduce((sum: any, item: any) => ({
+              cash: sum.cash + (Number(item.paymentSplit?.cash) || 0),
+              upi: sum.upi + (Number(item.paymentSplit?.upi) || 0),
+              card: sum.card + (Number(item.paymentSplit?.card) || 0),
+            }), { cash: 0, upi: 0, card: 0 });
+            const originalCash = Math.max(0, (Number(payments.cash) || 0) - creditHistorySplit.cash);
+            const originalUpi = Math.max(0, (Number(payments.upi) || 0) - creditHistorySplit.upi);
+            const originalCard = Math.max(0, (Number(payments.card) || 0) - creditHistorySplit.card);
+            setCashAmount(originalCash || "");
+            setUpiAmount(originalUpi || "");
+            setCardAmount(originalCard || "");
+            setHistoricalCreditPaymentSplit(creditHistorySplit);
 
-            const isSplit = (payments.cash > 0 && (payments.upi > 0 || payments.card > 0)) || (payments.upi > 0 && payments.card > 0);
+            const isSplit = (originalCash > 0 && (originalUpi > 0 || originalCard > 0)) || (originalUpi > 0 && originalCard > 0);
             setIsSplitEdited(isSplit || inv.paymentMethod === "Split");
             setIsAmountPaidEdited(true);
             setAdvanceToAdd(Number(inv.advanceAdded) || 0);
             setAdvanceApplied(Number(inv.advanceUsed) || 0);
             setOriginalAdvanceValues({ added: Number(inv.advanceAdded) || 0, used: Number(inv.advanceUsed) || 0, customerId: inv.customerId || "" });
+            setAmountPaid(originalCash + originalUpi + originalCard + (Number(inv.advanceAdded) || 0));
+            setMarkAsCredit(inv.paymentStatus !== "paid" || (Number(inv.balanceDue) || 0) > 0);
 
             if (inv.appliedOffer) {
               setSelectedOfferId(inv.appliedOffer.offerId || "");
@@ -827,7 +840,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
     return collectedCreditsByInvoice.reduce((sum, g) => sum + g.amountCollecting, 0);
   }, [collectedCreditsByInvoice]);
 
-  const amountToCollect = Math.max(0, totals.grandTotal + totalCollectedCreditsAmount - advanceApplied);
+  const amountToCollect = Math.max(0, totals.grandTotal + (editInvoiceId ? 0 : totalCollectedCreditsAmount) - advanceApplied - (editInvoiceId ? historicalCreditPaymentAmount : 0));
 
   useEffect(() => {
     const amt = Number(amountPaid) || 0;
@@ -846,7 +859,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
   const upiVal = upiAmount === "" ? 0 : Number(upiAmount);
   const cardVal = cardAmount === "" ? 0 : Number(cardAmount);
   const totalPaid = cashVal + upiVal + cardVal;
-  const creditCollectionPaid = Math.min(totalCollectedCreditsAmount, totalPaid);
+  const creditCollectionPaid = editInvoiceId ? 0 : Math.min(totalCollectedCreditsAmount, totalPaid);
   const creditCollectionsToProcess = useMemo(() => {
     let remaining = creditCollectionPaid;
     return [...collectedCreditsByInvoice]
@@ -1085,7 +1098,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
 
       const creditSplit = allocateSplit(enteredSplit, creditCollectionPaid);
 
-      let remainingAdvanceDeduction = advanceToAdd;
+      let remainingAdvanceDeduction = editInvoiceId ? 0 : advanceToAdd;
       let savedCash = Math.max(0, enteredSplit.cash - creditSplit.cash);
       let savedUpi = Math.max(0, enteredSplit.upi - creditSplit.upi);
       let savedCard = Math.max(0, enteredSplit.card - creditSplit.card);
@@ -1224,8 +1237,8 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
         const ddStr = String(selectedDate.getDate()).padStart(2, '0');
         const dateKey = `${yyyy}-${mmStr}-${ddStr}`;
 
-        const editInvoiceCashPaid = Math.max(0, totalPaid - creditCollectionPaid - advanceToAdd);
-        const editInvoiceReceived = Math.round((editInvoiceCashPaid + advanceApplied) * 100) / 100;
+        const editInvoiceCashPaid = totalPaid;
+        const editInvoiceReceived = Math.round((editInvoiceCashPaid + advanceApplied + historicalCreditPaymentAmount) * 100) / 100;
         const invoicePaymentStatus = markAsCredit
           ? (editInvoiceReceived === 0 ? "unpaid" : "partial")
           : "paid";
@@ -1249,8 +1262,8 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
           billDiscount: billDiscount,
           billDiscountPercent: billDiscountPercent,
           grandTotal: totals.grandTotal,
-          receivedAmount: Math.round((Math.max(0, totalPaid - creditCollectionPaid - advanceToAdd) + advanceApplied) * 100) / 100,
-          balanceDue: Math.max(0, Math.round((totals.grandTotal - (Math.max(0, totalPaid - creditCollectionPaid - advanceToAdd) + advanceApplied)) * 100) / 100),
+          receivedAmount: editInvoiceReceived,
+          balanceDue: Math.max(0, Math.round((totals.grandTotal - editInvoiceReceived) * 100) / 100),
 
           appliedOffer: selectedOffer
             ? {
@@ -1266,20 +1279,12 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
           advanceAdded: advanceToAdd,
           advanceUsed: advanceApplied,
           paymentSplit: {
-            cash: savedCash,
-            upi: savedUpi,
-            card: savedCard,
+            cash: savedCash + historicalCreditPaymentSplit.cash,
+            upi: savedUpi + historicalCreditPaymentSplit.upi,
+            card: savedCard + historicalCreditPaymentSplit.card,
           },
           paymentMethod: invoicePaymentMethod,
           paymentStatus: invoicePaymentStatus,
-          collectedCredits: creditCollectionsToProcess.map((g) => ({
-            collectionId: `${editInvoiceId}:${g.originalInvoiceId}`,
-            originalInvoiceId: g.originalInvoiceId,
-            originalInvoiceNumber: g.originalInvoiceNumber,
-            collectedAmount: g.amountCollecting,
-            paymentSplit: allocateSplit(creditSplit, g.amountCollecting),
-            collectedAt: new Date().toISOString(),
-          })),
           membership: addMembership ? {
             membershipAmount: memAmount,
             membershipDuration: parseInt(membershipDuration) || 0,
@@ -1575,6 +1580,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
     setCustomerAdvance(null);
     setAdvanceApplied(0);
     setOriginalAdvanceValues({ added: 0, used: 0, customerId: "" });
+    setHistoricalCreditPaymentSplit({ cash: 0, upi: 0, card: 0 });
 
     if (onClose) {
       onClose();
@@ -1901,7 +1907,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
           )}
 
           {/* Outstanding Credit Warning Banner */}
-          {!loadingCredits && groupedCredits.length > 0 && (
+          {!editInvoiceId && !loadingCredits && groupedCredits.length > 0 && (
             <div className="mt-4 rounded-2xl border border-amber-900/40 bg-amber-950/20 p-4 text-sm text-[#D4A935] space-y-2">
               <div className="flex items-center gap-2 font-bold text-amber-500">
                 <AlertCircle size={16} />
