@@ -1451,17 +1451,20 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
             originalServiceName: enrichedServices[0]?.serviceName || "",
             originalServiceAmount: totals.grandTotal,
             originalServiceCommission: enrichedServices.reduce((sum: number, s: any) => sum + (s.stylistShare || 0), 0),
-            commissionAllocations: enrichedServices.map((service: any) => ({
-              serviceId: service.serviceId,
-              serviceName: service.serviceName,
-              staffId: service.staffId,
-              staffName: service.staffName,
-              staffRole: service.staffRole,
-              serviceRevenue: service.amount,
-              productCost: service.usedProductCost || 0,
-              stylistShare: service.stylistShare || 0,
-              ownerShare: service.ownerShare || 0,
-            })),
+            commissionAllocations: enrichedServices.map((service: any) => {
+              const outstandingRatio = totals.grandTotal > 0 ? creditAmount / totals.grandTotal : 0;
+              return {
+                serviceId: service.serviceId,
+                serviceName: service.serviceName,
+                staffId: service.staffId,
+                staffName: service.staffName,
+                staffRole: service.staffRole,
+                serviceRevenue: Math.round((Number(service.amount) || 0) * outstandingRatio * 100) / 100,
+                productCost: Math.round((Number(service.usedProductCost) || 0) * outstandingRatio * 100) / 100,
+                stylistShare: Math.round((Number(service.stylistShare) || 0) * outstandingRatio * 100) / 100,
+                ownerShare: Math.round((Number(service.ownerShare) || 0) * outstandingRatio * 100) / 100,
+              };
+            }),
             creditAmount,
             remainingAmount: creditAmount,
             collectionStatus: "pending",
