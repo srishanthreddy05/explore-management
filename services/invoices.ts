@@ -362,6 +362,7 @@ export async function create(
     const docRef = providedDocRef || doc(collection(db, COLLECTION));
     const invoiceData = {
       ...rest,
+      initialPaymentSplit: rest.initialPaymentSplit || rest.paymentSplit,
       customerName: toTitleCase(rest.customerName),
       services: normalizedServices,
       products: normalizedProducts,
@@ -746,6 +747,7 @@ export async function collectCreditPayment(
       };
 
       const paymentRecord = {
+        paymentId: `${originalInvoiceId}_${nowIso}_${collectedAmount}`,
         collectedAt: nowIso,
         collectedAmount,
         paymentSplit: {
@@ -769,7 +771,25 @@ export async function collectCreditPayment(
         updatedAt: serverTimestamp(),
       });
 
-      // 2f. Attribute collection to current period statistics
+      // 2f. Attribute the collection to the original service performers.
+      // The same proportion is applied to each invoice line; this prevents all
+      // stylist-originated credit from being incorrectly assigned to the owner.
+      const collectionRatio = oldInv.grandTotal > 0 ? collectedAmount / oldInv.grandTotal : 0;
+      let collectionOwnerShare = 0;
+      let collectionStylistShare = 0;
+      let collectionServiceRevenue = 0;
+      let collectionProductCost = 0;
+      (oldInv.services || []).forEach((service: any) => {
+        const commission = getServiceCommission(service, oldInv);
+        collectionOwnerShare += commission.ownerShare * collectionRatio;
+        collectionStylistShare += commission.stylistShare * collectionRatio;
+        collectionServiceRevenue += commission.serviceRevenue * collectionRatio;
+        collectionProductCost += commission.productCost * collectionRatio;
+      });
+      const retailBase = (oldInv.products || []).reduce((sum: number, product: any) =>
+        sum + Number(product.amount ?? ((Number(product.price) || 0) * (Number(product.quantity) || 1) - (Number(product.discount) || 0))), 0);
+      collectionOwnerShare += Math.max(0, retailBase) * collectionRatio;
+
       const dailyRef = doc(db, "stats", `daily_${currentDateKey}`);
       tx.set(dailyRef, {
         dateKey: currentDateKey,
@@ -777,7 +797,10 @@ export async function collectCreditPayment(
         cash: increment(paymentSplit.cash || 0),
         upi: increment(paymentSplit.upi || 0),
         card: increment(paymentSplit.card || 0),
-        ownerShare: increment(collectedAmount), // Old credit collections belong 100% to owner
+        ownerShare: increment(collectionOwnerShare),
+        stylistShare: increment(collectionStylistShare),
+        serviceRevenue: increment(collectionServiceRevenue),
+        productCost: increment(collectionProductCost),
         creditCollectionsRevenue: increment(collectedAmount),
       }, { merge: true });
 
