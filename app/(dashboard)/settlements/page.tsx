@@ -850,7 +850,7 @@ function SettlementDetailCard({
     : "hover:shadow-[0_8px_30px_rgba(96,165,250,0.06)] hover:-translate-y-0.5";
   const iconWrapperBg = isOwner ? "bg-[#D4A935]/10 text-[#D4A935]" : "bg-[#60A5FA]/10 text-[#60A5FA]";
   const heroTextColor = isOwner ? "text-[#D4A935]" : "text-[#F5F0E8]";
-  const badgeText = isOwner ? "Owner" : "Stylist";
+  const badgeText = isOwner ? "Sai Kiran" : "Stylist";
   const badgeClass = isOwner
     ? "border-[#D4A935]/20 bg-[#D4A935]/5 text-[#D4A935]"
     : "border-[#60A5FA]/20 bg-[#60A5FA]/5 text-[#60A5FA]";
@@ -1788,7 +1788,7 @@ export default function SettlementsPage() {
         </div>
         <div className="flex flex-col gap-4">
           <MetricCard
-            title="Owner Settlement"
+            title="Sai Kiran Settlement"
             today={todayMetrics.ownerShare - todayDailyExpenses}
             monthly={monthlyStatsTotals.ownerShare - selectedPeriodDailyExpenses}
             icon={ShieldCheck}
@@ -1906,13 +1906,13 @@ export default function SettlementsPage() {
                           return (
                             <div className="flex flex-col gap-6">
                               <SettlementDetailCard
-                                title="Owner Settlement"
+                                title="Sai Kiran Settlement"
                                 value={day.totalOwnerShare}
                                 icon={ShieldCheck}
                                 variant="owner"
                                 items={[
                                   {
-                                    label: "Owner Direct Services",
+                                    label: "Sai Kiran Direct Services",
                                     value: details.ownerDirectRevenue,
                                   },
                                   {
