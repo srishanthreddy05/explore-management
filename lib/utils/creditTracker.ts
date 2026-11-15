@@ -329,25 +329,18 @@ export async function loadAuthoritativeUnifiedCreditTracker(
   const invoiceCollection = collection(activeDb, "invoices");
 
   // New ledger schema and legacy ledger schema are queried separately.
-  const [remainingCreditSnap, legacyCreditSnap, balanceDueSnap, unpaidInvoiceSnap, partialInvoiceSnap] = await Promise.all([
-    getDocs(query(creditCollection, where("remainingAmount", ">", 0))),
-    getDocs(query(creditCollection, where("amount", ">", 0))),
-    getDocs(query(invoiceCollection, where("balanceDue", ">", 0))),
-    getDocs(query(invoiceCollection, where("paymentStatus", "==", "unpaid"))),
-    getDocs(query(invoiceCollection, where("paymentStatus", "==", "partial"))),
+  const [creditSnap, invoiceSnap] = await Promise.all([
+    getDocs(query(creditCollection, where("collectionStatus", "in", ["pending", "partial"]))),
+    getDocs(query(invoiceCollection, where("paymentStatus", "in", ["unpaid", "partial"]))),
   ]);
 
-  const creditMap = new Map<string, CreditBalance>();
-  [remainingCreditSnap, legacyCreditSnap].forEach((snap) => snap.forEach((doc) => {
-    creditMap.set(doc.id, { id: doc.id, ...doc.data() } as CreditBalance);
-  }));
+  const creditList: CreditBalance[] = [];
+  creditSnap.forEach((doc) => creditList.push({ id: doc.id, ...doc.data() } as CreditBalance));
 
-  const invoiceMap = new Map<string, Invoice>();
-  [balanceDueSnap, unpaidInvoiceSnap, partialInvoiceSnap].forEach((snap) => snap.forEach((doc) => {
-    invoiceMap.set(doc.id, { id: doc.id, ...doc.data() } as Invoice);
-  }));
+  const invoiceList: Invoice[] = [];
+  invoiceSnap.forEach((doc) => invoiceList.push({ id: doc.id, ...doc.data() } as Invoice));
 
-  const value = buildUnifiedCreditTracker([...creditMap.values()], [...invoiceMap.values()]);
+  const value = buildUnifiedCreditTracker(creditList, invoiceList);
   if (!firestoreDb) outstandingCreditCache = { value, expiresAt: Date.now() + 15_000 };
   return value;
 }
