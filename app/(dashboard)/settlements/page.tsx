@@ -57,6 +57,25 @@ interface Invoice {
   billDate?: any;
   advanceAdded?: number;
   advanceUsed?: number;
+  invoiceNumber?: string;
+  customerName?: string;
+  creditPaymentHistory?: Array<{
+    collectionId?: string;
+    collectedAt?: string;
+    collectedAmount?: number;
+    paymentSplit?: { cash?: number; upi?: number; card?: number };
+    includedInPaymentSplit?: boolean;
+  }>;
+  collectedCredits?: Array<{
+    originalInvoiceId?: string;
+    originalInvoiceNumber?: string;
+    collectionId?: string;
+    originalGrandTotal?: number;
+    originalServices?: ServiceItem[];
+    collectedAmount?: number;
+    collectedAt?: string;
+    paymentSplit?: { cash?: number; upi?: number; card?: number };
+  }>;
 }
 
 interface ServiceItem {
