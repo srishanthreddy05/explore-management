@@ -70,6 +70,19 @@ export interface Invoice {
   } | null;
 
   collectedCredits?: Array<{
+    collectionId?: string;
+    commissionAllocations?: Array<{
+      creditDocId?: string;
+      staffId: string;
+      staffName: string;
+      staffRole: string;
+      serviceId?: string;
+      serviceName?: string;
+      serviceRevenue: number;
+      productCost: number;
+      stylistShare: number;
+      ownerShare: number;
+    }>;
     originalInvoiceId: string;
     originalInvoiceNumber: string;
     collectedAmount: number;
@@ -82,6 +95,19 @@ export interface Invoice {
   }>;
 
   creditPaymentHistory?: Array<{
+    collectionId?: string;
+    commissionAllocations?: Array<{
+      creditDocId?: string;
+      staffId: string;
+      staffName: string;
+      staffRole: string;
+      serviceId?: string;
+      serviceName?: string;
+      serviceRevenue: number;
+      productCost: number;
+      stylistShare: number;
+      ownerShare: number;
+    }>;
     collectedAt: string;
     collectedAmount: number;
     paymentSplit: {
