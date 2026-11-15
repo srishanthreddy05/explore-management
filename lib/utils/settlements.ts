@@ -47,7 +47,18 @@ export function getInvoicePaymentRatio(inv: any): number {
   if (grandTotal <= 0) return 1;
   // Credit collections are separate dated payment events. Exclude them from the
   // original invoice's sale-date recognition to avoid counting them twice.
-  const payments = inv.initialPaymentSplit || getInvoicePayments(inv);
+  const currentPayments = getInvoicePayments(inv);
+  const history = Array.isArray(inv.creditPaymentHistory) ? inv.creditPaymentHistory : [];
+  const historySplit = history.reduce((sum: InvoicePayments, payment: any) => ({
+    cash: sum.cash + (Number(payment.paymentSplit?.cash) || 0),
+    upi: sum.upi + (Number(payment.paymentSplit?.upi) || 0),
+    card: sum.card + (Number(payment.paymentSplit?.card) || 0),
+  }), { cash: 0, upi: 0, card: 0 });
+  const payments = inv.initialPaymentSplit || {
+    cash: Math.max(0, currentPayments.cash - historySplit.cash),
+    upi: Math.max(0, currentPayments.upi - historySplit.upi),
+    card: Math.max(0, currentPayments.card - historySplit.card),
+  };
   const collected = (payments.cash || 0) + (payments.upi || 0) + (payments.card || 0) + (inv.advanceUsed || 0);
   return Math.min(1, Math.max(0, collected / grandTotal));
 }
@@ -343,7 +354,6 @@ export function calculateSettlementRangeOverview(
         staffSummaryMap[key].productCosts += comm.productCost * allocationRatio;
         staffSummaryMap[key].netShare += stylistPart;
       });
-      const retail = calculateInvoiceRetailRevenue({ ...inv, initialPaymentSplit: { cash: 0, upi: 0, card: 0 }, paymentSplit: { cash: 0, upi: 0, card: 0 }, creditPaymentHistory: [] });
       // Retail is owner revenue; allocate the same invoice-level collection fraction.
       const retailBase = (inv.products || []).reduce((sum: number, p: any) => sum + Number(p.amount ?? ((Number(p.price) || 0) * (Number(p.quantity) || 1) - (Number(p.discount) || 0))), 0);
       const retailPart = Math.max(0, retailBase) * allocationRatio;
