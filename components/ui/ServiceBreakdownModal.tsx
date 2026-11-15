@@ -44,6 +44,8 @@ export function ServiceBreakdownModal({
   if (!isOpen || !mounted) return null;
 
   const totalSum = breakdown.reduce((sum, item) => sum + item.count, 0);
+  const totalCost = breakdown.reduce((sum, item) => sum + (item.totalCost || 0), 0);
+  const hasCosts = breakdown.some((item) => item.totalCost !== undefined);
 
   const modalJSX = (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
@@ -62,7 +64,7 @@ export function ServiceBreakdownModal({
               {staffName} — {title}
             </h3>
             <p className="text-xs font-semibold text-[#B8962E] mt-0.5">
-              Service Performance Breakdown
+              {hasCosts ? "Product Consumption Breakdown" : "Service Performance Breakdown"}
             </p>
           </div>
           <button
@@ -77,10 +79,10 @@ export function ServiceBreakdownModal({
         {/* Total Summary Bar */}
         <div className="my-4 rounded-xl border border-[#2E2B24] bg-[#131210] p-3.5 flex items-center justify-between">
           <span className="text-xs font-bold uppercase tracking-wider text-[#A89F8C]">
-            Total Services
+            {hasCosts ? "Total Products Used" : "Total Services"}
           </span>
           <span className="text-base font-black text-[#4ADE80]">
-            {totalSum} {totalSum === 1 ? "service" : "services"}
+            {totalSum} {hasCosts ? "uses" : totalSum === 1 ? "service" : "services"}{hasCosts && <span className="ml-2 text-xs text-[#B8962E]">₹{totalCost.toLocaleString("en-IN", { maximumFractionDigits: 2 })} total cost</span>}
           </span>
         </div>
 
@@ -97,7 +99,7 @@ export function ServiceBreakdownModal({
                   <th className="px-4 py-3 w-10">#</th>
                   <th className="px-4 py-3">Service Name</th>
                   <th className="px-4 py-3 text-right">Quantity</th>
-                  <th className="px-4 py-3 text-right">Share</th>
+                  <th className="px-4 py-3 text-right">{hasCosts ? "Total Cost" : "Share"}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#242118] text-[#F5F0E8]">
@@ -115,7 +117,7 @@ export function ServiceBreakdownModal({
                         {item.count}
                       </td>
                       <td className="px-4 py-3 text-right font-medium text-[#6B6358] text-[11px]">
-                        {pct}%
+                        {hasCosts ? `₹${(item.totalCost || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}` : `${pct}%`}
                       </td>
                     </tr>
                   );
@@ -127,7 +129,7 @@ export function ServiceBreakdownModal({
 
         {/* Footer */}
         <div className="mt-5 flex justify-between items-center text-xs text-[#6B6358]">
-          <span>Showing {breakdown.length} distinct service types</span>
+          <span>Showing {breakdown.length} distinct {hasCosts ? "product" : "service"} types</span>
           <button
             onClick={onClose}
             className="h-10 rounded-xl border border-[#2E2B24] bg-[#131210] px-5 text-xs font-semibold text-[#A89F8C] hover:border-[#B8962E] hover:text-[#B8962E] transition cursor-pointer"
