@@ -7,6 +7,7 @@ export const CACHE_TTL = {
   services: 60 * 60 * 1000,       // 1 hour
   products: 30 * 60 * 1000,        // 30 minutes
   offers:   60 * 60 * 1000,        // 1 hour
+  staff:    5 * 60 * 1000,          // 5 minutes
   settings: 24 * 60 * 60 * 1000,   // 24 hours
   serviceCategories: 24 * 60 * 60 * 1000, // 24 hours
 };
@@ -15,6 +16,7 @@ export const CACHE_KEYS = {
   services: "cache_services_v1",
   products: "cache_products_v1",
   offers:   "cache_offers_v1",
+  staff:    "cache_staff_v1",
   settings: "cache_settings_v1",
   serviceCategories: "cache_service_categories_v1",
 };
