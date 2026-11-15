@@ -630,7 +630,7 @@ export async function collectCreditPayment(
   collectionDate?: Date | string,
   note?: string,
   collectionId?: string
-): Promise<void> {
+ ): Promise<any[]> {
   const roundedAmount = Math.round((Number(collectedAmount) || 0) * 100) / 100;
   if (roundedAmount <= 0) throw new Error("Collection amount must be greater than zero.");
   const splitTotal = Math.round(((paymentSplit.cash || 0) + (paymentSplit.upi || 0) + (paymentSplit.card || 0)) * 100) / 100;
@@ -650,14 +650,15 @@ export async function collectCreditPayment(
   const monthKey = dateKey.slice(0, 7);
   const resolvedCollectionId = collectionId || `credit-${originalInvoiceId}-${now.getTime()}-${roundedAmount.toFixed(2)}`;
 
-  await runTransaction(db, async (tx) => {
+  return await runTransaction(db, async (tx) => {
     const invoiceSnap = await tx.get(invoiceRef);
     if (!invoiceSnap.exists()) throw new Error(`Original invoice ${originalInvoiceId} not found.`);
     const oldInv = { id: originalInvoiceId, ...invoiceSnap.data() } as Invoice;
     const history: any[] = (oldInv as any).creditPaymentHistory || [];
 
     // Idempotency: a retried billing save must not collect the same old invoice twice.
-    if (history.some((entry) => entry.collectionId === resolvedCollectionId)) return;
+    const existingCollection = history.find((entry) => entry.collectionId === resolvedCollectionId);
+    if (existingCollection) return existingCollection.commissionAllocations || [];
 
     const creditSnaps: Array<{ id: string; ref: any; data: any }> = [];
     for (const id of docIds) {
@@ -835,6 +836,27 @@ export async function collectCreditPayment(
         creditCollectionsRevenue: increment(totals.stylistShare),
       }, { merge: true });
     }
+    return collectionCommissionAllocations;
+  });
+}
+
+export async function attachCreditCollectionAllocations(
+  invoiceId: string,
+  collectionId: string,
+  commissionAllocations: any[]
+): Promise<void> {
+  const invoiceRef = doc(db, COLLECTION, invoiceId);
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(invoiceRef);
+    if (!snap.exists()) throw new Error(`Invoice ${invoiceId} not found while attaching credit allocation.`);
+    const invoiceData = snap.data();
+    const collectedCredits: any[] = Array.isArray(invoiceData.collectedCredits) ? invoiceData.collectedCredits : [];
+    const index = collectedCredits.findIndex((item) => item.collectionId === collectionId);
+    if (index < 0) throw new Error(`Collection ${collectionId} is not attached to invoice ${invoiceId}.`);
+    if (Array.isArray(collectedCredits[index].commissionAllocations) && collectedCredits[index].commissionAllocations.length) return;
+    const next = [...collectedCredits];
+    next[index] = { ...next[index], commissionAllocations };
+    tx.update(invoiceRef, { collectedCredits: next });
   });
 }
 
