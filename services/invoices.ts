@@ -741,7 +741,7 @@ export async function collectCreditPayment(
         upi: increment(paymentSplit.upi || 0),
         card: increment(paymentSplit.card || 0),
         ownerShare: increment(creditAllocation.ownerShare),
-        stylistShare: increment(creditAllocation.stylistShare)
+        stylistShare: increment(creditAllocation.stylistShare),
         creditCollectionsRevenue: increment(collectedAmount),
       }, { merge: true });
 
