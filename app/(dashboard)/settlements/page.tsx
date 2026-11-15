@@ -1465,13 +1465,6 @@ export default function SettlementsPage() {
         });
         setDailyStats(statsMap);
 
-        try {
-          const todayInvoices = await invoicesService.getByDateKey(todayStr);
-          setDayInvoicesMap((prev) => ({ ...prev, [todayStr]: todayInvoices }));
-        } catch (err) {
-          console.error("Failed to load today's invoices:", err);
-        }
-
         let liveRetailRevenue = 0;
         let liveStylistSupplies = 0;
         // Compute staff shares and range totals from invoices inside selected range using shared utility
@@ -1486,6 +1479,11 @@ export default function SettlementsPage() {
           invSnap.forEach((doc) => {
             invoicesList.push({ id: doc.id, ...doc.data() });
           });
+
+          // Reuse the selected-range invoice result for today's details instead
+          // of issuing a second overlapping query for the same documents.
+          const todayInvoices = invoicesList.filter((inv) => inv.dateKey === todayStr);
+          setDayInvoicesMap((prev) => ({ ...prev, [todayStr]: todayInvoices }));
 
           // Fetch drawings for the selected range
           await fetchDrawings(dateFrom, dateTo);
