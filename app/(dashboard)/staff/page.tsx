@@ -3,9 +3,9 @@
 import { useEffect, useState, useMemo } from "react";
 import * as staffService from "@/services/staff";
 import type { Staff } from "@/types/staff";
-import { Plus, Search, Edit2, Trash2, X, Users } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, X, Users, CalendarDays } from "lucide-react";
 import { db } from "@/lib/firebase";
-import { collection, query, where, getDocs, Timestamp, doc, getDoc } from "firebase/firestore";
+import { collection, query, where, getDocs, Timestamp } from "firebase/firestore";
 import { useAppData } from "@/context/AppDataContext";
 import { computeStaffPerformance, ServiceBreakdownItem } from "@/lib/utils/staffPerformance";
 import { ServiceBreakdownModal } from "@/components/ui/ServiceBreakdownModal";
@@ -29,77 +29,49 @@ export default function StaffPage() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [idToDelete, setIdToDelete] = useState<string | null>(null);
 
-  const [staffRevenueMap, setStaffRevenueMap] = useState<Record<string, number>>({});
-  const [staffMemberMap, setStaffMemberMap] = useState<Record<string, number>>({});
+  const [periodPreset, setPeriodPreset] = useState("this-month");
+  const [selectedMonth, setSelectedMonth] = useState(() => { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`; });
+  const [customStart, setCustomStart] = useState(() => { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`; });
+  const [customEnd, setCustomEnd] = useState(() => { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`; });
   const [monthlyInvoices, setMonthlyInvoices] = useState<any[]>([]);
+  const [invoiceLoading, setInvoiceLoading] = useState(false);
   const [breakdownModal, setBreakdownModal] = useState<{
     staffName: string;
     title: string;
     breakdown: ServiceBreakdownItem[];
   } | null>(null);
 
+  const selectedRange = useMemo(() => {
+    const now = new Date(); const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const toKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
+    if (periodPreset === "custom") return { start: customStart, end: customEnd, label: `${customStart} to ${customEnd}`, isSingleMonth: false };
+    if (periodPreset === "selected-month") {
+      const [year,month] = selectedMonth.split("-").map(Number); const first = new Date(year,month-1,1); const last = new Date(year,month,0);
+      return { start: toKey(first), end: toKey(last), label: first.toLocaleDateString("en-IN",{month:"long",year:"numeric"}), isSingleMonth: true };
+    }
+    const offset = periodPreset === "last-month" ? -1 : 0; const monthStart = new Date(now.getFullYear(),now.getMonth()+offset,1);
+    const start = periodPreset === "last-3-months" ? new Date(now.getFullYear(),now.getMonth()-2,1) : periodPreset === "last-6-months" ? new Date(now.getFullYear(),now.getMonth()-5,1) : monthStart;
+    const end = periodPreset === "last-month" ? new Date(now.getFullYear(),now.getMonth(),0) : today;
+    const label = periodPreset === "this-month" ? "This month" : periodPreset === "last-month" ? "Previous month" : periodPreset === "last-3-months" ? "Last 3 months" : "Last 6 months";
+    return { start: toKey(start), end: toKey(end), label, isSingleMonth: periodPreset === "this-month" || periodPreset === "last-month" };
+  }, [periodPreset, selectedMonth, customStart, customEnd]);
+
   useEffect(() => {
-    const fetchMonthlyInvoices = async () => {
+    if (!selectedRange.start || !selectedRange.end || selectedRange.start > selectedRange.end) { setMonthlyInvoices([]); return; }
+    let cancelled = false;
+    const fetchInvoices = async () => {
+      setInvoiceLoading(true);
       try {
-        const now = new Date();
-        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-        const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
-
-        const q = query(
-          collection(db, "invoices"),
-          where("date", ">=", Timestamp.fromDate(startOfMonth)),
-          where("date", "<=", Timestamp.fromDate(endOfToday))
-        );
-        const snap = await getDocs(q);
-        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        setMonthlyInvoices(list);
-      } catch (err) {
-        console.error("Failed to load monthly invoices for staff page:", err);
-      }
+        const [sy,sm,sd] = selectedRange.start.split("-").map(Number); const [ey,em,ed] = selectedRange.end.split("-").map(Number);
+        const from = new Date(sy,sm-1,sd,0,0,0,0); const to = new Date(ey,em-1,ed,23,59,59,999);
+        const invoicesQuery = query(collection(db,"invoices"),where("date",">=",Timestamp.fromDate(from)),where("date","<=",Timestamp.fromDate(to)));
+        const snapshot = await getDocs(invoicesQuery);
+        if (!cancelled) setMonthlyInvoices(snapshot.docs.map((item)=>({id:item.id,...item.data()})));
+      } catch(error) { console.error("Failed to load staff performance invoices:",error); if(!cancelled) setMonthlyInvoices([]); }
+      finally { if(!cancelled) setInvoiceLoading(false); }
     };
-
-    fetchMonthlyInvoices();
-  }, []);
-
-  const loadStaffProgress = async () => {
-    try {
-      const now = new Date();
-      const yyyy = now.getFullYear();
-      const mm = String(now.getMonth() + 1).padStart(2, '0');
-      const monthKey = `${yyyy}-${mm}`;
-
-      const revMap: Record<string, number> = {};
-      const memMap: Record<string, number> = {};
-
-      await Promise.all(
-        staff.map(async (member) => {
-          if (!member.id) return;
-          const ref = doc(db, "stats", `staff_${member.id}_${monthKey}`);
-          const snap = await getDoc(ref);
-          if (snap.exists()) {
-            const data = snap.data();
-            revMap[member.id] = data.revenue ?? 0;
-            memMap[member.id] = data.servicesCount ?? 0;
-          } else {
-            revMap[member.id] = 0;
-            memMap[member.id] = 0;
-          }
-        })
-      );
-
-      setStaffRevenueMap(revMap);
-      setStaffMemberMap(memMap);
-
-    } catch (error) {
-      console.error("Failed to load staff list progress:", error);
-    }
-  };
-
-  useEffect(() => {
-    if (staff && staff.length > 0) {
-      loadStaffProgress();
-    }
-  }, [staff]);
+    fetchInvoices(); return () => { cancelled = true; };
+  }, [selectedRange.start, selectedRange.end]);
 
   const handleOpenAdd = () => {
     setEditingStaff(null);
@@ -139,7 +111,6 @@ export default function StaffPage() {
       setDeleteConfirmOpen(false);
       setIdToDelete(null);
       await refreshStaff();
-      loadStaffProgress();
     } catch (error) {
       console.error("Failed to delete staff member:", error);
     }
@@ -165,7 +136,6 @@ export default function StaffPage() {
       }
       setModalOpen(false);
       await refreshStaff();
-      loadStaffProgress();
     } catch (error) {
       console.error("Failed to save staff member:", error);
     }
@@ -245,23 +215,36 @@ export default function StaffPage() {
             />
           </div>
 
+          <div className="mb-5 rounded-2xl border border-[#2E2B24] bg-[#131210] p-4">
+            <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#A89F8C]"><CalendarDays size={15} className="text-[#B8962E]" /> Performance Period</div>
+            <div className="flex flex-wrap items-center gap-2">
+              <select value={periodPreset} onChange={(e)=>setPeriodPreset(e.target.value)} className="h-10 min-w-[180px] rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-3 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E]">
+                <option value="this-month">This month</option><option value="last-month">Previous month</option><option value="selected-month">Select a month</option><option value="last-3-months">Last 3 months</option><option value="last-6-months">Last 6 months</option><option value="custom">Custom date range</option>
+              </select>
+              {periodPreset==="selected-month" && <input type="month" value={selectedMonth} onChange={(e)=>setSelectedMonth(e.target.value)} className="h-10 rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-3 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E]" aria-label="Select performance month" />}
+              {periodPreset==="custom" && <><input type="date" value={customStart} max={customEnd} onChange={(e)=>setCustomStart(e.target.value)} className="h-10 rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-3 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E]" aria-label="Start date" /><span className="text-xs text-[#6B6358]">to</span><input type="date" value={customEnd} min={customStart} onChange={(e)=>setCustomEnd(e.target.value)} className="h-10 rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-3 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E]" aria-label="End date" /></>}
+              <span className="ml-auto text-xs text-[#B8962E]">{selectedRange.label}</span>
+            </div>
+            {invoiceLoading && <p className="mt-2 text-xs text-[#6B6358]">Loading performance data…</p>}
+          </div>
+
           {/* Staff Cards */}
           <div className="flex flex-col gap-4">
             {sortedStaff.map((stf) => {
-              const revenueAchieved = stf.id ? (staffRevenueMap[stf.id] ?? 0) : 0;
+              const revenueAchieved = computeStaffPerformance(monthlyInvoices, stf, selectedRange.start, selectedRange.end).serviceRevenue;
               const revenueMonthly = stf.targets?.revenueMonthly ?? 0;
               const revenuePercent = revenueMonthly > 0
                 ? Math.min((revenueAchieved / revenueMonthly) * 100, 100)
                 : 0;
 
-              const memberAchieved = stf.id ? (staffMemberMap[stf.id] ?? 0) : 0;
+              const memberAchieved = computeStaffPerformance(monthlyInvoices, stf, selectedRange.start, selectedRange.end).servicesTotal;
               const memberCountMonthly = stf.targets?.memberCountMonthly ?? 0;
               const memberPercent = memberCountMonthly > 0
                 ? Math.min((memberAchieved / memberCountMonthly) * 100, 100)
                 : 0;
 
-              const hasRevenueTarget = revenueMonthly > 0;
-              const hasMemberTarget = memberCountMonthly > 0;
+              const hasRevenueTarget = revenueMonthly > 0 && selectedRange.isSingleMonth;
+              const hasMemberTarget = memberCountMonthly > 0 && selectedRange.isSingleMonth;
 
               return (
                 <div
@@ -293,57 +276,33 @@ export default function StaffPage() {
 
                   {/* Middle: Performance & Targets */}
                   <div className="flex-1 min-w-[280px] pt-4 md:pt-0 border-t md:border-t-0 border-[#2E2B24] space-y-3">
-                    {/* Monthly Service Count & Top Services */}
                     {(() => {
-                      const perf = computeStaffPerformance(monthlyInvoices, stf);
-                      return (
+                      const perf = computeStaffPerformance(monthlyInvoices, stf, selectedRange.start, selectedRange.end);
+                      const money = (value: number) => `₹${value.toLocaleString("en-IN",{maximumFractionDigits:2})}`;
+                      return <div className="space-y-3">
                         <div className="rounded-xl border border-[#2E2B24] bg-[#0E0D0B]/60 p-3 space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-[#A89F8C]">
-                              Services This Month
-                            </span>
-                            <span className="text-sm font-black text-[#60A5FA]">
-                              {perf.monthlyTotal} {perf.monthlyTotal === 1 ? "service" : "services"}
-                            </span>
-                          </div>
-
-                          {perf.monthlyBreakdown.length > 0 && (
-                            <div className="flex flex-wrap items-center gap-1 pt-1">
-                              {perf.monthlyBreakdown.slice(0, 4).map((item) => (
-                                <span
-                                  key={item.name}
-                                  className="inline-flex items-center gap-1 rounded-lg bg-[#1C1A16] border border-[#2E2B24] px-2 py-0.5 text-[10px] font-semibold text-[#F5F0E8]"
-                                >
-                                  <span>{item.name}</span>
-                                  <span className="text-[#60A5FA] font-bold">×{item.count}</span>
-                                </span>
-                              ))}
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setBreakdownModal({
-                                    staffName: stf.name,
-                                    title: "Services This Month",
-                                    breakdown: perf.monthlyBreakdown,
-                                  })
-                                }
-                                className="inline-flex items-center gap-1 rounded-lg bg-[#1F1A0F] border border-[#B8962E]/40 px-2 py-0.5 text-[10px] font-bold text-[#B8962E] hover:bg-[#2A2310] transition cursor-pointer"
-                              >
-                                {perf.monthlyBreakdown.length > 4
-                                  ? `View all (+${perf.monthlyBreakdown.length - 4})`
-                                  : "View breakdown"}
-                              </button>
-                            </div>
-                          )}
+                          <div className="flex items-center justify-between gap-2"><span className="text-[10px] font-bold uppercase tracking-wider text-[#A89F8C]">Services Completed</span><span className="text-sm font-black text-[#60A5FA]">{perf.servicesTotal} {perf.servicesTotal===1?"service":"services"}</span></div>
+                          {perf.servicesBreakdown.length ? <div className="flex flex-wrap items-center gap-1 pt-1">
+                            {perf.servicesBreakdown.slice(0,4).map(item=><span key={item.name} className="inline-flex items-center gap-1 rounded-lg bg-[#1C1A16] border border-[#2E2B24] px-2 py-0.5 text-[10px] font-semibold text-[#F5F0E8]"><span>{item.name}</span><span className="text-[#60A5FA] font-bold">×{item.count}</span></span>)}
+                            <button type="button" onClick={()=>setBreakdownModal({staffName:stf.name,title:`Services Completed · ${selectedRange.label}`,breakdown:perf.servicesBreakdown})} className="inline-flex items-center gap-1 rounded-lg bg-[#1F1A0F] border border-[#B8962E]/40 px-2 py-0.5 text-[10px] font-bold text-[#B8962E] hover:bg-[#2A2310] transition cursor-pointer">{perf.servicesBreakdown.length>4?`View all (+${perf.servicesBreakdown.length-4})`:"View breakdown"}</button>
+                          </div>:<p className="text-xs text-[#6B6358]">No services in this period.</p>}
                         </div>
-                      );
+                        <div className="rounded-xl border border-[#2E2B24] bg-[#0E0D0B]/60 p-3 space-y-2">
+                          <div className="flex items-center justify-between gap-2"><span className="text-[10px] font-bold uppercase tracking-wider text-[#A89F8C]">Products Used</span><span className="text-sm font-black text-[#4ADE80]">{perf.productsUsedTotal} {perf.productsUsedTotal===1?"use":"uses"}</span></div>
+                          {perf.productsUsedBreakdown.length ? <>
+                            <div className="flex flex-wrap items-center gap-1 pt-1">{perf.productsUsedBreakdown.slice(0,3).map(item=><span key={item.name} className="inline-flex items-center gap-1 rounded-lg bg-[#1C1A16] border border-[#2E2B24] px-2 py-0.5 text-[10px] font-semibold text-[#F5F0E8]"><span>{item.name}</span><span className="text-[#4ADE80] font-bold">×{item.count}</span></span>)}<button type="button" onClick={()=>setBreakdownModal({staffName:stf.name,title:`Products Used · ${selectedRange.label}`,breakdown:perf.productsUsedBreakdown})} className="inline-flex items-center gap-1 rounded-lg bg-[#1F1A0F] border border-[#B8962E]/40 px-2 py-0.5 text-[10px] font-bold text-[#B8962E] hover:bg-[#2A2310] transition cursor-pointer">View all</button></div>
+                            <div className="flex justify-between border-t border-[#2E2B24] pt-2 text-[10px]"><span className="text-[#6B6358]">Total consumption cost</span><span className="font-bold text-[#B8962E]">{money(perf.productsUsedBreakdown.reduce((sum,item)=>sum+(item.totalCost||0),0))}</span></div>
+                          </>:<p className="text-xs text-[#6B6358]">No mapped products used in this period.</p>}
+                        </div>
+                        <div className="flex items-center justify-between text-xs"><span className="text-[#A89F8C]">Service revenue in period</span><span className="font-bold text-[#F5F0E8]">{money(perf.serviceRevenue)}</span></div>
+                      </div>;
                     })()}
 
                     {/* Monthly Targets */}
                     <div>
-                      <span className="font-semibold block text-[10px] text-[#A89F8C] uppercase tracking-wider mb-2">Monthly Targets</span>
+                      <span className="font-semibold block text-[10px] text-[#A89F8C] uppercase tracking-wider mb-2">{selectedRange.isSingleMonth ? "Monthly Targets" : "Targets (select one month to compare)"}</span>
                       {!hasRevenueTarget && !hasMemberTarget ? (
-                        <p className="text-xs text-[#6B6358] italic">No targets set</p>
+                        <p className="text-xs text-[#6B6358] italic">{selectedRange.isSingleMonth ? "No targets set" : "Target comparisons are available for single-month periods."}</p>
                       ) : (
                         <div className="grid gap-4 sm:grid-cols-2">
                           {hasRevenueTarget && (
