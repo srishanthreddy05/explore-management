@@ -3,6 +3,41 @@
  * This utility acts as the single source of truth across the billing, settlements, and backfill layers.
  */
 
+export interface CreditCollectionAllocation {
+  stylistShare: number;
+  ownerShare: number;
+  staff: Array<{ staffId: string; staffName: string; amount: number; serviceRevenue: number; productCost: number }>;
+}
+
+/**
+ * Allocate one later receipt across the original invoice's service rows.
+ * The amount is prorated against the original grand total, then each stylist
+ * receives 50% of their net service value (service amount less product cost).
+ * Owner/System services and the non-service remainder stay with the owner.
+ */
+export function calculateCreditCollectionAllocation(inv: any, amount: number, staffList: any[] = []): CreditCollectionAllocation {
+  const grandTotal = Math.max(0, Number(inv?.grandTotal) || 0);
+  const factor = grandTotal > 0 ? Math.min(1, Math.max(0, amount / grandTotal)) : 0;
+  const byStaff = new Map<string, { staffId: string; staffName: string; amount: number; serviceRevenue: number; productCost: number }>();
+  let stylistShare = 0;
+  (inv?.services || []).forEach((service: any) => {
+    const commission = getServiceCommission(service, inv);
+    const staff = staffList.find((item: any) => item.id === service.staffId || item.name === service.staffName);
+    const role = service.staffRole || staff?.role || (service.staffName === "System" ? "Owner" : "Stylist");
+    if (service.serviceId === "membership_fee" || role === "Owner") return;
+    const share = commission.stylistShare * factor;
+    stylistShare += share;
+    const key = service.staffId || service.staffName || "unassigned";
+    const row = byStaff.get(key) || { staffId: service.staffId || key, staffName: service.staffName || "Unassigned", amount: 0, serviceRevenue: 0, productCost: 0 };
+    row.amount += share;
+    row.serviceRevenue += commission.serviceRevenue * factor;
+    row.productCost += commission.productCost * factor;
+    byStaff.set(key, row);
+  });
+  const roundedStaff = Array.from(byStaff.values()).map((row) => ({ ...row, amount: Math.round(row.amount * 100) / 100, serviceRevenue: Math.round(row.serviceRevenue * 100) / 100, productCost: Math.round(row.productCost * 100) / 100 }));
+  const roundedStylist = Math.round(roundedStaff.reduce((sum, row) => sum + row.amount, 0) * 100) / 100;
+  return { stylistShare: roundedStylist, ownerShare: Math.round((amount - roundedStylist) * 100) / 100, staff: roundedStaff };
+}
 export interface InvoicePayments {
   cash: number;
   upi: number;
@@ -46,7 +81,14 @@ export function getInvoicePaymentRatio(inv: any): number {
   const grandTotal = inv.grandTotal || 0;
   if (grandTotal <= 0) return 1;
   const payments = getInvoicePayments(inv);
-  const collected = (payments.cash || 0) + (payments.upi || 0) + (payments.card || 0) + (inv.advanceUsed || 0);
+  // Older releases folded credit receipts into paymentSplit. Remove those
+  // recorded receipts before calculating the original invoice's service ratio.
+  const creditAlreadyInSplit = (inv.creditPaymentHistory || []).reduce((sum: number, payment: any) => {
+    if (payment.includedInPaymentSplit === false) return sum;
+    const split = payment.paymentSplit || {};
+    return sum + (Number(split.cash) || 0) + (Number(split.upi) || 0) + (Number(split.card) || 0);
+  }, 0);
+  const collected = Math.max(0, (payments.cash || 0) + (payments.upi || 0) + (payments.card || 0) - creditAlreadyInSplit + (inv.advanceUsed || 0));
   return Math.min(1, Math.max(0, collected / grandTotal));
 }
 
