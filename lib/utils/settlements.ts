@@ -239,6 +239,12 @@ export function calculateDaySettlement(
           : "SPLIT")
         : inv.paymentMethod || "UPI";
 
+      const sourceInvoice = cc.originalServices && cc.originalGrandTotal
+        ? { grandTotal: cc.originalGrandTotal, services: cc.originalServices }
+        : null;
+      const creditAllocation = sourceInvoice
+        ? calculateCreditCollectionAllocation(sourceInvoice, amount, staffList)
+        : { ownerShare: amount, stylistShare: 0, serviceRevenue: 0, productCost: 0, staff: [] };
       result.collectedCredits.push({
         originalBillDate: cc.collectedAt || dateStr,
         originalInvoiceNumber: cc.originalInvoiceNumber || "",
@@ -248,12 +254,32 @@ export function calculateDaySettlement(
         amount,
         serviceOrProductName: `Credit Collected (Inv #${cc.originalInvoiceNumber || "?"})`,
         type: "credit",
-        share: amount,
+        share: creditAllocation.ownerShare,
       });
-
-      result.ownerDirectRevenue += amount;
-      result.totalOwnerShare += amount;
-    });
+      result.totalServiceRevenue += creditAllocation.serviceRevenue;
+      result.totalProductCost += creditAllocation.productCost;
+      result.ownerDirectRevenue += creditAllocation.ownerShare;
+      result.totalOwnerShare += creditAllocation.ownerShare;
+      result.totalStaffShare += creditAllocation.stylistShare;
+      result.staffRevenueContribution += creditAllocation.stylistShare;
+      creditAllocation.staff.forEach((staffCredit) => {
+        const staffMember = staffList.find((st) => st.id === staffCredit.staffId || st.name === staffCredit.staffName);
+        const key = staffCredit.staffId || staffCredit.staffName;
+        if (!result.staffDetails[key]) {
+          result.staffDetails[key] = {
+            staffId: staffCredit.staffId, name: staffCredit.staffName, role: staffMember?.role || "Stylist",
+            serviceRevenue: 0, productCost: 0, staffShare: 0, ownerShareContribution: 0,
+            collectedCredits: [], collectedCreditsShare: 0,
+          };
+        }
+        const detail = result.staffDetails[key];
+        detail.serviceRevenue += staffCredit.serviceRevenue;
+        detail.productCost += staffCredit.productCost;
+        detail.staffShare += staffCredit.amount;
+        detail.ownerShareContribution += Math.max(0, staffCredit.serviceRevenue - staffCredit.productCost - staffCredit.amount) + staffCredit.productCost;
+        detail.collectedCreditsShare += staffCredit.amount;
+        detail.collectedCredits.push({ originalInvoiceNumber: cc.originalInvoiceNumber, amount: staffCredit.amount });
+      });;
 
     const retailRev = calculateInvoiceRetailRevenue(inv);
     result.retailProductsRevenue += retailRev;
