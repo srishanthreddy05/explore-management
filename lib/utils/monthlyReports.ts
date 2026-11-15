@@ -304,7 +304,7 @@ export function generateMonthlyReport(params: {
     const { monthKey } = getInvoiceDateInfo(inv);
     if (monthKey === selectedMonth) {
       (inv.collectedCredits || []).forEach((cc: any) => {
-        const key = `${cc.originalInvoiceId || cc.originalInvoiceNumber}_${Number(cc.collectedAmount) || 0}`;
+        const key = cc.collectionId || `${cc.originalInvoiceId || cc.originalInvoiceNumber}_${Number(cc.collectedAmount) || 0}`;
         registeredCreditCollections.add(key);
       });
     }
@@ -328,7 +328,7 @@ export function generateMonthlyReport(params: {
         const payMonth = (dp.collectedAt || "").substring(0, 7);
         if (payMonth === selectedMonth) {
           const amt = Number(dp.collectedAmount) || 0;
-          const dedupeKey = `${inv.id || inv.invoiceNumber}_${amt}`;
+          const dedupeKey = dp.collectionId || `${inv.id || inv.invoiceNumber}_${amt}`;
           if (amt > 0 && !registeredCreditCollections.has(dedupeKey)) {
             registeredCreditCollections.add(dedupeKey);
             overview.creditCollectionsRevenue += amt;
