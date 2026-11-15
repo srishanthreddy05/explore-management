@@ -16,6 +16,7 @@ export function AddExpenseModal({ onClose, onSuccess }: AddExpenseModalProps) {
   const [amount, setAmount] = useState<number | "">("");
   const [date, setDate] = useState(() => toLocalDateString(new Date()));
   const [category, setCategory] = useState("Rent");
+  const [otherCategory, setOtherCategory] = useState("");
   const [type, setType] = useState<"daily" | "monthly">("daily");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -32,8 +33,8 @@ export function AddExpenseModal({ onClose, onSuccess }: AddExpenseModalProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!description.trim() || amount === "" || amount <= 0) {
-      setError("Please enter a description and valid amount.");
+    if (!description.trim() || amount === "" || amount <= 0 || (category === "Other" && !otherCategory.trim())) {
+      setError(category === "Other" && !otherCategory.trim() ? "Please specify the other expense category." : "Please enter a description and valid amount.");
       return;
     }
     setSaving(true);
@@ -43,7 +44,7 @@ export function AddExpenseModal({ onClose, onSuccess }: AddExpenseModalProps) {
         description: description.trim(),
         amount: Number(amount),
         date,
-        category,
+        category: category === "Other" ? otherCategory.trim() : category,
         type,
       });
       onSuccess();
@@ -110,18 +111,29 @@ export function AddExpenseModal({ onClose, onSuccess }: AddExpenseModalProps) {
               <span className="text-sm font-semibold text-[#A89F8C]">Category</span>
               <select
                 value={category}
-                onChange={(e) => setCategory(e.target.value)}
+                onChange={(e) => { setCategory(e.target.value); setOtherCategory(""); }}
                 className="mt-2 h-11 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-4 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E] focus:ring-1 focus:ring-[#B8962E]"
               >
-                <option value="Rent">Shop Rent</option>
-                <option value="Utilities">Utilities (Power/Water)</option>
-                <option value="Salaries">Staff Salaries</option>
-                <option value="Inventory">Product Inventory Restock</option>
-                <option value="Marketing">Marketing & Flyers</option>
-                <option value="Food">Food & Refreshments</option>
-                <option value="Transport">Transport & Fuel</option>
-                <option value="Other">Other Expenses</option>
+                <option value="Water">Water</option>
+                    <option value="Newspaper">Newspaper</option>
+                    <option value="Tissue">Tissue</option>
+                    <option value="AC Service">AC Service</option>
+                    <option value="GHMC">GHMC</option>
+                    <option value="Current Bill">Current Bill</option>
+                    <option value="Rent">Rent</option>
+                    <option value="Products">Products</option>
+                    <option value="Utilities">Utilities</option>
+                    <option value="Other">Other</option>
               </select>
+              {category === "Other" && (
+                <input
+                  required
+                  value={otherCategory}
+                  onChange={(e) => setOtherCategory(e.target.value)}
+                  placeholder="Enter expense category"
+                  className="mt-2 h-11 w-full rounded-xl border border-[#2E2B24] bg-[#0E0D0B] px-4 text-sm text-[#F5F0E8] outline-none focus:border-[#B8962E]"
+                />
+              )}
             </label>
 
             <label className="block">
