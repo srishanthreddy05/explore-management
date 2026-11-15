@@ -736,9 +736,24 @@ export async function collectCreditPayment(
     // Correct rounding drift on the owner allocation so all allocations reconcile to the collected amount.
     const allocatedCommissionTotal = daily.stylistShare + daily.ownerShare;
     const roundingDifference = Math.round((roundedAmount - allocatedCommissionTotal) * 100) / 100;
-    if (collectionCommissionAllocations.length && Math.abs(roundingDifference) <= 0.05) {
-      const ownerEntry = [...collectionCommissionAllocations].reverse().find((item) => item.staffRole === "Owner") || collectionCommissionAllocations[collectionCommissionAllocations.length - 1];
-      ownerEntry.ownerShare = Math.round((ownerEntry.ownerShare + roundingDifference) * 100) / 100;
+    if (Math.abs(roundingDifference) >= 0.01) {
+      const ownerEntry = [...collectionCommissionAllocations].reverse().find((item) => item.staffRole === "Owner");
+      if (ownerEntry) {
+        ownerEntry.ownerShare = Math.round((ownerEntry.ownerShare + roundingDifference) * 100) / 100;
+      } else {
+        collectionCommissionAllocations.push({
+          creditDocId: "",
+          staffId: "system",
+          staffName: "System",
+          staffRole: "Owner",
+          serviceId: "",
+          serviceName: "Unallocated invoice balance",
+          serviceRevenue: 0,
+          productCost: 0,
+          stylistShare: 0,
+          ownerShare: roundingDifference,
+        });
+      }
       daily.ownerShare += roundingDifference;
     }
 
