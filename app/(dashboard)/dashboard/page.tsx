@@ -1234,7 +1234,7 @@ export default function DashboardPage() {
   }, [staff, tick]);
 
   const stats = useMemo(() => {
-    const todayStr = toLocalDateString(new Date());
+    const selectedDateStr = selectedInvoiceDate;
     let todayRevenue = 0;
     let cashToday = 0;
     let upiToday = 0;
@@ -1260,7 +1260,7 @@ export default function DashboardPage() {
 
       const invDateStr = inv.dateKey || toLocalDateString(inv.date);
 
-      if (invDateStr === todayStr) {
+      if (invDateStr === selectedDateStr) {
         todayRevenue += cash + upi + card + advance;
 
         const isGuest =
@@ -1279,7 +1279,7 @@ export default function DashboardPage() {
       // Check creditPaymentHistory collected today
       (inv.creditPaymentHistory || []).forEach((cph: any) => {
         const payDate = (cph.collectedAt ? toLocalDateString(cph.collectedAt) : "") || (cph.collectedAt || "").slice(0, 10);
-        if (payDate === todayStr) {
+        if (payDate === selectedDateStr) {
           const amt = Number(cph.collectedAmount) || 0;
           const dedupeKey = cph.collectionId || `${inv.id || inv.invoiceNumber}_${cph.collectedAt || "legacy"}_${amt}`;
           if (amt > 0 && !registeredCreditCollections.has(dedupeKey)) {
@@ -1334,7 +1334,7 @@ export default function DashboardPage() {
       advanceToday,
       onDutyCount: staff.filter((s) => s.dutyStatus === "onDuty").length,
     };
-  }, [invoices, staff, monthlyStats]);
+  }, [invoices, staff, monthlyStats, selectedInvoiceDate]);
 
   const todayStr = toLocalDateString(new Date());
   const selectedDateInvoices = useMemo(() => {
@@ -1760,7 +1760,7 @@ export default function DashboardPage() {
           {/* Stats Grid */}
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             <StatCard
-              title="Today's Collection"
+              title={selectedInvoiceDate === todayStr ? "Today's Collection" : "Selected Date Collection"}
               value={formatCurrency(stats.todayRevenue)}
               icon={TrendingUp}
               accent="gold"
@@ -1782,7 +1782,7 @@ export default function DashboardPage() {
             />
 
             <StatCard
-              title="Today's Visits"
+              title={selectedInvoiceDate === todayStr ? "Today's Visits" : "Selected Date Visits"}
               value={stats.todayVisits}
               subtitle="Unique customers served today"
               icon={CalendarDays}
