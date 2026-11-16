@@ -116,7 +116,7 @@ export async function searchCustomers(searchTerm: string): Promise<Customer[]> {
   const term = searchTerm.trim().toLocaleLowerCase();
   if (!term) return [];
 
-  const digits = term.replace(/\\D/g, "");
+  const digits = term.replace(/\D/g, "");
   try {
     const snap = await getDocs(collection(db, COLLECTION_NAME));
     return snap.docs
@@ -126,7 +126,7 @@ export async function searchCustomers(searchTerm: string): Promise<Customer[]> {
       }) as Customer)
       .filter((customer) => {
         const name = (customer.name || "").toLocaleLowerCase();
-        const phoneDigits = (customer.phone || "").replace(/\\D/g, "");
+        const phoneDigits = (customer.phone || "").replace(/\D/g, "");
         const matchesName = name.includes(term);
         const matchesPhone = digits.length > 0 && phoneDigits.includes(digits);
         return matchesName || matchesPhone;
