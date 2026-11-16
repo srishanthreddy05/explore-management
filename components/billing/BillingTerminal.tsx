@@ -330,7 +330,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
     let active = true;
     const delayDebounceFn = setTimeout(async () => {
       try {
-        const results = await customerService.searchByPhonePrefix(trimmed);
+        const results = await customerService.searchCustomers(trimmed);
         if (!active) return;
         if (results && results.length > 0) {
           setSuggestions(results.slice(0, 8));
@@ -369,7 +369,7 @@ export function BillingTerminal({ onClose, onSuccess, editInvoiceId }: BillingTe
     let active = true;
     const delayDebounceFn = setTimeout(async () => {
       try {
-        const results = await customerService.searchByNamePrefix(trimmed);
+        const results = await customerService.searchCustomers(trimmed);
         if (!active) return;
         if (results && results.length > 0) {
           setNameSuggestions(results.slice(0, 8));
