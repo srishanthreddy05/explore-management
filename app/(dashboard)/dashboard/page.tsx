@@ -1300,8 +1300,8 @@ export default function DashboardPage() {
         }
       });
 
-      // Check collectedCredits on invoices created today
-      if (invDateStr === todayStr) {
+      // Include credit collections recorded on invoices for the selected date
+      if (invDateStr === selectedDateStr) {
         (inv.collectedCredits || []).forEach((cc: any) => {
           const amt = Number(cc.collectedAmount) || 0;
           const dedupeKey = cc.collectionId || `${cc.originalInvoiceId || cc.originalInvoiceNumber}_${cc.collectedAt || "legacy"}_${amt}`;
@@ -1784,7 +1784,7 @@ export default function DashboardPage() {
             <StatCard
               title={selectedInvoiceDate === todayStr ? "Today's Visits" : "Selected Date Visits"}
               value={stats.todayVisits}
-              subtitle="Unique customers served today"
+              subtitle={selectedInvoiceDate === todayStr ? "Unique customers served today" : "Unique customers served on selected date"}
               icon={CalendarDays}
               accent="blue"
             />
