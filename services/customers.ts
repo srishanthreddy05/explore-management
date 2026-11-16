@@ -107,6 +107,37 @@ export async function getById(id: string): Promise<Customer | null> {
   }
 }
 
+/**
+ * Search customers by any contiguous part of their name or phone number.
+ * Firestore range queries only support prefix matching, so substring matching
+ * is performed against the customer records in the client-side service.
+ */
+export async function searchCustomers(searchTerm: string): Promise<Customer[]> {
+  const term = searchTerm.trim().toLocaleLowerCase();
+  if (!term) return [];
+
+  const digits = term.replace(/\\D/g, "");
+  try {
+    const snap = await getDocs(collection(db, COLLECTION_NAME));
+    return snap.docs
+      .map((customerDoc) => ({
+        id: customerDoc.id,
+        ...customerDoc.data(),
+      }) as Customer)
+      .filter((customer) => {
+        const name = (customer.name || "").toLocaleLowerCase();
+        const phoneDigits = (customer.phone || "").replace(/\\D/g, "");
+        const matchesName = name.includes(term);
+        const matchesPhone = digits.length > 0 && phoneDigits.includes(digits);
+        return matchesName || matchesPhone;
+      })
+      .slice(0, 50);
+  } catch (error) {
+    console.error("Error searching customers:", error);
+    throw error;
+  }
+}
+
 export async function getByPhone(phone: string): Promise<Customer | null> {
   try {
     const q = query(collection(db, COLLECTION_NAME), where("phone", "==", phone));
