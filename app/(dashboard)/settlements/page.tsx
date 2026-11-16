@@ -1188,6 +1188,7 @@ export default function SettlementsPage() {
   const [loading, setLoading] = useState(true);
   const [dailyStats, setDailyStats] = useState<Record<string, DailyStat>>({});
   const [dayInvoicesMap, setDayInvoicesMap] = useState<Record<string, Invoice[]>>({});
+  const [allSettlementInvoices, setAllSettlementInvoices] = useState<Invoice[]>([]);
   const [monthlyStaffStats, setMonthlyStaffStats] = useState<Record<string, StaffMonthSummary>>({});
   const [staffDrawings, setStaffDrawings] = useState<Record<string, staffDrawingsService.StaffDrawing[]>>({});
 
@@ -1554,21 +1555,24 @@ export default function SettlementsPage() {
         let liveStylistSupplies = 0;
         // Compute staff shares and range totals from invoices inside selected range using shared utility
         try {
-          const invQuery = query(
-            collection(db, "invoices"),
-            where("dateKey", ">=", dateFrom),
-            where("dateKey", "<=", dateTo)
-          );
-          const invSnap = await getDocs(invQuery);
-          const invoicesList: any[] = [];
-          invSnap.forEach((doc) => {
-            invoicesList.push({ id: doc.id, ...doc.data() });
+          // Load all invoices so credit receipts recorded today can still be
+          // allocated against their original invoice, even when it is older.
+          const allInvoices = await invoicesService.getAll();
+          setAllSettlementInvoices(allInvoices);
+          const invoicesList: any[] = allInvoices.filter((inv: any) => {
+            const invoiceDate = inv.dateKey || (inv.date ? toLocalDateString(inv.date) : "");
+            return invoiceDate >= dateFrom && invoiceDate <= dateTo;
           });
 
-          // Reuse the selected-range invoice result for today's details instead
-          // of issuing a second overlapping query for the same documents.
-          const todayInvoices = invoicesList.filter((inv) => inv.dateKey === todayStr);
-          setDayInvoicesMap((prev) => ({ ...prev, [todayStr]: todayInvoices }));
+          // Keep the selected-range day map for invoice-level UI and lazy loading.
+          const groupedInvoices: Record<string, Invoice[]> = {};
+          allInvoices.forEach((inv: any) => {
+            const invoiceDate = inv.dateKey || (inv.date ? toLocalDateString(inv.date) : "");
+            if (!invoiceDate) return;
+            if (!groupedInvoices[invoiceDate]) groupedInvoices[invoiceDate] = [];
+            groupedInvoices[invoiceDate].push(inv);
+          });
+          setDayInvoicesMap(groupedInvoices);
 
           // Fetch drawings for the selected range
           await fetchDrawings(dateFrom, dateTo);
@@ -1701,15 +1705,14 @@ export default function SettlementsPage() {
 
   const getDayDetails = useCallback(
     (dateStr: string) => {
-      const dayInvoices = dayInvoicesMap[dateStr] || [];
-      const details = calculateDaySettlement(dayInvoices, staff, dateStr);
+      const details = calculateDaySettlement(allSettlementInvoices, staff, dateStr);
       
       return {
         ...details,
         staffDetails: Object.values(details.staffDetails),
       };
     },
-    [staff, dayInvoicesMap]
+    [staff, allSettlementInvoices]
   );
 
   const staffSplits = useMemo((): StaffSplit[] => {
@@ -1784,16 +1787,16 @@ export default function SettlementsPage() {
   const visibleSettlements = useMemo(() => {
     return dateList
       .map((d) => {
-        const stats = dailyStats[d];
+        const details = calculateDaySettlement(allSettlementInvoices, staff, d);
         const dayDailyExpenses = dailyExpensesMap[d] || 0;
         return {
           date: d,
-          totalServiceRevenue: stats?.serviceRevenue || 0,
-          totalMembershipAmount: stats?.totalMembershipAmount || 0,
-          totalProductCost: stats?.productCost || 0,
-          totalStaffShare: stats?.stylistShare || 0,
-          totalOwnerShare: (stats?.ownerShare || 0) - dayDailyExpenses,
-          totalRetailProductsRevenue: stats?.retailProductsRevenue || 0,
+          totalServiceRevenue: details.totalServiceRevenue,
+          totalMembershipAmount: details.totalMembershipAmount,
+          totalProductCost: details.totalProductCost,
+          totalStaffShare: details.totalStaffShare,
+          totalOwnerShare: details.totalOwnerShare - dayDailyExpenses,
+          totalRetailProductsRevenue: details.retailProductsRevenue,
         };
       })
       .filter((day) => {
@@ -1802,7 +1805,7 @@ export default function SettlementsPage() {
         const isToday = day.date === todayStr;
         return isToday || hasTransactions;
       });
-  }, [dailyStats, dateList, todayStr, dailyExpensesMap]);
+  }, [allSettlementInvoices, staff, dateList, todayStr, dailyExpensesMap]);
 
   // ── Render ─────────────────────────────────────────────────────────────
 
